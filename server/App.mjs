@@ -792,6 +792,7 @@ function checkParties() {
       parties = parties.filter((p) => p.players.length > 0); // Remove empty parties
     }
   });
+  // If you need usernames, use party.getPlayerUsernames()
 }
 
 wss.on('connection', (ws) => {
@@ -1015,17 +1016,11 @@ function checkCommand(command, player) {
     if (!party) {
       parties.push(new Party(name, player.username));
       party = parties.find(party => party.name === name);
-      let old_party = null;
-      if (player.party) old_party = parties.find(p => p.name === player.party.name);
-      if (old_party) old_party.removePlayer(player); // Fixed: should be old_party, not party
       party.addPlayer(player);
-      sendNoticeMessage(player.username, "Created and joined party " + name, 'server'); // Added space
+      sendNoticeMessage(player.username, "Created and joined party " + name, 'server');
     } else {
-      let old_party = null;
-      if (player.party) old_party = parties.find(p => p.name === player.party.name);
-      if (old_party) old_party.removePlayer(player); // Fixed: should be old_party, not party
       party.addPlayer(player);
-      sendNoticeMessage(player.username, "Joined party " + name, 'server'); // Added space
+      sendNoticeMessage(player.username, "Joined party " + name, 'server');
     }
   }
 
