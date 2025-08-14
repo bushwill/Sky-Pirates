@@ -1,0 +1,10 @@
+.cache
+.config
+.docker
+.dotnet
+.local
+.ssh
+.vscode-server
+.bash*
+.viminfo
+.wget-hsts

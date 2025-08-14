@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ioUniverse Server Page</title>
+    <button type="button" onclick="initialize()">Initialize Database</button>
+    <pre id="dbStatus"></pre>
+</head>
+
+<body>
+    <script>
+        function initialize() {
+            fetch('/initDB', {
+                method: 'POST',
+                headers: {}
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    const status_response = document.getElementById('dbStatus');
+                    status_response.textContent = `${data.message}`;
+                })
+                .catch((error) => {
+                    console.error('Fetch error:', error);
+                });
+        }
+    </script>
+</body>
+
+</html>

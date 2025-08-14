@@ -1,0 +1,8 @@
+services:
+  client:
+    build:
+      context: .
+    ports:
+      - "81:8081"
+
+      
