@@ -94,7 +94,7 @@ function updatePlayer(player) {
     }
   } else if (player.browsing === true) {
     player.browsing = false; // Reset browsing flag if player is not in recovery biome
-    sendNoticeMessage("Sold all items for $" + player.sellAll(), player.username, 'pickup') // Sell all items when leaving recovery biome
+    sendNoticeMessage(player.username, "Sold all items for $" + player.sellAll(), 'pickup') // Sell all items when leaving recovery biome
   }
 
   updatePosition(player);
@@ -239,7 +239,7 @@ function updateCrate(crate) {
     const dx = new_player.x - crate.x;
     const dy = new_player.y - crate.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    const attach_radius = new_player.size + crate.size + 5; // Allow some leeway for attachment
+    const attach_radius = 2 * (new_player.size + crate.size + 5); // Double the pickup distance
     if (distance <= attach_radius && new_player.username !== crate.carrier) {
       new_player.attachCrate(crate);
       if (player) player.detachCrate(crate); // Detach from previous carrier if any
@@ -334,34 +334,29 @@ function generateRandomBasicComponentCrate(x, y) {
 // --- Utility functions using your existing formulas ---
 
 function applyRecoveryJello(player, deltaTime) {
-  const jelloStrength = 0.5; // Adjust this for how bouncy the jello effect is
-  const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-  const jelloForce = jelloStrength * speed * deltaTime;
-  const speedThreshold = 80;
+  // Deactivate gravity: do not apply gravity in recovery zone
 
-  if (speed > 0) {
-    player.vx += (Math.random() - 0.5 * deltaTime) * jelloForce;
-    player.vy += (Math.random() - 0.5 * deltaTime) * jelloForce;
-    // Clamp tiny velocities
-    if (Math.abs(player.vx) < 0.001) player.vx = 0;
-    if (Math.abs(player.vy) < 0.001) player.vy = 0;
+  const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
+  const stopThreshold = 2; // If speed is below this, stop the player
+  // Friction decreases as speed increases (min 0.9, max 0.99)
+  let friction = 0.9 + Math.min(0.09, speed / 100); // At speed 100, friction is 0.99
+
+  // If speed is very low, stop the player
+  if (speed < stopThreshold) {
+    player.vx = 0;
+    player.vy = 0;
+  } else {
+    // Apply variable friction to slow the player
+    player.vx *= friction;
+    player.vy *= friction;
   }
 
-  // Apply an additional deceleration when speed is below the threshold.
-  // This force scales up based on how far under speedThreshold the speed is.
-  if (speed < speedThreshold && speed > 0) {
-    const frictionCoefficient = 1; // Adjust this value to control deceleration strength
-    const frictionForce = frictionCoefficient * (speedThreshold - speed);
-    const reduction = frictionForce * deltaTime;
-
-    // Ensure we don't reduce more than the current speed to avoid reversing direction.
-    if (reduction > speed) {
-      player.vx = 0;
-      player.vy = 0;
-    } else {
-      player.vx -= (player.vx / speed) * reduction;
-      player.vy -= (player.vy / speed) * reduction;
-    }
+  // If throttle is applied, allow propulsion even from zero speed
+  const throttle = player.engine.power;
+  if (throttle > player.engine.minPower) {
+    const acceleration = (throttle / player.weight) * deltaTime * 2; // Boosted in recovery
+    player.vx += Math.cos(player.angle) * acceleration;
+    player.vy += Math.sin(player.angle) * acceleration;
   }
 }
 
@@ -658,7 +653,12 @@ function applyLiftForce(player, speed, deltaTime) {
   angleOfAttack = Math.atan2(Math.sin(angleOfAttack), Math.cos(angleOfAttack));
 
   // Only apply lift within ±liftAngle (e.g., π/8)
-  if (Math.abs(angleOfAttack) > player.wings.liftAngle) return;
+  if (Math.abs(angleOfAttack) > player.wings.liftAngle) {
+    player.stalling = true;
+    return;
+  } else {
+    player.stalling = false;
+  }
 
   const liftCoefficient = player.wings.liftEfficiency;
   const minLiftSpeed = player.wings.minLiftSpeed;
@@ -795,6 +795,15 @@ function checkParties() {
   // If you need usernames, use party.getPlayerUsernames()
 }
 
+// Utility to get serializable party info
+function getSerializableParties() {
+  return parties.map(party => ({
+    name: party.name,
+    color: { r: party.r, g: party.g, b: party.b },
+    players: party.getPlayerUsernames()
+  }));
+}
+
 wss.on('connection', (ws) => {
   ws.currentUsername = null; // Initialize username per connection
 
@@ -825,6 +834,9 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_players':
       sendMessage(ws, { type: 'player_data', players: players });
+      break;
+    case 'get_parties':
+      sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
       break;
     case 'get_map':
       sendMessage(ws, { type: 'map_data', map: mapData })

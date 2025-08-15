@@ -126,6 +126,21 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawPlaneData(player, drawX, drawY);
     drawCompass(player);
     if (player.browsing) displayInventory(player, drawX, drawY);
+
+    // Draw stalling icon if stalling is true
+    if (player.stalling) {
+        push();
+        translate(drawX + 30, drawY - 30);
+        fill(255, 0, 0);
+        stroke(0);
+        ellipse(0, 0, 20, 20); // Red circle
+        fill(255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        textSize(14);
+        text("!", 0, 1); // Exclamation mark
+        pop();
+    }
 }
 
 function drawPlaneData(player) {

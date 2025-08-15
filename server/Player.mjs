@@ -47,6 +47,7 @@ export class Player {
     this.lastActivity = Date.now() - startMillis;
     this.startMillis = startMillis;
     this.privileges = false;
+    this.stalling = false; // True if movement direction is outside wing lift angle
   }
 
   respawn() {
