@@ -116,32 +116,50 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
 }
 
 function displayControlledPlayerStatus(player, drawX, drawY) {
+    const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
     drawThrottleArc(player, drawX, drawY);
     drawPlaneHeat(player, drawX, drawY);
     drawPlaneHull(player, drawX, drawY);
     drawSpeed(player, drawX, drawY);
+    if (speed > player.chassis.topSpeed) drawOverSpeedFireIcon(player, drawX, drawY);
+    else drawStallWarning(player, drawX, drawY);
     drawGunCursor(player, drawX, drawY);
     drawGunHeat(player, drawX, drawY);
     drawGunArc(player, drawX, drawY);
     drawPlaneData(player, drawX, drawY);
     drawCompass(player);
     if (player.browsing) displayInventory(player, drawX, drawY);
-
-    // Draw stalling icon if stalling is true
-    if (player.stalling) {
-        push();
-        translate(drawX + 30, drawY - 30);
-        fill(255, 0, 0);
-        stroke(0);
-        ellipse(0, 0, 20, 20); // Red circle
-        fill(255);
-        noStroke();
-        textAlign(CENTER, CENTER);
-        textSize(14);
-        text("!", 0, 1); // Exclamation mark
-        pop();
-    }
 }
+
+function drawOverSpeedFireIcon(player, drawX, drawY) {
+    push();
+    translate(drawX + 40, drawY - 30);
+    scale(1.2);
+    noStroke();
+
+    // Base red flame (ellipse)
+    fill(255, 0, 0);
+    ellipse(0, 5, 18, 14);
+
+    // Middle orange flame (ellipse)
+    fill(255, 140, 0);
+    ellipse(0, 4, 14, 13);
+
+    // Central yellow tip (ellipse, smaller, a bit offset)
+    fill(255, 220, 0);
+    ellipse(0, 3, 8, 12);
+
+    // Left flick of flame (triangle)
+    fill(255, 180, 0);
+    triangle(-6, 7, -2, -8, 0, 6);
+
+    // Right flick of flame (triangle)
+    fill(255, 180, 0);
+    triangle(6, 7, 0, -6, 0, 6);
+
+    pop();
+}
+
 
 function drawPlaneData(player) {
     fill(255);
@@ -168,11 +186,11 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
     // Loop through all players to find party members
     for (let i in players) {
         const player = players[i];
-        
+
         // Skip if this player doesn't have a party or it's not the same party
-        if (!player.party || 
-            player.party.r !== controlledPlayer.party.r || 
-            player.party.g !== controlledPlayer.party.g || 
+        if (!player.party ||
+            player.party.r !== controlledPlayer.party.r ||
+            player.party.g !== controlledPlayer.party.g ||
             player.party.b !== controlledPlayer.party.b) {
             continue;
         }
@@ -191,10 +209,10 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
             // Clamp positions to screen edges
             let indicatorX = drawX;
             let indicatorY = drawY;
-            
+
             if (drawX < 0) indicatorX = 40;
             else if (drawX > windowWidth) indicatorX = windowWidth - 40;
-            
+
             if (drawY < 0) indicatorY = 40;
             else if (drawY > windowHeight) indicatorY = windowHeight - 40;
 
@@ -220,6 +238,33 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
     }
 }
 
+function drawStallWarning(player, drawX, drawY) {
+    speed = Math.sqrt(player.vx ** 2 + player.vy ** 2).toFixed(0);
+    // Draw stalling icon if stalling is true
+    if (player.biome !== 'recovery') {
+        if (player.stalling) {
+            drawStallIndicator(player, drawX, drawY, 255, 0, 0);
+        } else if (speed < player.wings.minLiftSpeed) {
+            drawStallIndicator(player, drawX, drawY, 255, 255, 0);
+        }
+    }
+}
+
+function drawStallIndicator(player, drawX, drawY, r, g, b) {
+    push();
+    translate(drawX + 30, drawY - 30);
+    fill(r, g, b);
+    stroke(0);
+    ellipse(0, 0, 20, 20);
+    if (r + g + b >= 382.5) fill(0)
+    else fill(255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(14);
+    text("!", 0, 1); // Exclamation mark
+    pop();
+}
+
 function displayOtherPlayerStatus(player, drawX, drawY) {
     drawPlaneHull(player, drawX, drawY);
 }
@@ -243,7 +288,6 @@ function drawGunCursor(player, drawX, drawY) {
     line(cursorX - cursorSize / 2, cursorY, cursorX + cursorSize / 2, cursorY);
     line(cursorX, cursorY - cursorSize / 2, cursorX, cursorY + cursorSize / 2);
 }
-
 
 function drawGunHeat(player, drawX, drawY) {
     const heatRatio1 = Math.max(0, Math.min(1, player.gun1.heat / player.gun1.maxHeat));

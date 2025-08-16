@@ -662,14 +662,13 @@ function applyLiftForce(player, speed, deltaTime) {
 
   const liftCoefficient = player.wings.liftEfficiency;
   const minLiftSpeed = player.wings.minLiftSpeed;
-  const liftBuffer = 10; // range over which lift ramps up
 
-  // Smooth ramp from 0 at minLiftSpeed - buffer to 1 at minLiftSpeed + buffer
-  const liftScale = smoothstep(minLiftSpeed - liftBuffer, minLiftSpeed + liftBuffer, speed);
+  // Only apply lift if at or above minLiftSpeed
+  if (speed < minLiftSpeed) return;
 
   const speedSquared = speed * speed;
   // Lift scaled by smooth ramp * liftCoefficient * speedSquared * sin(angleOfAttack)
-  let liftMagnitude = liftCoefficient * speedSquared * Math.sin(angleOfAttack) * liftScale;
+  let liftMagnitude = liftCoefficient * speedSquared * Math.sin(angleOfAttack);
 
   // Clamp lift to avoid instability
   const MAX_LIFT = 1000;

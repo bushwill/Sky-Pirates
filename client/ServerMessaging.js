@@ -4,7 +4,7 @@ function connectWebSocket() {
     if (connected) return;
 
     console.log("Attempting to reconnect...");
-    ws = new WebSocket('ws://34.198.45.181:3000');
+    ws = new WebSocket(WS_ADDRESS);
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {

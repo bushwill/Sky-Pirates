@@ -248,7 +248,11 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         textAlign(CENTER, CENTER);
-        text("SKY PIRATES", x + w / 2, y + 50);
+        if (window.WS_ADDRESS === 'ws://localhost:3001') {
+            text("SKY PIRATES (test environment)", x + w / 2, y + 50);
+        } else {
+            text("SKY PIRATES", x + w / 2, y + 50);
+        }
         textSize(20)
         text("What be yar bird's nomenclature, matey?", x + w / 2, y + 100)
         text("[Translated] What's your plane's name?", x + w / 2, y + 140)
