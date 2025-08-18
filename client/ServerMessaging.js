@@ -97,6 +97,15 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
+        case 'enemy_data':
+            if (!decodedMessage.enemies || !Array.isArray(decodedMessage.enemies)) {
+                console.warn('Invalid enemies data:', decodedMessage.enemies);
+                enemies = [];
+            } else {
+                enemies = decodedMessage.enemies;
+            }
+            break;
+
         case 'projectile_data':
             if (!decodedMessage.projectiles || !Array.isArray(decodedMessage.projectiles)) {
                 console.warn('Invalid projectiles data:', decodedMessage.projectiles);
@@ -198,6 +207,12 @@ function sendEquipMessage(index) {
 
 function getPlayerData() {
     const message = { type: 'get_players' };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+}
+
+function getEnemyData() {
+    const message = { type: 'get_enemies' };
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
 }

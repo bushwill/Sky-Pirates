@@ -8,6 +8,7 @@ import fs from 'fs';
 
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
+import { Enemy, NavySalvagePlane } from './Enemy.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
@@ -29,8 +30,11 @@ const INACTIVITY_THRESHOLD = 10 * 60 * 1000;
 let timeSpeed = 1;
 
 let players = [];
+let enemies = [];
 const playerSockets = new Map();
 let parties = [];
+let lastEnemySpawnTime = 0;
+let enemySpawnRate = 500;
 let projectiles = [];
 let crates = [];
 
@@ -68,25 +72,53 @@ function updatePlayers() {
   });
 }
 
-function updatePlayer(player) {
+// Enemy plane update loop
+function updateEnemies() {
+  enemies.forEach((enemy) => {
+    checkPlayerBiome(enemy);
+    updateEnemy(enemy, players);
+    updateHull(enemy);
+    enemy.messages = enemy.messages.filter((msg) => millis() - msg[0] < 8000);
+  });
+}
+
+// Update a single enemy plane (AI controlled)
+// Shared plane update logic for both players and enemies
+function updatePlane(plane) {
   const deltaTime = 0.01 * timeSpeed;
+  const speed = getSpeed(plane);
 
-  const speed = getSpeed(player);
-
-  if (!player.keys['r']) {
-    applyTurning(player, speed, deltaTime);
-    applyThrottle(player);
-    checkPlayerShooting(player);
+  if (!plane.keys['r']) {
+    applyTurning(plane, speed, deltaTime);
+    applyThrottle(plane);
+    checkPlayerShooting(plane);
+    checkDetach(plane);
   } else {
-    applyRepairs(player, deltaTime);
+    applyRepairs(plane, deltaTime);
   }
-  applyPropulsion(player, deltaTime);
-  applyHeat(player, speed, deltaTime);
-  updateGuns(player, deltaTime);
+  applyPropulsion(plane, deltaTime);
+  applyHeat(plane, speed, deltaTime);
+  updateGuns(plane, deltaTime);
+  applyLiftForce(plane, speed, deltaTime);
+  applyPlayerGravity(plane);
+  applyPlayerDrag(plane, deltaTime);
+  updatePosition(plane);
+}
 
-  applyLiftForce(player, speed, deltaTime);
-  applyPlayerGravity(player);
-  applyPlayerDrag(player, deltaTime);
+function updateEnemy(enemy) {
+  updatePlane(enemy);
+  enemy.updateAI(players);
+  // Destroy enemy if it enters recovery biome
+  if (enemy.biome === 'recovery') {
+    handleDeath(enemy); // Remove enemy from the game
+  }
+}
+
+function updatePlayer(player) {
+  updatePlane(player);
+  checkSpawnEnemyPlane(player);
+  // Recovery zone logic for players only
+  const deltaTime = 0.01 * timeSpeed;
   if (player.biome === 'recovery') {
     applyRecoveryJello(player, deltaTime);
     if (player.inventory.length > 0) {
@@ -94,10 +126,8 @@ function updatePlayer(player) {
     }
   } else if (player.browsing === true) {
     player.browsing = false; // Reset browsing flag if player is not in recovery biome
-    sendNoticeMessage(player.username, "Sold all items for $" + player.sellAll(), 'pickup') // Sell all items when leaving recovery biome
+    sendNoticeMessage(player.username, "Sold all items for $" + player.sellAll(), 'pickup'); // Sell all items when leaving recovery biome
   }
-
-  updatePosition(player);
 }
 
 function updateProjectiles() {
@@ -135,6 +165,21 @@ function updateProjectile(projectile) {
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }
   });
+
+  // Check for collisions with enemies
+  enemies.forEach((enemy) => {
+    if (enemy.username === projectile.owner) return; // Skip collision with self
+    const dx = Math.abs(enemy.x - projectile.x);
+    const dy = Math.abs(enemy.y - projectile.y);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < enemy.size + projectile.size) {
+      enemy.chassis.hull -= projectile.damage; // Apply damage to enemy
+      projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
+    }
+  });
+
+  
 }
 
 function updateCrates() {
@@ -417,6 +462,27 @@ function checkPlayerShooting(player) {
   }
 }
 
+function checkDetach(plane) {
+  if (plane.keys['f']) {
+    plane.detachAllCrates();
+  }
+}
+
+function checkSpawnEnemyPlane(plane) {
+  const now = Date.now();
+  if (plane.keys['p'] && (now - lastEnemySpawnTime > enemySpawnRate)) {
+    lastEnemySpawnTime = now;
+    const enemy = new NavySalvagePlane(
+      plane.biome,
+      `NavySalvage_${Date.now()}`,
+      50, 50, 200,
+      plane.x,
+      plane.y - 500
+    );
+    enemies.push(enemy);
+  }
+}
+
 function createBullet(player, gun) {
   const angle = gun.angle;
   const vx = Math.cos(angle) * gun.projectileSpeed;
@@ -549,6 +615,7 @@ function getTargetAngle(player) {
 }
 
 function updateGunAngle(player, gun, targetAngle, deltaTime) {
+  if (!gun) return;
   // Normalize angles to [-π, π]
   targetAngle = ((targetAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
   gun.angle = ((gun.angle + Math.PI) % (2 * Math.PI)) - Math.PI;
@@ -599,23 +666,24 @@ function updateGuns(player, deltaTime) {
   if (isNaN(targetAngle)) {
     console.error(`NaN targetAngle for player ${player.username}`, {
       targetAngle,
-      gun1Angle: player.gun1.angle,
-      gun2Angle: player.gun2.angle,
+      gun1Angle: player.gun1?.angle,
+      gun2Angle: player.gun2?.angle,
     });
     return;
   }
 
-  updateGunAngle(player, player.gun1, targetAngle, deltaTime);
-  updateGunAngle(player, player.gun2, targetAngle, deltaTime);
-
-  player.gun1.angle = clampAngle(player.gun1.angle, player.angle, player.gun1.maxAngle);
-  player.gun2.angle = clampAngle(player.gun2.angle, player.angle, player.gun2.maxAngle);
-
-  updateGunCooldown(player.gun1, deltaTime);
-  updateGunCooldown(player.gun2, deltaTime);
-
-  updateGunHeat(player, player.gun1, deltaTime);
-  updateGunHeat(player, player.gun2, deltaTime);
+  if (player.gun1) {
+    updateGunAngle(player, player.gun1, targetAngle, deltaTime);
+    player.gun1.angle = clampAngle(player.gun1.angle, player.angle, player.gun1.maxAngle);
+    updateGunCooldown(player.gun1, deltaTime);
+    updateGunHeat(player, player.gun1, deltaTime);
+  }
+  if (player.gun2) {
+    updateGunAngle(player, player.gun2, targetAngle, deltaTime);
+    player.gun2.angle = clampAngle(player.gun2.angle, player.angle, player.gun2.maxAngle);
+    updateGunCooldown(player.gun2, deltaTime);
+    updateGunHeat(player, player.gun2, deltaTime);
+  }
 }
 
 function applyPropulsion(player, deltaTime) {
@@ -737,22 +805,30 @@ function handleRevive(player) {
   player.respawn();
 }
 
-function handleDeath(player) {
-  const index = players.findIndex((p) => p.username === player.username);
-  const socket = playerSockets.get(player.username);
+function handleDeath(plane) {
+  // Check if plane is a player or enemy
+  const playerIndex = players.findIndex((p) => p.username === plane.username);
+  const enemyIndex = typeof enemies !== 'undefined' ? enemies.findIndex((e) => e.username === plane.username) : -1;
+  const socket = playerSockets.get(plane.username);
 
-  if (index !== -1) {
-    sendNoticeMessageAll(`${player.username} has been killed!`, 'server');
-
+  if (playerIndex !== -1) {
+    sendNoticeMessageAll(`${plane.username} has been killed!`, 'server');
     if (socket) {
       sendMessage(socket, {
         type: 'player_destroyed'
       });
     }
+    plane.detachAllCrates();
+    players.splice(playerIndex, 1);
+    playerSockets.delete(plane.username);
+    return;
+  }
 
-    player.detachAllCrates();
-    players.splice(index, 1);
-    playerSockets.delete(player.username);
+  // Remove enemy plane without messages or websockets
+  if (enemyIndex !== -1) {
+    plane.detachAllCrates?.(); // Detach all crates from enemy plane
+    enemies.splice(enemyIndex, 1);
+    return;
   }
 }
 
@@ -833,6 +909,9 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_players':
       sendMessage(ws, { type: 'player_data', players: players });
+      break;
+    case 'get_enemies':
+      sendMessage(ws, { type: 'enemy_data', enemies: enemies });
       break;
     case 'get_parties':
       sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
@@ -1004,9 +1083,7 @@ function checkCommand(command, player) {
   let privilege_command = /^\/Shluck$/;
   let players_command = /^\/players$/;
   let parties_command = /^\/party\s(\w+)$/;
-  let xp_command = /^\/xp\s(\d+(\.\d+)?)$/;
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
-  let detach_command = /^\/detach$/;
   let itemtest_command = /^\/itemtest\s+(\d+)$/;
 
   let match = command.match(players_command);
@@ -1037,12 +1114,7 @@ function checkCommand(command, player) {
 
   if (!player.privileges) return false;
 
-  match = command.match(xp_command);
-  if (match) {
-    let value = parseFloat(match[1]);
-    player.addExperience(value);
-    sendNoticeMessage(player.username, "Added " + value + " xp", 'server');
-  }
+
 
   match = command.match(ep_command);
   if (match) {
@@ -1052,12 +1124,6 @@ function checkCommand(command, player) {
     player.chassis.heatDispersion = value * player.engine.heatEfficiency;
     player.wings.maxSpeed = value ** 2;
     sendNoticeMessage(player.username, "Changed max engine power to " + value, 'server');
-  }
-
-  match = command.match(detach_command);
-  if (match) {
-    player.detachAllCrates();
-    sendNoticeMessage(player.username, "Detached all crates ", 'server');
   }
 
   match = command.match(itemtest_command);
@@ -1072,6 +1138,7 @@ setInterval(() => {
 }, 60000);
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
+setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);

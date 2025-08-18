@@ -15,6 +15,7 @@ export function createGun(selection, level = 1) {
             throw new Error("Invalid gun selection");
     }
 }
+
 export function createMachineGun(level) {
     const name = "Machine Gun Lvl " + level;
     const weight = 0.5;
@@ -60,3 +61,26 @@ export function createScorpion(level) {
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
 }
 
+export function createEnemyGun(selection, level = 1) {
+    switch (selection) {
+        case 0:
+            return createPeaShooter(level);
+        default:
+            throw new Error("Invalid gun selection");
+    }
+}
+
+export function createPeaShooter(level) {
+    const name = "Pea Shooter Lvl " + level;
+    const weight = 0.5;
+    const maxHeat = 100.0 + level * 25.0;
+    const heatEfficiency = 5.0 - level * 0.5;
+    const damage = 5.0 + level * 2.5;
+    const cooldownTime = 500 - level * 10;
+    const projectileSpeed = 1000.0 + level * 50.0;
+    const projectileSize = 0.75 + level * 0.25;
+    const maxAngle = Math.PI / 8 + level * Math.PI / 24;
+    const value = 10 + level * 10;
+
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+}

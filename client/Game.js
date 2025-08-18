@@ -17,6 +17,7 @@ let recovery = null;
 let lastMapRequest = -2000;
 
 let players = [];
+let enemies = [];
 let projectiles = [];
 let crates = [];
 
@@ -29,8 +30,8 @@ let notice_messages = [];
 
 let username;
 let r, g, b;
-let usedKeys = ['w', 'a', 's', 'd', 'c', 'r', 'mouse'];
-let keys = { w: false, a: false, s: false, d: false, c: false, r: false, mouse: false };
+let usedKeys = ['w', 'a', 's', 'd', 'c', 'r', 'f', 'p', 'mouse'];
+let keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
 let lastKeyPressTimes = { w: 0, a: 0, s: 0, d: 0 };
 let selectedGun1 = 0;
 let selectedGun2 = 1;
@@ -121,6 +122,7 @@ function serverSync(player = null) {
     if (millis() - lastPlayerUpdate > playerUpdateTime) {
         sendPlayerData(player);
         getPlayerData();
+        getEnemyData();
         getProjectileData();
         getCrateData();
         lastPlayerUpdate = millis();
@@ -152,6 +154,7 @@ function handleGameDisplay(controlledPlayer) {
         drawPartyIndicator(controlledPlayer, controlledPlayer.x, controlledPlayer.y);
         displayProjectiles(controlledPlayer.x, controlledPlayer.y);
         displayPlayers(controlledPlayer.x, controlledPlayer.y);
+        displayEnemies(controlledPlayer.x, controlledPlayer.y);
         if (helpWindow && !chatting) handleHelpWindow();
     } else {
         const mapPolygonsMap = getMapPolygonsMap(mapData);
@@ -161,6 +164,7 @@ function handleGameDisplay(controlledPlayer) {
         drawMapPolygonsFronts(mapPolygonsMap);
         displayProjectiles();
         displayPlayers();
+        displayEnemies();
     }
     displayChat();
     displayNoticeMessages();
@@ -214,4 +218,4 @@ function hasNonWhitespace(str) {
     return str.trim().length > 0;
 }
 
-let testing = false;
+let testing = true;

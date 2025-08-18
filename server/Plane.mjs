@@ -1,26 +1,44 @@
-import { Plane } from './Plane.mjs';
-import { createGun } from './WeaponList.mjs';
-import { createEngine, createChassis, createWings } from './ComponentList.mjs'
 import { Engine, Chassis, Wings } from './Components.mjs';
+import { createGun } from './WeaponList.mjs';
+import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 
-export class Player extends Plane {
-  constructor(biome, username, r, g, b, x, y, startMillis, selectedGun1 = 0, selectedGun2 = 0) {
-    super(biome, username, r, g, b, x, y);
-    // Player-specific attributes
+export class Plane {
+  constructor(biome, username, r, g, b, x, y) {
+    this.keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
+    this.username = username;
+    this.r = r;
+    this.g = g;
+    this.b = b;
+    this.size = 10;
+    this.repairSpeed = 5.0; // Repair speed in units per second
+
     this.chassis = createChassis(0, 1); // Standard chassis
     this.engine = createEngine(0, 1); // Standard engine
     this.wings = createWings(0, 1); // Standard wings
-    this.gun1 = createGun(selectedGun1, 1); // Primary gun
-    this.gun2 = createGun(selectedGun2, 1); // Secondary gun
-    this.selectedGun = 1;
-    this.gunToggleCooldown = 0;
-    this.inventory = [];
-    this.browsing = false;
-    this.party = null;
-    this.messages = [];
-    this.lastActivity = Date.now() - startMillis;
-    this.startMillis = startMillis;
-    this.privileges = false;
+    this.gun1 = createGun(0, 1); // Primary gun
+    this.gun2 = createGun(0, 1); // Secondary gun
+
+    // Current States
+    this.angle = 0;
+
+    this.biome = biome;
+    this.startX = x; // Initial X position
+    this.startY = y; // Initial Y position
+    this.x = x;
+    this.y = y;
+    this.vx = 80;
+    this.vy = 0;
+    this.t_x = 0;
+    this.t_y = 0;
+    this.money = 0;
+    this.crates = []; // Array to hold crates or other items the player is carrying
+
+    // Body
+    this.weight = this.chassis.weight + this.engine.weight + this.wings.weight;
+    this.value = this.chassis.value + this.engine.value + this.wings.value + this.gun1.value + this.gun2.value;
+
+    this.messages = []
+    this.stalling = false; // True if movement direction is outside wing lift angle
   }
 
   respawn() {
@@ -50,8 +68,8 @@ export class Player extends Plane {
     this.value = this.chassis.value
       + this.engine.value
       + this.wings.value
-      + this.gun1.value
-      + this.gun2.value
+      + (this.gun1 ? this.gun1.value : 0)
+      + (this.gun2 ? this.gun2.value : 0)
   }
 
   updateWeight() {

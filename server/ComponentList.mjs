@@ -289,3 +289,88 @@ export function createNovaStandardWings(level = 1) {
   const value = 200 + adjustedLevel * 500;
   return new Wings(name, weight, baseTurnSpeed, minTurnSpeed, maxSpeed, liftEfficiency, minLiftSpeed, liftAngle, airBrake, airBrakeStrength, value);
 }
+
+/* 
+   ENGINE COMPONENTS
+   The selection parameter maps to the following variants:
+     0: Pea Shooter Engine – the default balanced engine.
+*/
+export function createEnemyEngine(selection, level = 1) {
+  switch (selection) {
+    case 0:
+      return createPeaShooterEngine(level);
+    default:
+      console.warn("No engine variant available for selection " + selection + ". Defaulting to Pea Shooter Engine.");
+      return createPeaShooterEngine(level);
+  }
+}
+
+/* 
+   CHASSIS COMPONENTS
+   The selection parameter maps to the following variants:
+     0: Pea Shooter Chassis – the default chassis.
+*/
+export function createEnemyChassis(selection, level = 1) {
+  switch (selection) {
+    case 0:
+      return createPeaShooterChassis(level);
+    default:
+      console.warn("No chassis variant available for selection " + selection + ". Defaulting to Pea Shooter Chassis.");
+      return createPeaShooterChassis(level);
+  }
+}
+
+/* 
+   WINGS COMPONENTS
+   The selection parameter maps to the following variants:
+     0: Pea Shooter Wings – the default wings.
+*/
+export function createEnemyWings(selection, level = 1) {
+  switch (selection) {
+    case 0:
+      return createPeaShooterWings(level);
+    default:
+      console.warn("No wings variant available for selection " + selection + ". Defaulting to Pea Shooter Wings.");
+      return createPeaShooterWings(level);
+  }
+}
+
+export function createPeaShooterEngine(level = 1) {
+  const adjustedLevel = level - 1;
+  const name = "Pea Shooter Engine Lvl " + level;
+  const weight = 1.0;
+  const maxPower = 150.0 + adjustedLevel * 50.0;
+  const minPower = 0.0;
+  const heatEfficiency = 0.06;
+  const maxHeat = 80.0 + adjustedLevel * 10.0;
+  const value = 20 + adjustedLevel * 60;
+  return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
+}
+
+export function createPeaShooterChassis(level = 1) {
+  const adjustedLevel = level - 1;
+  const name = "Pea Shooter Chassis Lvl " + level;
+  const weight = 1.5;
+  const topSpeed = 180.0 + adjustedLevel * 20;
+  const maxHull = 40.0 + adjustedLevel * 5;
+  const heatDispersion = 12.5 + adjustedLevel * 1.25;
+  const buoyancy = 2.5;
+  const value = 20 + adjustedLevel * 60;
+  return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);
+}
+
+export function createPeaShooterWings(level = 1) {
+  const adjustedLevel = level - 1;
+  const name = "Pea Shooter Wings Lvl " + level;
+  const weight = 0.5;
+  const baseTurnSpeed = 1.2 + adjustedLevel * 0.2;
+  const minTurnSpeed = 0.10 + adjustedLevel * 0.05;
+  const maxSpeed = 150.0 + adjustedLevel * 15;
+  const liftEfficiency = 0.5;
+  const minLiftSpeed = 50.0 - adjustedLevel * 5;
+  const liftAngle = Math.PI / 8 + adjustedLevel * Math.PI / 32;
+  const airBrake = true;
+  const airBrakeStrength = 2.0 + adjustedLevel * 0.2;
+  const value = 20 + adjustedLevel * 60;
+  return new Wings(name, weight, baseTurnSpeed, minTurnSpeed, maxSpeed, liftEfficiency, minLiftSpeed, liftAngle, airBrake, airBrakeStrength, value);
+}

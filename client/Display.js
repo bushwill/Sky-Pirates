@@ -1,3 +1,95 @@
+// Draw enemy indicators on screen edge if they have the player targeted and are off-screen
+function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400) {
+    if (!controlledPlayer) return;
+    for (let i in enemies) {
+        const enemy = enemies[i];
+        // Check if enemy has the controlled player targeted
+        if (enemy.target && enemy.target.username === controlledPlayer.username) {
+            const drawX = windowWidth / 2 + (enemy.x - centerX);
+            const drawY = windowHeight / 2 + (enemy.y - centerY);
+            if (drawX < 0 || drawX > windowWidth || drawY < 0 || drawY > windowHeight) {
+                // Clamp positions to screen edges
+                let indicatorX = drawX;
+                let indicatorY = drawY;
+                if (drawX < 0) indicatorX = 40;
+                else if (drawX > windowWidth) indicatorX = windowWidth - 40;
+                if (drawY < 0) indicatorY = 40;
+                else if (drawY > windowHeight) indicatorY = windowHeight - 40;
+                // Draw enemy indicator triangle (same style as party)
+                push();
+                translate(indicatorX, indicatorY);
+                rotate(enemy.angle);
+                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
+                stroke(100, 0, 0);
+                triangle(-5, -3, -5, 3, 7, 0);
+                pop();
+                // Draw enemy name or faction
+                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
+                textAlign(CENTER);
+                textSize(12);
+                text(enemy.faction ?? "Enemy", indicatorX, indicatorY - 15);
+                // Display distance to player
+                let distance = Math.sqrt((enemy.x - controlledPlayer.x) ** 2 + (enemy.y - controlledPlayer.y) ** 2);
+                text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
+            }
+        }
+    }
+}
+// Display all enemies
+function displayEnemies(centerX = 0, centerY = -400) {
+    for (let i in enemies) {
+        stroke(100, 0, 0); // Different color for enemies
+        rectMode(CENTER);
+        const enemy = enemies[i];
+        const drawX = windowWidth / 2 + (enemy.x - centerX);
+        const drawY = windowHeight / 2 + (enemy.y - centerY);
+        displayEnemy(enemy, drawX, drawY, centerX, centerY);
+    }
+}
+
+// Display a single enemy
+function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -400) {
+    textSize(12);
+    textAlign(CENTER);
+    stroke(100, 0, 0);
+    fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
+    push();
+    translate(drawX, drawY);
+    rotate(enemy.angle);
+    triangle(-5, -3, -5, 3, 7, 0);
+    pop();
+
+    // Draw enemy hull/health arc
+    const arcRadius = 60;
+    const arcThickness = 4;
+    const hullRatio = Math.max(0, Math.min(1, enemy.chassis.hull / enemy.chassis.maxHull));
+    push();
+    translate(drawX, drawY);
+    strokeWeight(arcThickness);
+    noFill();
+    stroke(255, 0, 0, 200);
+    arc(
+        0, 0,
+        arcRadius, arcRadius,
+        2 * Math.PI,
+        2 * Math.PI - Math.PI * -hullRatio,
+        true
+    );
+    pop();
+
+    fill(255, 50, 50);
+    textSize(12);
+    if (!enemy || !enemy.username) {
+        console.warn("Invalid enemy or missing username:", enemy);
+        return;
+    }
+    // If testing, display engine heat for enemy
+    if (typeof testing !== 'undefined' && testing === true) {
+        drawPlaneHeat(enemy, drawX, drawY);
+    }
+    text(enemy.faction ?? "Enemy", drawX, drawY - 15);
+}
+
 function displayPlayers(centerX = 0, centerY = -400) {
     for (let i in players) {
         stroke(0);
@@ -8,9 +100,6 @@ function displayPlayers(centerX = 0, centerY = -400) {
         displayPlayer(player, drawX, drawY);
         if (player.username === username) {
             displayControlledPlayerStatus(player, drawX, drawY);
-            if (testing == true) {
-                displayTestInfo(player);
-            }
         } else {
             displayOtherPlayerStatus(player, drawX, drawY);
         }
@@ -128,6 +217,7 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawGunArc(player, drawX, drawY);
     drawPlaneData(player, drawX, drawY);
     drawCompass(player);
+    drawEnemyTargetIndicators(player, player.x, player.y); // Show enemy indicators on edge
     if (player.browsing) displayInventory(player, drawX, drawY);
 }
 
@@ -549,16 +639,4 @@ function displayAppInfo() {
 
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
-}
-
-function displayTestInfo(player) {
-    fill(255, 0, 0);
-    textSize(12);
-    textAlign(LEFT);
-
-    text(`player.angle: ${player.angle}}`, 10, 20);
-    text(`player.x: ${player.x}`, 10, 35);
-    text(`player.y: ${player.y}`, 10, 50);
-    text(`player.vx: ${player.vx}`, 10, 65);
-    text(`player.vy: ${player.vy}`, 10, 80);
 }
