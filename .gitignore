@@ -8,3 +8,4 @@
 .bash*
 .viminfo
 .wget-hsts
+node_modules

@@ -218,4 +218,4 @@ function hasNonWhitespace(str) {
     return str.trim().length > 0;
 }
 
-let testing = true;
+let testing = false;

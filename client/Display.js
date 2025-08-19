@@ -77,15 +77,23 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     );
     pop();
 
+    // --- DEBUG: Show enemy firing target when testing ---
+    if (testing && enemy.isFiring && enemy.aimPoint && enemy.aimPoint.x !== null && enemy.aimPoint.y !== null) {
+        const fireDrawX = windowWidth / 2 + (enemy.aimPoint.x - centerX);
+        const fireDrawY = windowHeight / 2 + (enemy.aimPoint.y - centerY);
+        push();
+        stroke(255, 0, 0);
+        strokeWeight(3);
+        noFill();
+        ellipse(fireDrawX, fireDrawY, 36, 36); // Red circle for firing target
+        pop();
+    }
+
     fill(255, 50, 50);
     textSize(12);
     if (!enemy || !enemy.username) {
         console.warn("Invalid enemy or missing username:", enemy);
         return;
-    }
-    // If testing, display engine heat for enemy
-    if (typeof testing !== 'undefined' && testing === true) {
-        drawPlaneHeat(enemy, drawX, drawY);
     }
     text(enemy.faction ?? "Enemy", drawX, drawY - 15);
 }

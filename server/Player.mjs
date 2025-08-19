@@ -47,11 +47,13 @@ export class Player extends Plane {
   }
 
   updateValue() {
-    this.value = this.chassis.value
+    this.value = Math.round(
+      this.chassis.value
       + this.engine.value
       + this.wings.value
       + this.gun1.value
       + this.gun2.value
+    );
   }
 
   updateWeight() {

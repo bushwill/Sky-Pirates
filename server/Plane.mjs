@@ -35,7 +35,9 @@ export class Plane {
 
     // Body
     this.weight = this.chassis.weight + this.engine.weight + this.wings.weight;
-    this.value = this.chassis.value + this.engine.value + this.wings.value + this.gun1.value + this.gun2.value;
+    this.value = Math.round(
+      this.chassis.value + this.engine.value + this.wings.value + this.gun1.value + this.gun2.value
+    );
 
     this.messages = []
     this.stalling = false; // True if movement direction is outside wing lift angle
@@ -65,11 +67,13 @@ export class Plane {
   }
 
   updateValue() {
-    this.value = this.chassis.value
+    this.value = Math.round(
+      this.chassis.value
       + this.engine.value
       + this.wings.value
       + (this.gun1 ? this.gun1.value : 0)
       + (this.gun2 ? this.gun2.value : 0)
+    );
   }
 
   updateWeight() {
