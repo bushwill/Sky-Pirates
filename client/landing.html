@@ -53,7 +53,7 @@
     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 2em;">
       <span id="pc-warning" style="display:none; font-size:1rem; color:#ffd700; font-weight:600; margin-bottom: 1em;">Only supported for keyboard/mouse</span>
   <a href="/skypirates/" class="button">Go to Sky Pirates</a>
-  <a href="http://localhost:81" class="button green" style="margin-top:1em;">Go to L-system plant examples</a>
+  <a id="port81-btn" class="button green" style="margin-top:1em;">Go to L-system plant examples</a>
     </div>
     <script>
       // Show warning if not on a PC (Windows, Mac, Linux)
@@ -61,6 +61,8 @@
       if (!isPC) {
         document.getElementById('pc-warning').style.display = 'inline';
       }
+      // Set port 81 button to use current hostname
+      document.getElementById('port81-btn').href = window.location.protocol + '//' + window.location.hostname + ':81';
     </script>
   </body>
 </html>
