@@ -51,14 +51,14 @@
     <h1>William Bushell</h1>
   <h2 style="text-align: center; font-weight: 400;">Research Student, University of Saskatchewan</h2>
     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 2em;">
-      <span id="pc-warning" style="display:none; font-size:1rem; color:#ffd700; font-weight:600; margin-bottom: 1em;">Only supported for keyboard/mouse</span>
+      <span id="pc-warning" style="display:none; font-size:1rem; color:#ffd700; font-weight:600; margin-bottom: 1em;">Sky Pirates only supported for keyboard/mouse</span>
   <a href="/skypirates/" class="button">Go to Sky Pirates</a>
   <a id="port81-btn" class="button green" style="margin-top:1em;">Go to L-system plant examples</a>
     </div>
     <script>
       // Show warning if not on a PC (Windows, Mac, Linux)
       const isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
-      if (!isPC) {
+      if (isPC) {
         document.getElementById('pc-warning').style.display = 'inline';
       }
       // Set port 81 button to use current hostname
