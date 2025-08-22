@@ -49,16 +49,6 @@ const wss = new WebSocketServer({
   perMessageDeflate: { zlibDeflateOptions: { level: 9 } } // Highest compression
 });
 
-app.use(
-  express.static(path.join(__dirname, '../client'), {
-    setHeaders: (res, filePath) => {
-      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.set('Pragma', 'no-cache');
-      res.set('Expires', '0');
-    },
-  })
-);
-
 function millis() {
   return Date.now() - startMillis;
 }
