@@ -35,6 +35,13 @@
         transition: background 0.3s, transform 0.2s;
         margin-top: 2em;
       }
+      .button.green {
+        background: linear-gradient(90deg, #000 0%, #00ff00 100%);
+      }
+      .button.green:hover {
+        background: linear-gradient(90deg, #000 0%, #00ff00 100%);
+        transform: scale(1.05);
+      }
       .button:hover {
         transform: scale(1.05);
       }
@@ -45,7 +52,8 @@
   <h2 style="text-align: center; font-weight: 400;">Research Student, University of Saskatchewan</h2>
     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 2em;">
       <span id="pc-warning" style="display:none; font-size:1rem; color:#ffd700; font-weight:600; margin-bottom: 1em;">Only supported for keyboard/mouse</span>
-      <a href="/skypirates/" class="button">Go to Sky Pirates</a>
+  <a href="/skypirates/" class="button">Go to Sky Pirates</a>
+  <a href="http://localhost:81" class="button green" style="margin-top:1em;">Go to L-system plant examples</a>
     </div>
     <script>
       // Show warning if not on a PC (Windows, Mac, Linux)
