@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>William Bushell - Landing Page</title>
+    <style>
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: #fff;
+        font-family: Segoe UI, Arial, sans-serif;
+      }
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5em;
+        text-align: center;
+      }
+      .button {
+        display: inline-block;
+        padding: 1em 2em;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #fff;
+        background: linear-gradient(90deg, #ff9800 0%, #2196f3 100%);
+        border: none;
+        border-radius: 30px;
+        text-decoration: none;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        transition: background 0.3s, transform 0.2s;
+        margin-top: 2em;
+      }
+      .button:hover {
+        transform: scale(1.05);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>William Bushell</h1>
+    <h2>Research Student, University of Saskatchewan</h2>
+    <div style="display: flex; align-items: center; gap: 1em; margin-top: 2em;">
+      <a href="/skypirates/" class="button">Go to Sky Pirates</a>
+      <span id="pc-warning" style="display:none; font-size:1rem; color:#ffd700; font-weight:600;">Only supported for PC</span>
+    </div>
+    <script>
+      // Show warning if not on a PC (Windows, Mac, Linux)
+      const isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
+      if (!isPC) {
+        document.getElementById('pc-warning').style.display = 'inline';
+      }
+    </script>
+  </body>
+</html>
