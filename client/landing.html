@@ -58,7 +58,7 @@
     <script>
       // Show warning if not on a PC (Windows, Mac, Linux)
       const isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
-      if (isPC) {
+      if (!isPC) {
         document.getElementById('pc-warning').style.display = 'inline';
       }
       // Set port 81 button to use current hostname
