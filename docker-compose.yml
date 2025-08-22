@@ -4,6 +4,7 @@ services:
       context: ./client
     ports:
       - "80:8080"
+      - "443:443"
     environment:
       SERVER_HOST: server
       
