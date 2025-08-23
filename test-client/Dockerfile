@@ -1,7 +1,7 @@
-FROM node:16-alpine
+FROM nginx:alpine
 WORKDIR /usr/src/app
-COPY package.json package-lock.json ./
-RUN npm install -g http-server
-COPY . .
+COPY . /usr/src/app
+COPY nginx.conf /etc/nginx/nginx.conf
 EXPOSE 8081
-CMD ["http-server", ".", "-p", "8081"]
+EXPOSE 4443
+CMD ["nginx", "-g", "daemon off;"]

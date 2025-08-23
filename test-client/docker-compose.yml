@@ -3,6 +3,7 @@ services:
     build:
       context: .
     ports:
-      - "81:8081"
-
-      
+      - "81:81"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./certs:/usr/src/app/certs
