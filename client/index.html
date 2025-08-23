@@ -26,10 +26,8 @@
   <script src="Inventory.js?v=A.0.0.07"></script>
 
   <script>
-    // For online:
-    window.WS_ADDRESS = 'ws://34.198.45.181:3000'
-    // For local: 
-    // window.WS_ADDRESS = 'ws://localhost:3001';
+  // Use wss:// for HTTPS and ws:// for HTTP, and /ws/ path for nginx proxy
+  window.WS_ADDRESS = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/';
   </script>
 
 
