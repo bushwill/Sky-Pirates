@@ -5,105 +5,145 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>William Bushell - Landing Page</title>
+    <!-- p5.js for dynamic overlay graphics -->
+    <script src="p5.min.js"></script>
+    <script src="plant_overlay.js"></script>
     <style>
         body {
             min-height: 100vh;
             margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background-color: #222;
             color: #fff;
-            font-family: Segoe UI, Arial, sans-serif;
+            font-family: Verdana, Tahoma, Geneva, sans-serif;
+            /* Retro checkerboard background using CSS */
+            background-image:
+                linear-gradient(45deg, #444 25%, transparent 25%),
+                linear-gradient(-45deg, #444 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #444 75%),
+                linear-gradient(-45deg, transparent 75%, #444 75%);
+            background-size: 40px 40px;
+            background-position: 0 0, 0 20px, 20px -20px, -20px 0px;
         }
 
         h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5em;
+            font-size: 2.2em;
+            margin: 0.5em 0 0.5em 0;
+            text-align: center;
+            font-family: "Courier New", Courier, monospace;
+            color: #ff0;
+            text-shadow: 2px 2px 0 #000, 0 0 8px #ff0;
+        }
+
+        .retro-box {
+            background: #222;
+            border: 3px ridge #ff0;
+            box-shadow: 0 0 12px #000;
+            padding: 1.5em 2em;
+            margin: 2em auto;
+            max-width: 400px;
             text-align: center;
         }
 
         .button {
             display: inline-block;
-            padding: 1em 2em;
-            font-size: 1.1rem;
-            font-weight: 600;
+            padding: 0.7em 2em;
+            font-size: 1.1em;
+            font-weight: bold;
             color: #fff;
-            background: linear-gradient(90deg, #2196f3 0%, #2196f3 100%);
-            border: none;
-            border-radius: 30px;
+            background: #0077ff;
+            border: 2px outset #fff;
             text-decoration: none;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-            transition: background 0.3s, transform 0.2s;
-            margin-top: 2em;
+            margin: 1em 0.5em 0 0.5em;
+            box-shadow: 2px 2px 0 #000;
+            font-family: Tahoma, Verdana, Geneva, sans-serif;
         }
 
         .button.sp {
-            background: linear-gradient(90deg, #ff9800 0%, #2196f3 100%);
+            background: #ff9800;
+            color: #222;
+            border-color: #fff;
         }
 
         .button.green {
-            background: linear-gradient(90deg, #000 0%, #00ff00 100%);
-        }
-
-        .button.green:hover {
-            background: linear-gradient(90deg, #000 0%, #00ff00 100%);
-            transform: scale(1.05);
+            background: #00ff00;
+            color: #222;
+            border-color: #fff;
         }
 
         .button:hover {
-            transform: scale(1.05);
+            background: #000000;
+            color: #0077ff;
+            border-color: #0077ff;
+        }
+
+        #carousel {
+            border: 3px groove #fff;
+            background: #111;
+            box-shadow: 0 0 12px #000;
+        }
+
+        #carousel-img {
+            border: 2px solid #ff0;
+            box-shadow: 0 0 8px #000;
+        }
+
+        #pc-warning {
+            color: #ff0;
+            font-family: "Courier New", Courier, monospace;
+            text-shadow: 1px 1px 0 #000;
         }
     </style>
 </head>
 
 <body>
-    <div id="carousel"
-        style="width:100%; max-width:300px; height:300px; margin: 2em auto 1em auto; display:flex; justify-content:center; align-items:center; overflow:hidden;">
-        <img id="carousel-img" alt="carousel"
-            style="width:300px; height:300px; object-fit:cover; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,0.15);">
-    </div>
-    <h1>Thanks for visiting my website!</h1>
-    <div style="text-align: center; font-weight: 400;">-William Bushell, University of Saskatchewan</h2>
-        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 2em;">
-            <span id="pc-warning"
-                style="display:none; font-size:1rem; color:#ffd700; font-weight:600; margin-bottom: 1em;">Sky Pirates
-                only supported for keyboard/mouse</span>
-            <a href="/skypirates/" class="button sp">Go to Sky Pirates</a>
-            <a id="port81-btn" class="button green" style="margin-top:1em;">Go to L-system plant examples</a>
+    <!-- p5.js overlay canvas for dynamic plant graphics -->
+    <div id="p5-overlay"
+        style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0;"></div>
+    <div class="retro-box" style="position:relative; z-index:1;">
+        <div id="carousel"
+            style="width:300px; height:300px; margin: 0 auto 1em auto; display:flex; justify-content:center; align-items:center; overflow:hidden;">
+            <img id="carousel-img" alt="carousel" style="width:300px; height:300px; object-fit:cover;">
         </div>
-        <script>
-            // Rotating carousel images
-            var images = [
-                "images/bigfatbird.jpeg",
-                "images/gambled.jpeg",
-                "images/jesusfire.jpeg",
-                "images/meandthem.jpeg",
-                "images/ppstance.jpeg",
-                "images/triumphant.jpeg"
-            ];
-            // randomize images 
-            for (let i = images.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [images[i], images[j]] = [images[j], images[i]];
-            }
-            var idx = 0;
-            var carouselImg = document.getElementById('carousel-img');
-            carouselImg.src = images[idx]; // Show first image immediately
-            setInterval(function () {
-                idx = (idx + 1) % images.length;
-                carouselImg.src = images[idx];
-            }, 2500);
+        <h1>Thanks for visiting my website!</h1>
+        <div
+            style="font-weight: bold; color: #fff; font-family: Verdana, Tahoma, Geneva, sans-serif; margin-bottom: 1em;">
+            -William Bushell, University of Saskatchewan</div>
+        <span id="pc-warning" style="display:none; font-size:1rem; margin-bottom: 1em;">Sky Pirates only supported for
+            keyboard/mouse</span>
+        <a href="/skypirates/" class="button sp">Go to Sky Pirates</a>
+        <a id="port81-btn" class="button green">Go to L-system plant examples</a>
+    </div>
+    <script>
+        // Rotating carousel images
+        var images = [
+            "images/bigfatbird.jpeg",
+            "images/gambled.jpeg",
+            "images/jesusfire.jpeg",
+            "images/meandthem.jpeg",
+            "images/ppstance.jpeg",
+            "images/triumphant.jpeg"
+        ];
+        // randomize images 
+        for (let i = images.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [images[i], images[j]] = [images[j], images[i]];
+        }
+        var idx = 0;
+        var carouselImg = document.getElementById('carousel-img');
+        carouselImg.src = images[idx]; // Show first image immediately
+        setInterval(function () {
+            idx = (idx + 1) % images.length;
+            carouselImg.src = images[idx];
+        }, 2500);
 
-            // Show warning if not on a PC (Windows, Mac, Linux)
-            var isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
-            if (!isPC) {
-                document.getElementById('pc-warning').style.display = 'inline';
-            }
-            // Set port 81 button to use current hostname
-            document.getElementById('port81-btn').href = window.location.protocol + '//' + window.location.hostname + ':81';
-        </script>
+        // Show warning if not on a PC (Windows, Mac, Linux)
+        var isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
+        if (!isPC) {
+            document.getElementById('pc-warning').style.display = 'inline';
+        }
+        // Set port 81 button to use current hostname
+        document.getElementById('port81-btn').href = window.location.protocol + '//' + window.location.hostname + ':81';
+    </script>
 
 </body>
 
