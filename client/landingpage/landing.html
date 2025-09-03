@@ -206,13 +206,16 @@
 
         // Add popup warning for Sky Pirates button if not on PC
         var skyPiratesBtn = document.querySelector('a.button.sp');
+        var warnedNonPC = false;
         if (skyPiratesBtn) {
             skyPiratesBtn.addEventListener('click', function(e) {
                 var isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
-                if (!isPC) {
+                if (!isPC && !warnedNonPC) {
                     e.preventDefault();
-                    alert('Sky Pirates is only supported on PC browsers (Windows, Mac, Linux).');
+                    alert('Sky Pirates is only supported on PC browsers (Windows, Mac, Linux). Click again to proceed anyway.');
+                    warnedNonPC = true;
                 }
+                // If warnedNonPC is true, allow navigation on second click
             });
         }
     </script>
