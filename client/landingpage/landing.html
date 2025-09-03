@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>William Bushell - Landing Page</title>
+    <title>bushwill</title>
     <!-- p5.js for dynamic overlay graphics -->
     <script src="p5.min.js"></script>
     <script src="plant_overlay.js"></script>
@@ -12,15 +12,15 @@
         body {
             min-height: 100vh;
             margin: 0;
-            background-color: #9d9d9d;
+            background-color: #282828;
             color: #fff;
             font-family: Verdana, Tahoma, Geneva, sans-serif;
             /* Retro checkerboard background using CSS */
             background-image:
-                linear-gradient(45deg, #0e8b00 25%, transparent 25%),
-                linear-gradient(-45deg, #0e8b00 25%, transparent 25%),
-                linear-gradient(45deg, transparent 75%, #0e8b00 75%),
-                linear-gradient(-45deg, transparent 75%, #0e8b00 75%);
+                linear-gradient(45deg, #393939 25%, transparent 25%),
+                linear-gradient(-45deg, #393939 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #393939 75%),
+                linear-gradient(-45deg, transparent 75%, #393939 75%);
             background-size: 40px 40px;
             background-position: 0 0, 0 20px, 20px -20px, -20px 0px;
         }
@@ -70,6 +70,12 @@
             border-color: #fff;
         }
 
+        .button.papers {
+            background: #ffbf00;
+            color: #222;
+            border: 2px outset #fff;
+        }
+
         .button:hover {
             background: #000000;
             color: #0077ff;
@@ -77,13 +83,13 @@
         }
 
         #carousel {
-            border: 3px groove #fff;
-            background: #111;
-            box-shadow: 0 0 12px #000;
+            border: 3px groove #00eeff;
+            background: #000;
+            box-shadow: 0 0 12px #00eeff;
         }
 
         #carousel-img {
-            border: 2px solid #ff0;
+            border: 2px solid #000;
             box-shadow: 0 0 8px #000;
         }
 
@@ -99,19 +105,73 @@
     <!-- p5.js overlay canvas for dynamic plant graphics -->
     <div id="p5-overlay"
         style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0;"></div>
-    <div class="retro-box" style="position:relative; z-index:1;">
-        <div id="carousel"
-            style="width:300px; height:300px; margin: 0 auto 1em auto; display:flex; justify-content:center; align-items:center; overflow:hidden;">
-            <img id="carousel-img" alt="carousel" style="width:300px; height:300px; object-fit:cover;">
-        </div>
-        <h1>Thanks for visiting my website!</h1>
-        <div
-            style="font-weight: bold; color: #fff; font-family: Verdana, Tahoma, Geneva, sans-serif; margin-bottom: 1em;">
-            -William Bushell, University of Saskatchewan</div>
+    <div class="retro-box" style="position:relative; z-index:1; max-width:700px;">
+        <!-- Top Section: Title, Name, Welcome -->
+        <h1
+            style="font-family:'Courier New', Courier, monospace; color:#ffbf00; font-size:2.2em; margin-bottom:0.5em; text-shadow:2px 2px 0 #000, 0 0 8px #ffbf00;">
+            bushwill</h1>
+        <div style="font-size:1.3em; color:#fff; font-weight:bold; margin-bottom:0.5em;">William Bushell</div>
+        <div style="font-size:1.1em; color:#ffbf00; margin-bottom:1.5em;">Thanks for visiting my website!</div>
         <span id="pc-warning" style="display:none; font-size:1rem; margin-bottom: 1em;">Sky Pirates only supported for
             keyboard/mouse</span>
-        <a href="/skypirates/" class="button sp">Go to Sky Pirates</a>
-        <a id="port81-btn" class="button green">Go to L-system plant examples</a>
+
+        <!-- Projects Section -->
+        <div style="margin-top:2em;">
+            <h2
+                style="font-family:'Courier New', Courier, monospace; color:#fff; text-shadow:1px 1px 0 #000; margin-bottom:1.5em;">
+                Projects</h2>
+            <!-- Project 1 -->
+            <div
+                style="background:#181818; border:2px solid #ff9800; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
+                <a href="/skypirates/" class="button sp" style="margin-bottom:0.5em;">Sky Pirates</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#ff9800; margin-bottom:0.5em;">Sky Pirates</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Multiplayer pirate airship game with salvaging,
+                    progression, and combat.</div>
+                <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: Aug 14, 2025</div>
+                <div style="color:#fff; font-size:0.95em;">Phase: Early access</div>
+            </div>
+            <!-- Project 2 -->
+            <div
+                style="background:#181818; border:2px solid #00ff00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
+                <a id="port81-btn" class="button green" style="margin-bottom:0.5em;">L-system Plant Examples</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#00ff00; margin-bottom:0.5em;">L-system Plant
+                    Examples</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Procedural plant generator using textbook L-system
+                    examples and p5.js.</div>
+                <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: June 28, 2025</div>
+            </div>
+            <!-- Papers Link -->
+            <div
+                style="background:#181818; border:2px solid #ffbf00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
+                <a href="/papers" class="button papers" style="margin-bottom:0.5em;">My Papers</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#ffbf00; margin-bottom:0.5em;">Papers &
+                    Publications</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Read and download my written academic papers.</div>
+            </div>
+            <!-- Add more projects here as needed -->
+        </div>
+
+        <!-- Bio & Carousel Section Side by Side -->
+        <div
+            style="display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:2em; margin-top:2.5em; margin-bottom:2em; background:#181818; border:2px solid #00a6ff; border-radius:8px; padding:1.2em;">
+            <div style="flex:1 1 250px; min-width:220px; text-align:left;">
+                <div style="font-size:1.1em; color:#fff; margin-bottom:0.5em; font-weight:bold;">About Me</div>
+                <div style="color:#ffffff;">
+                    My name is William Bushell, and I am currently a master's student at the University of Saskatchewan.
+                </div>
+                <div style="color:#cac8ff;">
+                    My research is currently in neural network applications to image matching problems in agriculture.
+                </div>
+                <div style="color:#9284f8;">
+                    I also like making funny little web projects and games in my spare time, currently I'm working on
+                    Sky Pirates in my free time.
+                </div>
+            </div>
+            <div id="carousel"
+                style="flex:0 0 300px; width:300px; height:300px; display:flex; justify-content:center; align-items:center; overflow:hidden;">
+                <img id="carousel-img" alt="carousel" style="width:300px; height:300px; object-fit:cover;">
+            </div>
+        </div>
     </div>
     <script>
         // Rotating carousel images
