@@ -8,11 +8,12 @@ import fs from 'fs';
 
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
-import { Enemy, NavySalvagePlane } from './Enemy.mjs';
+import { NavySalvagePlane } from './Enemy.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
+import { createEnemyGun } from './WeaponList.mjs';
 
 const admin_name = 'Shluck'
 
@@ -96,7 +97,7 @@ function updatePlane(plane) {
 }
 
 function updateEnemy(enemy) {
-  updatePlane(enemy);
+  if (enemy instanceof EnemyPlane) updatePlane(enemy);
   enemy.updateAI(players);
   // Destroy enemy if it enters recovery biome
   if (enemy.biome === 'recovery') {
@@ -169,7 +170,7 @@ function updateProjectile(projectile) {
     }
   });
 
-  
+
 }
 
 function updateCrates() {
@@ -1055,7 +1056,7 @@ function smoothstep(edge0, edge1, x) {
   return t * t * (3 - 2 * t);
 }
 
-function displayItemTest(manufacturer, player) {
+function itemTest(manufacturer, player) {
   // Create level 1 components for the specified manufacturer
   const engineComp = createEngine(manufacturer, 1);
   const chassisComp = createChassis(manufacturer, 1);
@@ -1069,22 +1070,27 @@ function displayItemTest(manufacturer, player) {
   sendNoticeMessage(player.username, "Created item test crates for manufacturer " + manufacturer, 'server');
 }
 
+function weaponTest(weaponNumber, player) {
+  // Create level 1 components for the specified manufacturer
+  const weapon = createEnemyGun(weaponNumber, 1);
+  player.equip(weapon);
+  sendNoticeMessage(player.username, "Equipped weapon " + weapon.name, 'server');
+}
+
 function checkCommand(command, player) {
-  let privilege_command = /^\/Shluck$/;
+  // No Privilege Requirement
   let players_command = /^\/players$/;
   let parties_command = /^\/party\s(\w+)$/;
+  let privilege_command = /^\/Shluck$/;
+
+  // Full Privilege Requirement
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
   let itemtest_command = /^\/itemtest\s+(\d+)$/;
+  let weapontest_command = /^\/weapontest\s+(\d+)$/;
 
   let match = command.match(players_command);
   if (match) {
     sendNoticeMessage(player.username, players.map(player => player.username).join(", "), 'server');
-  }
-
-  match = command.match(privilege_command);
-  if (match) {
-    sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
-    player.privileges = true;
   }
 
   match = command.match(parties_command);
@@ -1102,9 +1108,13 @@ function checkCommand(command, player) {
     }
   }
 
+  match = command.match(privilege_command);
+  if (match) {
+    sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
+    player.privileges = true;
+  }
+
   if (!player.privileges) return false;
-
-
 
   match = command.match(ep_command);
   if (match) {
@@ -1119,7 +1129,13 @@ function checkCommand(command, player) {
   match = command.match(itemtest_command);
   if (match) {
     const manufacturer = parseInt(match[1]);
-    displayItemTest(manufacturer, player);
+    itemTest(manufacturer, player);
+  }
+
+  match = command.match(weapontest_command);
+  if (match) {
+    const weaponNumber = parseInt(match[1]);
+    weaponTest(weaponNumber, player);
   }
 }
 

@@ -1,4 +1,5 @@
 import { Plane } from './Plane.mjs';
+import { Gun } from './Gun.mjs';
 import { createGun } from './WeaponList.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs'
 import { Engine, Chassis, Wings } from './Components.mjs';
@@ -61,6 +62,17 @@ export class Player extends Plane {
       + this.engine.weight
       + this.wings.weight
       + this.crates.reduce((sum, crate) => sum + crate.weight, 0);
+  }
+
+  equip(weapon) {
+    if (weapon instanceof Gun) {
+      if (this.selectedGun === 1) {
+        this.gun1 = weapon;
+      } else {
+        this.gun2 = weapon;
+      }
+    }
+    this.updatePlane();
   }
 
   install(new_component) {

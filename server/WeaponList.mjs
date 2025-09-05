@@ -68,6 +68,8 @@ export function createEnemyGun(selection, level = 1) {
     switch (selection) {
         case 0:
             return createPeaShooter(level);
+        case 1:
+            return createBoatGun(level);
         default:
             throw new Error("Invalid gun selection");
     }
@@ -85,6 +87,22 @@ export function createPeaShooter(level, random = true) {
     const projectileSize = randomFactor * (0.75 + level * 0.25);
     const maxAngle = Math.PI / 8 + level * Math.PI / 24;
     const value = randomFactor * (20 + level * 30);
+
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+}
+
+export function createBoatGun(level, random = true) {
+    const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
+    const name = "Boat Gun Lvl " + level;
+    const weight = randomFactor * 1.0;
+    const maxHeat = randomFactor * (120.0 + level * 20.0);
+    const heatEfficiency = randomFactor * (20.0 - level * 2.0);
+    const damage = randomFactor * (40.0 + level * 20.0);
+    const cooldownTime = randomFactor * 800;
+    const projectileSpeed = randomFactor * (1400.0 + level * 200.0);
+    const projectileSize = randomFactor * (2.5 + level * 0.5);
+    const maxAngle = Math.PI;
+    const value = randomFactor * (50 + level * 30);
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
 }

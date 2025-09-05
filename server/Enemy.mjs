@@ -2,7 +2,7 @@ import { Plane } from './Plane.mjs';
 import { createEnemyGun } from './WeaponList.mjs';
 import { createEnemyEngine, createEnemyChassis, createEnemyWings } from './ComponentList.mjs'
 
-export class Enemy extends Plane {
+export class EnemyPlane extends Plane {
   constructor(biome, username, r, g, b, x, y, faction = null, target = null) {
     super(biome, username, r, g, b, x, y);
     this.faction = faction;
@@ -23,7 +23,31 @@ export class Enemy extends Plane {
   }
 }
 
-export class NavySalvagePlane extends Enemy {
+export class EnemyBoat {
+  constructor(biome, username, r, g, b, x, y, faction = null, target = null) {
+    this.biome = biome;
+    this.username = username;
+    this.r = r;
+    this.g = g;
+    this.b = b;
+    this.x = x;
+    this.y = y;
+    this.faction = faction;
+    this.angle = 0;
+    this.target = target;
+    this.keys = {};
+  }
+
+  updateAI() {
+    console.log("Can't update ai of unspecified enemy");
+  }
+
+  findTarget() {
+    console.log("Can't find target of unspecified enemy");
+  }
+}
+
+export class NavySalvagePlane extends EnemyPlane {
   lastRLTrain = 0;
   constructor(biome, username, r, g, b, x, y) {
     super(biome, username, r, g, b, x, y, 'navy');
@@ -32,22 +56,9 @@ export class NavySalvagePlane extends Enemy {
     this.engine = createEnemyEngine(0, 1);
     this.chassis = createEnemyChassis(0, 1);
     this.wings = createEnemyWings(0, 1);
-    // RL histories
-    this.stateHistory = [];
-    this.actionHistory = [];
-    this.rewardHistory = [];
     this.nextStateHistory = [];
-    // Firing and aim debug
     this.isFiring = false;
     this.aimPoint = { x: null, y: null };
-  }
-
-  // Methods to add rewards/punishments
-  reward(n) {
-    this.rewardHistory.push(n);
-  }
-  punish(n) {
-    this.rewardHistory.push(-Math.abs(n));
   }
 
   updateAI(players) {
@@ -145,10 +156,10 @@ export class NavySalvagePlane extends Enemy {
       this.keys.w = true;
       this.keys.s = false;
     }
-  // Set targeting for guns and debug aim point
-  this.t_x = aimX;
-  this.t_y = aimY;
-  this.aimPoint = { x: aimX, y: aimY };
+    // Set targeting for guns and debug aim point
+    this.t_x = aimX;
+    this.t_y = aimY;
+    this.aimPoint = { x: aimX, y: aimY };
     // --- Shooting logic ---
     const shootDistance = 600;
     if (distToTarget < shootDistance && this.gun1) {
@@ -194,6 +205,78 @@ export class NavySalvagePlane extends Enemy {
       // Slow down for turning
       this.keys.w = false;
       this.keys.s = false;
+    }
+  }
+}
+
+// A stationary enemy boat that only shoots at players
+export class NavySalvageBoat extends EnemyBoat {
+  constructor(biome, username, r, g, b, x, y) {
+    super(biome, username, r, g, b, x, y, 'navy');
+    this.gun1 = createEnemyGun(0, 1); // You can adjust gun type as needed
+    this.gun2 = null;
+    this.engine = null; // No engine, does not move
+    this.chassis = createEnemyChassis(0, 1);
+    this.wings = createEnemyWings(0, 1);
+    this.isFiring = false;
+    this.aimPoint = { x: null, y: null };
+  }
+
+  updateAI(players) {
+    if (!this.target || !players.some(p => p.username === this.target.username)) {
+      this.findTarget(players);
+    }
+    if (this.target) {
+      this.combatTargets();
+    } else {
+      this.isFiring = false;
+      this.keys = {};
+    }
+  }
+
+  findTarget(players) {
+    if (!players || players.length === 0) return null;
+    let minDist = Infinity;
+    let nearest = null;
+    for (const player of players) {
+      const dx = player.x - this.x;
+      const dy = player.y - this.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = player;
+      }
+    }
+    this.target = nearest;
+    return nearest;
+  }
+
+  combatTargets() {
+    if (!this.target) return;
+    const targetX = this.target.x;
+    const targetY = this.target.y;
+    const targetVX = this.target.vx ?? 0;
+    const targetVY = this.target.vy ?? 0;
+    const dx = targetX - this.x;
+    const dy = targetY - this.y;
+    const distToTarget = Math.sqrt(dx * dx + dy * dy);
+    const projectileSpeed = this.gun1?.projectileSpeed ?? 20;
+    const timeToHit = distToTarget / projectileSpeed;
+    const predictedX = targetX + targetVX * timeToHit;
+    const predictedY = targetY + targetVY * timeToHit;
+    const aimX = predictedX;
+    const aimY = predictedY;
+    const aimAngle = Math.atan2(aimY - this.y, aimX - this.x);
+    this.angle = aimAngle;
+    this.aimPoint = { x: aimX, y: aimY };
+    const shootDistance = 600;
+    if (distToTarget < shootDistance && this.gun1) {
+      this.selectedGun = 1;
+      this.keys.mouse = true;
+      this.isFiring = true;
+    } else {
+      this.keys.mouse = false;
+      this.isFiring = false;
     }
   }
 }
