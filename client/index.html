@@ -16,7 +16,7 @@
   <script src="p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/msgpack-lite/dist/msgpack.min.js"></script>
 
-  <script src="Game.js?v=A.0.1.82"></script>
+  <script src="Game.js?v=A.0.1.83"></script>
   <script src="MapDraw.js?v=A.0.0.23"></script>
   <script src="Display.js?v=A.0.2.16"></script>
   <script src="Controls.js?v=A.0.0.35"></script>
@@ -27,8 +27,9 @@
   <script src="HelpWindow.js?v=A.0.0.00"></script>
 
   <script>
-  // Use wss:// for HTTPS and ws:// for HTTP, and /ws/ path for nginx proxy
-  window.WS_ADDRESS = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/';
+    // window.WS_ADDRESS = 'ws://localhost:8080/ws/';
+    // Use wss:// for HTTPS and ws:// for HTTP, and /ws/ path for nginx proxy
+    window.WS_ADDRESS = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/';
   </script>
 
 </head>
