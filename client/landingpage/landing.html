@@ -118,7 +118,7 @@
             bushwill</h1>
         <div style="font-size:1.3em; color:#fff; font-weight:bold; margin-bottom:0.5em;">William Bushell</div>
         <div style="font-size:1.1em; color:#ffbf00; margin-bottom:1.5em;">Thanks for visiting my website!</div>
-        <span id="pc-warning" style="display:none; font-size:1rem; margin-bottom: 1em;">Sky Pirates only supported for
+        <span id="pc-warning" style="display:none; font-size:1rem; margin-bottom: 1em;">All web games only supported for
             keyboard/mouse</span>
 
         <!-- Projects Section -->
@@ -176,8 +176,8 @@
                     My research is currently in neural network applications to image matching problems in agriculture.
                 </div>
                 <div style="color:#9284f8;">
-                    I also like making funny little web projects and games in my spare time, currently I'm working on
-                    Sky Pirates in my free time.
+                    I also like doing projects and making small web games in my free time, currently I'm working on
+                    Sky Pirates.
                 </div>
             </div>
             <div id="carousel"
@@ -231,6 +231,21 @@
                     warnedNonPC = true;
                 }
                 // If warnedNonPC is true, allow navigation on second click
+            });
+        }
+
+        // Add popup warning for Jet Game button if not on PC
+        var jetGameBtn = document.querySelector('a.button.jg');
+        var warnedNonPCJet = false;
+        if (jetGameBtn) {
+            jetGameBtn.addEventListener('click', function(e) {
+                var isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
+                if (!isPC && !warnedNonPCJet) {
+                    e.preventDefault();
+                    alert('Jet Game is optimized for PC browsers with keyboard/mouse controls (Windows, Mac, Linux). Click again to proceed anyway.');
+                    warnedNonPCJet = true;
+                }
+                // If warnedNonPCJet is true, allow navigation on second click
             });
         }
     </script>
