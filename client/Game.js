@@ -37,7 +37,6 @@ let selectedGun1 = 0;
 let selectedGun2 = 1;
 
 let helpWindow = false;
-
 let signedIn = false;
 let signedInTime = 0;
 
@@ -143,7 +142,7 @@ function handleGameDisplay(controlledPlayer) {
     if (controlledPlayer && signedIn) {
         if (millis() - signedInTime < 10000 && !helpWindow) {
             textSize(16);
-            text("Early Access", windowWidth / 2, windowHeight * 0.2);
+            text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
             textSize(12);
         }
         const mapPolygonsMap = getMapPolygonsMap(mapData);
@@ -169,6 +168,11 @@ function handleGameDisplay(controlledPlayer) {
     displayChat();
     displayNoticeMessages();
     displayAppInfo();
+}
+
+// Draws the help window overlay
+function handleHelpWindow() {
+    drawHelpWindow();
 }
 
 function estimatePlayerPositions() {

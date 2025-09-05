@@ -65,6 +65,11 @@ function handleMouseUp(event) {
 function handleKeyDown(event) {
     if (signedIn && !chatting) {
         const key = event.key.toLowerCase();
+        if (key === 'h') {
+            helpWindow = !helpWindow;
+            event.preventDefault();
+            return;
+        }
         if (usedKeys.includes(key)) {
             keys[key] = true;
         }
