@@ -35,13 +35,47 @@ let trees = {
         "F[+F][-F][+F][^F][&F]"
       ]
   },
+  "Tong Lin Bush": {
+    "F": [
+      "[&F]F[-F[+++A]]F",
+      "[+F]F[&&&A]",
+      "[^F]F[+++A]"
+    ],
+    "A": [
+      "[++++G][++GG][GGGGGG][-GGG][--G][----G]"
+    ]
+  },
+  "Castro Tree": {
+    "G": [
+      "F+[[G]-G]-F[-FG]+G",
+      "F^[[G]&G]&F[&FG]^G"
+    ]
+  },
+  "2D Ashok Samal Tree": {
+    "F": [
+      "F[+F][-F]F"
+    ]
+  },
+  "3D Ashok Samal Tree": {
+    "F": [
+      "F[+F][-F][^F][&F]F"
+    ]
+  }
 }
 let treeDescriptions = {
   "My Tree": "A branching abstract tree.",
+  "Tong Lin Bush": "Inspired by natural recursion.",
+  "Castro Tree": "A plant-like structure.",
+  "2D Ashok Samal Tree": "A 2D deterministic tree-like structure.",
+  "3D Ashok Samal Tree": "A 3D deterministic tree-like structure. Not recommended."
 };
 
 let treeColors = {
   "My Tree": { r1: 139, g1: 69, b1: 19, r2: 34, g2: 139, b2: 34 },
+  "Tong Lin Bush": { r1: 139, g1: 69, b1: 19, r2: 34, g2: 139, b2: 34 },
+  "Castro Tree": { r1: 200, g1: 64, b1: 160, r2: 200, g2: 160, b2: 64},
+  "2D Ashok Samal Tree": { r1: 40, g1: 160, b1: 120, r2: 150, g2: 40, b2: 200 },
+  "3D Ashok Samal Tree": { r1: 160, g1: 160, b1: 160, r2: 255, g2: 255, b2: 255 }
 };
 
 function setup() {

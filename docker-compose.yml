@@ -15,3 +15,21 @@ services:
       - "3000:3000"
     volumes:
       - ./server:/server
+
+  jet-game:
+    build:
+      context: ./jet-game
+    ports:
+      - "82:81"
+    volumes:
+      - ./jet-game/nginx.conf:/etc/nginx/nginx.conf
+      - ./jet-game/certs:/usr/src/app/certs
+    
+  maize-model:
+    build:
+      context: ./maize-model-online
+    ports:
+      - "81:81"
+    volumes:
+      - ./maize-model-online/nginx.conf:/etc/nginx/nginx.conf
+      - ./maize-model-online/certs:/usr/src/app/certs

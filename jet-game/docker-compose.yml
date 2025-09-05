@@ -1,0 +1,9 @@
+services:
+  client:
+    build:
+      context: .
+    ports:
+      - "82:81"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./certs:/usr/src/app/certs

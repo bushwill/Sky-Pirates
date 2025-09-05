@@ -70,6 +70,12 @@
             border-color: #fff;
         }
 
+        .button.jg {
+            background: #00ddff;
+            color: #222;
+            border-color: #fff;
+        }
+
         .button.papers {
             background: #ffbf00;
             color: #222;
@@ -140,6 +146,14 @@
                     examples and p5.js.</div>
                 <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: June 28, 2025</div>
             </div>
+            <!-- Project 3 -->
+            <div
+                style="background:#181818; border:2px solid #00ddff; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
+                <a id="port82-btn" class="button jg" style="margin-bottom:0.5em;">Jet Game</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#00ddff; margin-bottom:0.5em;">Jet Game</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Silly little arcade style game. Game I made to help teach CMPT 140.</div>
+                <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: November, 2024</div>
+            </div>
             <!-- Papers Link -->
             <div
                 style="background:#181818; border:2px solid #ffbf00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
@@ -203,6 +217,8 @@
         }
         // Set port 81 button to use current hostname
         document.getElementById('port81-btn').href = window.location.protocol + '//' + window.location.hostname + ':81';
+        // Set port 82 button to use current hostname
+        document.getElementById('port82-btn').href = window.location.protocol + '//' + window.location.hostname + ':82';
 
         // Add popup warning for Sky Pirates button if not on PC
         var skyPiratesBtn = document.querySelector('a.button.sp');
