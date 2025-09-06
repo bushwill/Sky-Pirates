@@ -481,7 +481,7 @@ function pickups() {
     if (Object.keys(fuel_pickups).length === 0) {
       let r_x = floor(random(20, width - 20));
       let r_y = floor(random(waterLevel, height - 20));
-      fuel_pickups[`${r_x},${r_y}`] = 50;
+      fuel_pickups[`${r_x},${r_y}`] = 100;
     }
   }
 
