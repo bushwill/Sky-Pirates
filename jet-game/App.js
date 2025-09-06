@@ -29,7 +29,7 @@ let fuel = 100;
 let speed = 0;
 let game_start = 0;
 
-let wave = 1;
+let wave = 0;
 let wave_time = 0;
 let wave_spawn = false;
 
@@ -52,7 +52,7 @@ function restartGame() {
   fuel = 100;
   speed = 0;
   game_start = millis();
-  wave = 1; // Start at wave 1 instead of 0
+  wave = 0;
   dead = false;
 }
 
@@ -73,7 +73,7 @@ function draw() {
       restartGame();
     }
   }
-  
+
   // Draw sky and ocean
   rectMode(CORNER);
   stroke(0);
@@ -81,7 +81,7 @@ function draw() {
   background(110, 155, 255);
   fill(50, 70, 255);
   rect(0, height * 0.75, width, height * 0.25); // Water at 75% of screen height
-  
+
   // Boundaries
   if (x > width) {
     v_x = 0;
@@ -97,11 +97,11 @@ function draw() {
     v_y = 0;
     y = 0;
   }
-  
+
   // Update position based on velocity
   x += v_x;
   y += v_y;
-    
+
   // Gravity
   if (!(in_water || flying)) {
     swimming = false;
@@ -109,13 +109,13 @@ function draw() {
       v_y += 0.2;
     }
   }
-    
+
   // Water drag
   if (in_water) {
     v_x -= v_x / 8;
     v_y -= v_y / 8;
   }
-    
+
   // Air drag
   if (!in_water) {
     v_x = v_x * 0.98;
@@ -129,7 +129,7 @@ function draw() {
     let y_dif = Math.abs(target_y - y);
     let x_speed = x_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
     let y_speed = y_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
-    
+
     // Towards target_x
     // Stops near target
     if (Math.abs(target_x - x) < 1) {
@@ -145,7 +145,7 @@ function draw() {
         v_x -= 0.2;
       }
     }
-      
+
     // Towards target_y
     // Stops near target
     if (Math.abs(target_y - y) < 1) {
@@ -162,7 +162,7 @@ function draw() {
       }
     }
   }
-            
+
   // Fly towards target
   if (flying) {
     // Keeps fly speed consistent
@@ -170,7 +170,7 @@ function draw() {
     let y_dif = Math.abs(target_y - y);
     let x_speed = x_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
     let y_speed = y_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
-    
+
     // Towards target_x
     // Stops near target
     if (Math.abs(target_x - x) < 3) {
@@ -186,7 +186,7 @@ function draw() {
         v_x -= 0.2;
       }
     }
-      
+
     // Towards target_y
     // Stops near target
     if (Math.abs(target_y - y) < 5) {
@@ -203,7 +203,7 @@ function draw() {
       }
     }
   }
-              
+
   // Create water particles
   if (in_water && (Math.abs(v_x) >= 0.9 || Math.abs(v_y) >= 0.9)) {
     speed = Math.abs(v_x) + Math.abs(v_y);
@@ -221,9 +221,9 @@ function draw() {
     let particle_x = parseInt(coords[0]);
     let particle_y = parseInt(coords[1]);
     let size = water_particles[key];
-    
+
     circle(particle_x, particle_y, size);
-    
+
     // Update each water_particle
     if (size <= 0) {
       delete water_particles[key];
@@ -259,17 +259,17 @@ function draw() {
     let particle_x = parseInt(coords[0]);
     let particle_y = parseInt(coords[1]);
     let size = flame_particles[key];
-    
+
     fill(255, fuel * 2, 0);
     circle(particle_x, particle_y, size);
-    
+
     // Flame reflection (adjusted for dynamic water level)
     const waterLevel = height * 0.75;
     fill(175, fuel * 1.5, 50);
     if (particle_y < waterLevel) {
       circle(particle_x, 2 * waterLevel - particle_y, size);
     }
-    
+
     // Update each flame_particle
     if (size <= 0) {
       delete flame_particles[key];
@@ -289,7 +289,7 @@ function draw() {
   updateWave();
   updateEnemies();
   displayStatus();
-  
+
   if (!dead) {
     pickups();
     updateTarget();
@@ -301,9 +301,9 @@ function draw() {
 function displayCharacter() {
   stroke(0);
   strokeWeight(1);
-  
+
   const waterLevel = height * 0.75;
-  
+
   // Display character reflection
   if (y < waterLevel) {
     fill(75, 160, 150);
@@ -319,20 +319,20 @@ function createBurst(r, g, b, n, burst_x, burst_y) {
   for (let p = 0; p < n + 1; p++) {
     let r_x = floor(random(burst_x - 20, burst_x + 20));
     let r_y = floor(random(burst_y - 20, burst_y + 20));
-    general_particles[`${r_x},${r_y}`] = {r: r, g: g, b: b, s: 5};
+    general_particles[`${r_x},${r_y}`] = { r: r, g: g, b: b, s: 5 };
   }
 }
 
 function updateBurst() {
   stroke(0);
   strokeWeight(1);
-  
+
   Object.keys(general_particles).forEach(key => {
     let coords = key.split(',');
     let pk_x = parseInt(coords[0]);
     let pk_y = parseInt(coords[1]);
     let pv = general_particles[key];
-    
+
     if (pv.s <= 0) {
       delete general_particles[key];
     } else {
@@ -346,7 +346,7 @@ function updateBurst() {
 function updateTarget() {
   target_x = mouseX;
   target_y = mouseY;
-  
+
   // Display target
   stroke(0);
   strokeWeight(1);
@@ -354,7 +354,7 @@ function updateTarget() {
     fill(255);
     square(target_x, target_y, 10);
   }
-  
+
   // Display guide line
   if (guide_mode) {
     stroke(255);
@@ -371,7 +371,7 @@ function takeDamage(dmg, message) {
   } else {
     health -= dmg;
   }
-  
+
   createBurst(255, 30, 30, 20, x, y);
   createBurst(200, 10, 10, 20, x, y);
   createBurst(100, 0, 0, 10, x, y);
@@ -380,7 +380,7 @@ function takeDamage(dmg, message) {
 function updateStatus() {
   // Update speed
   speed = Math.abs(v_x) + Math.abs(v_y);
-  
+
   // Update fuel
   if (flying) {
     fuel -= ((Math.abs(v_x) / 100) + 0.05) - (v_y / 100);
@@ -389,13 +389,13 @@ function updateStatus() {
   else if (in_water && fuel < 100) {
     fuel += 0.01 * wave;
   }
-  
+
   if (fuel > 100) {
     fuel = 100;
   } else if (fuel < 0) {
     fuel = 0;
   }
-        
+
   // Regenerate health
   if (!dead) {
     health += 0.2;
@@ -405,7 +405,7 @@ function updateStatus() {
       health = 0;
     }
   }
-  
+
   // Check if dead
   if (health <= 0) {
     background(0);
@@ -414,7 +414,7 @@ function updateStatus() {
     text("You survived until wave " + wave + ".", width / 3, height / 2 + 50);
     dead = true;
   }
-  
+
   // Recharge teleport
   if (teleport && tp_cooldown <= 99.95) {
     tp_cooldown += 0.5;
@@ -422,14 +422,14 @@ function updateStatus() {
   if (tp_cooldown < 0) {
     tp_cooldown = 0;
   }
-  
+
   // Update in_water
   const waterLevel = height * 0.75;
   in_water = y >= waterLevel;
-    
+
   // Update swimming
   swimming = Math.abs(v_x) < 2 && Math.abs(v_y) < 2 && in_water;
-    
+
   // Update flying
   if (flying_mode && fuel > 0) {
     flying = !(in_water || swimming);
@@ -447,7 +447,7 @@ function displayStatus() {
   arc(target_x, target_y, 100, 100, PI, PI + PI * (health / 100));
   stroke(50, 50, 255);
   arc(target_x, target_y, 90, 90, PI, PI + PI * (speed / 10));
-  
+
   if (teleport && tp_cooldown == 100) {
     stroke(255, 0, 200);
     arc(target_x, target_y, 110, 110, 0, PI * (tp_cooldown / 100));
@@ -471,11 +471,11 @@ function displayScoreboard() {
 function pickups() {
   stroke(0);
   strokeWeight(1);
-  
+
   // Time elapsed
   let te = millis() - game_start;
   const waterLevel = height * 0.75;
-  
+
   // Add fuel pickup if fuel is empty
   if (fuel <= 0) {
     if (Object.keys(fuel_pickups).length === 0) {
@@ -484,46 +484,46 @@ function pickups() {
       fuel_pickups[`${r_x},${r_y}`] = 50;
     }
   }
-  
+
   // Display all fuel pickups
   Object.keys(fuel_pickups).forEach(key => {
     let coords = key.split(',');
     let item_x = parseInt(coords[0]);
     let item_y = parseInt(coords[1]);
-    
+
     fill(255, 200, 0);
     rect(item_x, item_y, 20, 40);
     createBurst(255, 200, 0, 10, item_x, item_y);
-    
+
     if (item_y < waterLevel) {
       fill(150, 160, 30);
       rect(item_x, 2 * waterLevel - item_y, 20, 40);
     }
-    
+
     // If character picks up a fuel pickup
     if (Math.abs(x - item_x) < 10 && Math.abs(y - item_y) < 20) {
       fuel += fuel_pickups[key];
       delete fuel_pickups[key];
     }
   });
-  
+
   // Display all ability pickups
   Object.keys(ability_pickups).forEach(key => {
     let coords = key.split(',');
     let item_x = parseInt(coords[0]);
     let item_y = parseInt(coords[1]);
     let type = ability_pickups[key];
-    
+
     if (type == 1) {
       fill(175, 50, 160);
       circle(item_x, item_y, 30);
       createBurst(175, 50, 160, 5, item_x, item_y);
-      
+
       if (item_y < waterLevel) {
         fill(140, 20, 150);
         circle(item_x, 2 * waterLevel - item_y, 30);
       }
-      
+
       if (Math.abs(x - item_x) < 15 && Math.abs(y - item_y) < 15) {
         teleport = true;
         tp_cooldown = 100;
@@ -552,18 +552,18 @@ function updateWave() {
       }
     }
   }
-  
+
   // Start spawns
   if (wave_time - millis() < 1000) {
     wave_spawn = true;
   }
-  
+
   // Reset vitals
   if (wave_spawn == false) {
     fuel = 100;
     health = 100;
   }
-  
+
   // Wave spawn behavior
   while (Object.keys(enemy_list).length < wave * 2 && millis() < wave_time && wave_spawn) {
     let type;
@@ -580,7 +580,7 @@ function updateWave() {
 
 function createEnemy(enemy_type) {
   let x_spawn_point, y_spawn_point, spawn_side;
-  
+
   if (enemy_type == 1 || enemy_type == 2) {
     x_spawn_point = floor(random(0, width));
     y_spawn_point = floor(random(0, height * 0.75));
@@ -590,17 +590,17 @@ function createEnemy(enemy_type) {
     y_spawn_point = height;
     spawn_side = 4;
   }
-  
+
   const unique_id = millis() + "_" + Math.random();
-  
+
   if (spawn_side == 1) {
-    enemy_list[unique_id] = {x: -10, y: y_spawn_point, type: enemy_type};
+    enemy_list[unique_id] = { x: -10, y: y_spawn_point, type: enemy_type };
   } else if (spawn_side == 2) {
-    enemy_list[unique_id] = {x: width + 10, y: y_spawn_point, type: enemy_type};
+    enemy_list[unique_id] = { x: width + 10, y: y_spawn_point, type: enemy_type };
   } else if (spawn_side == 3) {
-    enemy_list[unique_id] = {x: x_spawn_point, y: -10, type: enemy_type};
+    enemy_list[unique_id] = { x: x_spawn_point, y: -10, type: enemy_type };
   } else if (spawn_side == 4) {
-    enemy_list[unique_id] = {x: x_spawn_point, y: height + 10, type: enemy_type};
+    enemy_list[unique_id] = { x: x_spawn_point, y: height + 10, type: enemy_type };
   }
 }
 
@@ -608,14 +608,14 @@ function updateEnemies() {
   // Refresh enemy_coord_list
   enemy_coord_list = [];
   const waterLevel = height * 0.75;
-  
+
   // Display enemies
   Object.keys(enemy_list).forEach(enemy_number => {
     let enemy = enemy_list[enemy_number];
     let e_x = enemy.x;
     let e_y = enemy.y;
     let e_t = enemy.type;
-    
+
     // Eye
     if (e_t == 1) {
       fill(255, 0, 0);
@@ -624,7 +624,7 @@ function updateEnemies() {
       circle(e_x, e_y, 14);
       fill(0);
       circle(e_x, e_y, 6);
-      
+
       if (e_y < waterLevel) {
         fill(170, 20, 90);
         circle(e_x, 2 * waterLevel - e_y, 20);
@@ -644,7 +644,7 @@ function updateEnemies() {
       fill(0);
       rect(e_x, e_y - 3, 13, 1);
       circle(e_x, e_y + 3, 4);
-      
+
       if (e_y < waterLevel) {
         fill(130, 160, 40);
         circle(e_x, 2 * waterLevel - e_y, 15);
@@ -664,19 +664,19 @@ function updateEnemies() {
       let y3 = floor(random(e_y - 20, e_y + 20));
       triangle(x1, y1, x2, y2, x3, y3);
       createBurst(100, 100, 100, 5, e_x, e_y);
-      
+
       if (e_y < waterLevel) {
         fill(130, 160, 40);
         triangle(x1, 2 * waterLevel - y1, x2, 2 * waterLevel - y2, x3, 2 * waterLevel - y3);
       }
     }
-    
-    let cp = {x: -50, y: -50};
+
+    let cp = { x: -50, y: -50 };
     if (enemy_coord_list.length > 0) {
       const closestIdx = closestPoint(e_x, e_y, enemy_coord_list);
-      cp = {x: enemy_coord_list[closestIdx][0], y: enemy_coord_list[closestIdx][1]};
+      cp = { x: enemy_coord_list[closestIdx][0], y: enemy_coord_list[closestIdx][1] };
     }
-    
+
     // Enemies movement
     if (e_t == 1) {
       let x_dif = Math.abs(e_x - x);
@@ -684,23 +684,23 @@ function updateEnemies() {
       let x_speed = x_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
       let y_speed = y_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
       let move_speed = 2;
-      
+
       if (e_x < x && Math.abs(cp.x - e_x) > 20) {
         e_x += move_speed * x_speed;
       } else if (e_x > x && Math.abs(cp.x - e_x) > 20) {
         e_x -= move_speed * x_speed;
       }
-      
+
       if (e_y < y && Math.abs(cp.y - e_y) > 20) {
         e_y += move_speed * y_speed;
       } else if (e_y > y && Math.abs(cp.y - e_y) > 20) {
         e_y -= move_speed * y_speed;
       }
-    } 
+    }
     else if (e_t == 2) {
       let move_speed = floor(random(0, 3));
       let jiggle = floor(random(-1, 2));
-      
+
       if (e_x < x && Math.abs(cp.x - e_x) > 10) {
         e_x += move_speed;
         e_y += jiggle;
@@ -708,7 +708,7 @@ function updateEnemies() {
         e_x -= move_speed;
         e_y += jiggle;
       }
-      
+
       if (e_y < y && Math.abs(cp.y - e_y) > 10 && e_y < waterLevel - 40) {
         e_x += jiggle;
         e_y += move_speed;
@@ -716,37 +716,37 @@ function updateEnemies() {
         e_x += jiggle;
         e_y -= move_speed;
       }
-    } 
+    }
     else if (e_t == 3) {
       let x_dif = Math.abs(e_x - x);
       let y_dif = Math.abs(e_y - y);
       let x_speed = x_dif / y_dif || 0;  // Prevent division by zero
       let y_speed = y_dif / x_dif || 0;  // Prevent division by zero
-      
+
       if (x_speed > 5) x_speed = 5;
       if (y_speed > 5) y_speed = 5;
-      
+
       let move_speed = 1;
-      
+
       if (e_x < x) {
         e_x += move_speed * x_speed;
       } else if (e_x > x) {
         e_x -= move_speed * x_speed;
       }
-      
+
       if (e_y < y) {
         e_y += move_speed * y_speed;
       } else if (e_y > y) {
         e_y -= move_speed * y_speed;
       }
     }
-    
-    enemy_list[enemy_number] = {x: e_x, y: e_y, type: e_t};
+
+    enemy_list[enemy_number] = { x: e_x, y: e_y, type: e_t };
     enemy_coord_list.push([e_x, e_y]);
-    
+
     // If character touches an enemy
     speed = Math.abs(v_x) + Math.abs(v_y);
-    
+
     // Eye
     if (e_t == 1) {
       if (Math.abs(x - e_x) < 10 && Math.abs(y - e_y) < 10) {
@@ -755,7 +755,7 @@ function updateEnemies() {
           createBurst(255, 50, 20, 10, e_x, e_y);
           createBurst(255, 255, 255, 5, e_x, e_y);
           createBurst(0, 0, 0, 5, e_x, e_y);
-          
+
           let col_strength = 2.5;
           if (v_x > 0) {
             v_x -= col_strength;
@@ -779,7 +779,7 @@ function updateEnemies() {
         if (speed > 2) {
           delete enemy_list[enemy_number];
           createBurst(255, 255, 0, 15, e_x, e_y);
-          
+
           let col_strength = 1;
           if (v_x > 0) {
             v_x -= col_strength;
@@ -791,7 +791,7 @@ function updateEnemies() {
           } else if (v_y < 0) {
             v_y += col_strength;
           }
-          
+
           takeDamage(10, "Bee");
         } else {
           takeDamage(20, "Bee");
@@ -806,7 +806,7 @@ function updateEnemies() {
           delete enemy_list[enemy_number];
           createBurst(0, 0, 255, 15, e_x, e_y);
           createBurst(255, 0, 0, 30, e_x, e_y);
-          
+
           let col_strength = 2.5;
           if (v_x > 0) {
             v_x -= col_strength;
@@ -863,52 +863,52 @@ function mousePressed() {
       let x_speed = x_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
       let y_speed = y_dif / (y_dif + x_dif) || 0;  // Prevent division by zero
       let dash_speed = 20;
-      
+
       if (mouseX < x) {
         v_x = -(dash_speed * x_speed);
       } else if (mouseX > x) {
         v_x = dash_speed * x_speed;
       }
-      
+
       if (mouseY < y) {
         v_y = -(dash_speed * y_speed);
       } else if (mouseY > y) {
         v_y = dash_speed * y_speed;
       }
-      
+
       fuel -= 10;
       createBurst(255, 200, 0, 50, x, y);
       createBurst(255, 255, 255, 50, mouseX, mouseY);
     }
   }
-  
+
   if (mouseButton === RIGHT) {
     if (guide_mode && fuel >= 10) {
-      let cp = {x: mouseX, y: mouseY};
-      
+      let cp = { x: mouseX, y: mouseY };
+
       if (enemy_coord_list.length !== 0) {
         const closestIdx = closestPoint(x, y, enemy_coord_list);
-        cp = {x: enemy_coord_list[closestIdx][0], y: enemy_coord_list[closestIdx][1]};
+        cp = { x: enemy_coord_list[closestIdx][0], y: enemy_coord_list[closestIdx][1] };
       }
-      
+
       let x_dif = Math.abs(cp.x - x);
       let y_dif = Math.abs(cp.y - y);
       let x_speed = x_dif / (x_dif + y_dif) || 0;  // Prevent division by zero
       let y_speed = y_dif / (y_dif + x_dif) || 0;  // Prevent division by zero
       let dash_speed = 20;
-      
+
       if (cp.x < x) {
         v_x = -(dash_speed * x_speed);
       } else if (cp.x > x) {
         v_x = dash_speed * x_speed;
       }
-      
+
       if (cp.y < y) {
         v_y = -(dash_speed * y_speed);
       } else if (cp.y > y) {
         v_y = dash_speed * y_speed;
       }
-      
+
       fuel -= 10;
       createBurst(255, 200, 0, 50, x, y);
       createBurst(255, 255, 255, 50, mouseX, mouseY);
