@@ -19,8 +19,7 @@ services:
   jet-game:
     build:
       context: ./jet-game
-    ports:
-      - "82:81"
+    # No external ports - accessed via client proxy
     volumes:
       - ./jet-game/nginx.conf:/etc/nginx/nginx.conf
       - ./jet-game/certs:/usr/src/app/certs
@@ -28,8 +27,7 @@ services:
   maize-model:
     build:
       context: ./maize-model-online
-    ports:
-      - "81:81"
+    # No external ports - accessed via client proxy
     volumes:
       - ./maize-model-online/nginx.conf:/etc/nginx/nginx.conf
       - ./maize-model-online/certs:/usr/src/app/certs

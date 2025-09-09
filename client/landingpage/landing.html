@@ -214,10 +214,10 @@
         if (!isPC) {
             document.getElementById('pc-warning').style.display = 'inline';
         }
-        // Set port 81 button to use current hostname
-        document.getElementById('port81-btn').href = window.location.protocol + '//' + window.location.hostname + ':81';
-        // Set port 82 button to use current hostname
-        document.getElementById('port82-btn').href = window.location.protocol + '//' + window.location.hostname + ':82';
+        // Set maize model button to use /maizemodel path
+        document.getElementById('port81-btn').href = '/maizemodel';
+        // Set jet game button to use /jetgame path
+        document.getElementById('port82-btn').href = '/jetgame';
 
         // Add popup warning for Sky Pirates button if not on PC
         var skyPiratesBtn = document.querySelector('a.button.sp');
