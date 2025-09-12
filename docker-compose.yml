@@ -1,7 +1,7 @@
 services:
   client:
     build:
-      context: ./client
+      context: ./sky-pirates/client
     ports:
       - "80:8080"
       - "443:443"
@@ -15,11 +15,11 @@ services:
       
   server:
     build:
-      context: ./server  
+      context: ./sky-pirates/server  
     ports:
       - "3000:3000"
     volumes:
-      - ./server:/server
+      - ./sky-pirates/server:/server
 
   jet-game:
     build:
