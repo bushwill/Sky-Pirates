@@ -1,9 +1,6 @@
 services:
   client:
     build:
-      context: .
+      context: ./client
     ports:
-      - "82:81"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./certs:/usr/src/app/certs
+      - "81:80"
