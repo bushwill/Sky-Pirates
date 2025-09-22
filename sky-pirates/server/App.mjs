@@ -8,7 +8,7 @@ import fs from 'fs';
 
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
-import { NavySalvagePlane } from './Enemy.mjs';
+import { NavySalvagePlane, EnemyPlane } from './Enemy.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
