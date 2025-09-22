@@ -25,6 +25,13 @@ services:
     build:
       context: ./jet-game/client
     # No external ports - accessed via client proxy
+
+  jet-game-server:
+    build:
+      context: ./jet-game/server
+    ports:
+      - "3001:3001"
+    # WebSocket server for jet-game scoreboard
     
   maize-model:
     build:
