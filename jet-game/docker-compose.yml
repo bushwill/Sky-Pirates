@@ -4,3 +4,9 @@ services:
       context: ./client
     ports:
       - "82:80"
+
+  scoreboard:
+    build:
+      context: ./server
+    ports:
+      - "3001:3001"
