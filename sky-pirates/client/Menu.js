@@ -296,6 +296,14 @@ class LoginMenuScreen extends MenuScreen {
         this.loginButton.selected = (this.selected === -1);
         this.loginButton.draw();
 
+        // Error message - positioned below login button to avoid overlapping with party field
+        if (this.loginMsg) {
+            textAlign(CENTER, CENTER);
+            fill(255, 0, 0); 
+            textSize(16);
+            text(this.loginMsg, x + w / 2, loginBtnY + 55); // Position below login button
+        }
+
         // --- Draw weapon lists ---
         let listSpacing = 54;
         let listYOffset = loginBtnY + 55;
@@ -342,11 +350,6 @@ class LoginMenuScreen extends MenuScreen {
             }
             opt.draw();
         }
-
-        // Error message
-        textAlign(CENTER, CENTER);
-        fill(255, 0, 0); textSize(16);
-        text(this.loginMsg, x + w / 2, y + 240);
     }
 
     navigate(dir) {
