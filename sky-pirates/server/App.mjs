@@ -38,6 +38,10 @@ let lastEnemySpawnTime = 0;
 let enemySpawnRate = 500;
 let projectiles = [];
 let crates = [];
+let crateScale = 10;
+let max_money_crates = crateScale * 40; // Maximum number of crates allowed
+let max_component_crates = crateScale * 10; // Maximum number of component crates allowed
+let crateSpawnExclusionRadius = 1000; // Crates will not spawn within this distance from x=0
 
 const startMillis = Date.now();
 
@@ -129,7 +133,8 @@ function updateProjectiles() {
 
 function updateProjectile(projectile) {
   const deltaTime = 0.01 * timeSpeed;
-  if (recovery.x1 <= projectile.x && projectile.x <= recovery.x2 && recovery.y1 <= projectile.y && projectile.y <= recovery.y2) {
+  // Check if projectile is in any recovery zone using biome detection
+  if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
     // remove projectile
     projectiles = projectiles.filter((p) => p !== projectile);
     return
@@ -200,7 +205,8 @@ function updateCrate(crate) {
       crate.detach();
       return;
     } // Defensive: skip update if carrier is missing
-    if (recovery.x1 <= crate.x && crate.x <= recovery.x2 && recovery.y1 <= crate.y && crate.y <= recovery.y2) {
+    // Check if crate is in any recovery zone using biome detection
+    if (mapData.getBiomeAtPosition(crate.x, crate.y) === 'recovery') {
       crate.open(player) // Open crate when in recovery zone
       if (crate.type === 'money') sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
       else if (crate.type === 'component') sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
@@ -287,7 +293,6 @@ function updateCrate(crate) {
 }
 
 function generateMoneyCrates() {
-  const max_money_crates = 40; // Maximum number of crates allowed
   const crate_count = max_money_crates - crates.filter(c => c.type === 'money').length;
 
   if (players.length === 0 || crates.length > max_money_crates) return;
@@ -296,20 +301,20 @@ function generateMoneyCrates() {
 
   for (let i = 0; i < crate_count; i++) {
     let x;
-    // Determine the valid range for x outside the middle 500 units
-    // Valid x values are in [-mapData.sizeX, -500] and [500, mapData.sizeX]
-    const validRange = mapData.sizeX - 1000;
+    // Determine the valid range for x outside the exclusion zone
+    // Valid x values are in [-mapData.sizeX, -crateSpawnExclusionRadius] and [crateSpawnExclusionRadius, mapData.sizeX]
+    const validRange = mapData.sizeX - crateSpawnExclusionRadius * 2;
     if (validRange <= 0) {
-      console.warn("Map size is too small to place crate outside 500 unit region.");
+      console.warn("Map size is too small to place crate outside exclusion region.");
       return;
     }
     // Randomly choose left or right side
     if (Math.random() < 0.5) {
-      // Left side: from -mapData.sizeX up to -500
-      x = -500 - Math.random() * validRange;
+      // Left side: from -mapData.sizeX up to -crateSpawnExclusionRadius
+      x = -crateSpawnExclusionRadius - Math.random() * validRange;
     } else {
-      // Right side: from 500 to mapData.sizeX
-      x = 500 + Math.random() * validRange;
+      // Right side: from crateSpawnExclusionRadius to mapData.sizeX
+      x = crateSpawnExclusionRadius + Math.random() * validRange;
     }
     const y = seaLevel;
     const amount = (Math.abs(x) / 100 + 20).toFixed(0);
@@ -322,7 +327,6 @@ function generateMoneyCrate(x, y, amount = 100) {
 }
 
 function generateStandardComponentCrates() {
-  const max_component_crates = 10; // Maximum number of component crates allowed
   const crate_count = max_component_crates - crates.filter(c => c.type === 'component').length;
 
   if (players.length === 0 || crate_count <= 0) return;
@@ -332,20 +336,20 @@ function generateStandardComponentCrates() {
 
   for (let i = 0; i < crate_count; i++) {
     let x;
-    // Determine the valid range for x outside the middle 500 units
-    // Valid x values are in [-mapData.sizeX, -500] and [500, mapData.sizeX]
-    const validRange = mapData.sizeX - 2000;
+    // Determine the valid range for x outside the exclusion zone
+    // Valid x values are in [-mapData.sizeX, -crateSpawnExclusionRadius] and [crateSpawnExclusionRadius, mapData.sizeX]
+    const validRange = mapData.sizeX - crateSpawnExclusionRadius * 2;
     if (validRange <= 0) {
-      console.warn("Map size is too small to place crate outside 500 unit region.");
+      console.warn("Map size is too small to place crate outside exclusion region.");
       return;
     }
     // Randomly choose left or right side
     if (Math.random() < 0.5) {
-      // Left side: from -mapData.sizeX up to -500
-      x = -2000 - Math.random() * validRange;
+      // Left side: from -mapData.sizeX up to -crateSpawnExclusionRadius
+      x = -crateSpawnExclusionRadius - Math.random() * validRange;
     } else {
-      // Right side: from 500 to mapData.sizeX
-      x = 2000 + Math.random() * validRange;
+      // Right side: from crateSpawnExclusionRadius to mapData.sizeX
+      x = crateSpawnExclusionRadius + Math.random() * validRange;
     }
     const y = seaLevel;
     generateRandomBasicComponentCrate(x, y);

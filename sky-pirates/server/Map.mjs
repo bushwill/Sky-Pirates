@@ -1,6 +1,6 @@
 export class MapObject {
     constructor() {
-      this.sizeX = 20000;
+      this.sizeX = 150000;
       this.skyHeight = 5000;
       this.oceanDepth = 2000;
       this.width = this.sizeX * 2;
@@ -20,7 +20,21 @@ export class MapObject {
         } // Map Boundary
       ];
       this.biomes = [
-        { type: 'recovery', x1: -400, x2: 400, y1: -200, y2: 200 },
+        // Center
+        { type: 'recovery', x1: -800, x2: 800, y1: -600, y2: 200 },
+        // East 20000
+        { type: 'recovery', x1: 19600, x2: 20400, y1: -200, y2: 200 },
+        // West 20000
+        { type: 'recovery', x1: -20400, x2: -19600, y1: -200, y2: 200 },
+        // East 50000
+        { type: 'recovery', x1: 49600, x2: 50400, y1: -200, y2: 200 },
+        // West 50000
+        { type: 'recovery', x1: -50400, x2: -49600, y1: -200, y2: 200 },
+        // East 100000
+        { type: 'recovery', x1: 99600, x2: 100400, y1: -200, y2: 200 },
+        // West 100000
+        { type: 'recovery', x1: -100400, x2: -99600, y1: -200, y2: 200 },
+        
         { type: 'water', x1: -this.sizeX, x2: this.sizeX, y1: 310, y2: this.oceanDepth },
         { type: 'air', x1: -this.sizeX, x2: this.sizeX, y1: -this.skyHeight, y2: 310 },
       ];

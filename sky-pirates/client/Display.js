@@ -1,3 +1,10 @@
+// Helper to check if a position is on screen
+function isOnScreen(drawX, drawY, margin = 0) {
+    return (
+        drawX >= -margin && drawX <= windowWidth + margin &&
+        drawY >= -margin && drawY <= windowHeight + margin
+    );
+}
 // Draw enemy indicators on screen edge if they have the player targeted and are off-screen
 function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400) {
     if (!controlledPlayer) return;
@@ -43,12 +50,15 @@ function displayEnemies(centerX = 0, centerY = -400) {
         const enemy = enemies[i];
         const drawX = windowWidth / 2 + (enemy.x - centerX);
         const drawY = windowHeight / 2 + (enemy.y - centerY);
-        displayEnemy(enemy, drawX, drawY, centerX, centerY);
+        if (isOnScreen(drawX, drawY)) {
+            displayEnemy(enemy, drawX, drawY, centerX, centerY);
+        }
     }
 }
 
 // Display a single enemy
 function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -400) {
+    if (!isOnScreen(drawX, drawY)) return;
     // Spawn trail particles if enemy is throttling
     if (enemy.engine && enemy.engine.power > 0.1) {
         // Very occasional spawning for subtle effect
@@ -56,7 +66,6 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
             spawnTrailParticles(enemy.x, enemy.y, enemy.angle, enemy.engine.power);
         }
     }
-    
     // Spawn foam particles if enemy is in water
     const enemyBiome = getBiomeAtPosition(enemy.x, enemy.y);
     if (enemyBiome === 'water') {
@@ -65,7 +74,6 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
             spawnWaterFoamParticles(enemy.x, enemy.y, { vx: enemy.vx, vy: enemy.vy });
         }
     }
-    
     textSize(12);
     textAlign(CENTER);
     stroke(100, 0, 0);
@@ -75,7 +83,6 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     rotate(enemy.angle);
     triangle(-5, -3, -5, 3, 7, 0);
     pop();
-
     // Draw enemy hull/health arc
     const arcRadius = 60;
     const arcThickness = 4;
@@ -440,6 +447,7 @@ function drawGunCursor(player, drawX, drawY) {
 }
 
 function drawGunHeat(player, drawX, drawY) {
+    if (player.biome === 'recovery') return;
     const heatRatio1 = Math.max(0, Math.min(1, player.gun1.heat / player.gun1.maxHeat));
     const heatRatio2 = Math.max(0, Math.min(1, player.gun2.heat / player.gun2.maxHeat));
     stroke(255);
@@ -514,6 +522,7 @@ function drawThrottleArc(player, drawX, drawY) {
 }
 
 function drawPlaneHeat(player, drawX = 0, drawY = 0) {
+    if (player.biome === 'recovery') return;
     const arcRadius = 60;
     const arcThickness = 4;
     // Add safety check for negative maxHeat to prevent division issues
@@ -572,11 +581,15 @@ function drawSpeed(player, drawX, drawY) {
 }
 
 function drawCompass(controlledPlayer) {
-    textSize(32);
-    textAlign(CENTER, CENTER);
-    fill(255);
-    if (controlledPlayer.x < -1000) text("Base is " + Math.abs(controlledPlayer.x.toFixed(0)) + "m east", windowWidth / 2, 30);
-    else if (controlledPlayer.x > 1000) text("Base is " + Math.abs(controlledPlayer.x.toFixed(0)) + "m west", windowWidth / 2, 30);
+    let dist = Math.abs(controlledPlayer.x);
+    if (dist >= 1000) {
+        textSize(32);
+        textAlign(CENTER, CENTER);
+        fill(255);
+        let label = (dist / 1000).toFixed(1) + "km";
+        if (controlledPlayer.x < -0.01) text("Center is " + label + " east", windowWidth / 2, 30);
+        else if (controlledPlayer.x > 0.01) text("Center is " + label + " west", windowWidth / 2, 30);
+    }
 }
 
 function displayMessages(player, centerX = 0, centerY = 0) {
