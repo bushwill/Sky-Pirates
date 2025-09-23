@@ -288,25 +288,25 @@ class LoginMenuScreen extends MenuScreen {
         this.partyField.y = y + 220;
         this.partyField.draw();
 
-        // --- Draw login button ---
-        let loginBtnX = x + w / 2 - 60;
-        let loginBtnY = y + 270;
+        // --- Draw login button to the right of party field ---
+        let loginBtnX = x + w / 2 + 120 + 10; // Right of party field with 10px spacing
+        let loginBtnY = y + 220; // Same Y as party field
         this.loginButton.setPosition(loginBtnX, loginBtnY);
         this.loginButton.setSize(120, 40);
         this.loginButton.selected = (this.selected === -1);
         this.loginButton.draw();
 
-        // Error message - positioned below login button to avoid overlapping with party field
+        // Error message - positioned where login button used to be
         if (this.loginMsg) {
             textAlign(CENTER, CENTER);
             fill(255, 0, 0); 
             textSize(16);
-            text(this.loginMsg, x + w / 2, loginBtnY + 55); // Position below login button
+            text(this.loginMsg, x + w / 2, y + 280); // Where login button used to be (y + 270 + 10 for spacing)
         }
 
         // --- Draw weapon lists ---
         let listSpacing = 54;
-        let listYOffset = loginBtnY + 55;
+        let listYOffset = y + 360; // Position well below error message area
         let gunListW = 180, gunListH = 44;
         let gunListPad = 40;
 
@@ -315,6 +315,7 @@ class LoginMenuScreen extends MenuScreen {
         let gun1Y = listYOffset;
         textSize(22);
         fill(0);
+        textAlign(CENTER, CENTER);
         text("Gun 1", gun1X + gunListW / 2, gun1Y - 34);
         for (let i = 0; i < this.gun1Options.length; i++) {
             let opt = this.gun1Options[i];
@@ -336,6 +337,7 @@ class LoginMenuScreen extends MenuScreen {
         let gun2Y = listYOffset;
         textSize(22);
         fill(0);
+        textAlign(CENTER, CENTER);
         text("Gun 2", gun2X + gunListW / 2, gun2Y - 34);
         for (let i = 0; i < this.gun2Options.length; i++) {
             let opt = this.gun2Options[i];
@@ -385,9 +387,9 @@ class LoginMenuScreen extends MenuScreen {
         this.usernameField.mousePressed(mx, my);
         this.partyField.mousePressed(mx, my);
 
-        // Login button
-        let loginBtnX = x + w / 2 - 60;
-        let loginBtnY = y + 270;
+        // Login button - updated to match new position (right of party field)
+        let loginBtnX = x + w / 2 + 120 + 10;
+        let loginBtnY = y + 220;
         if (mx > loginBtnX && mx < loginBtnX + 120 && my > loginBtnY && my < loginBtnY + 40) {
             this.selected = -1;
             this.loginButton.callback();

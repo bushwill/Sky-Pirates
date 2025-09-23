@@ -128,8 +128,15 @@ class Particle {
         const screenX = this.x - cameraX;
         const screenY = this.y - cameraY;
         
-        // Set color (no alpha fade, stays same until death)
-        fill(this.r, this.g, this.b);
+        // Set color with transparency for white particles
+        if (this.r === 255 && this.g === 255 && this.b === 255) {
+            // White particles get transparency based on lifetime
+            const alpha = Math.max(50, (this.lifetime / this.maxLifetime) * 150);
+            fill(this.r, this.g, this.b, alpha);
+        } else {
+            // Other particles use full opacity
+            fill(this.r, this.g, this.b);
+        }
         noStroke();
         
         // Draw particle as circle

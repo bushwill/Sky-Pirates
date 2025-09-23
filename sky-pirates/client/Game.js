@@ -213,11 +213,6 @@ function estimateProjectilePositions() {
         
         // Check if projectile entered water according to server data
         const currentBiome = projectile.biome || 'air';
-        if (currentBiome === 'water' && prevBiome !== 'water') {
-            // Projectile just entered water - scale foam by projectile size
-            const projectileSizeMultiplier = Math.max(0.2, (projectile.size || 1) * 0.3); // Much smaller multiplier for projectiles
-            spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
-        }
         
         // Update the stored previous biome
         projectilePreviousBiomes.set(projectileId, currentBiome);
@@ -319,10 +314,7 @@ function checkPlaneWaterCollision(player) {
     
     // Check if plane is in water biome
     const planeBiome = getBiomeAtPosition(player.x, player.y);
-    if (planeBiome === 'water') {
-        // Spawn foamy wake particles around the plane with plane velocity
-        spawnWaterFoamParticles(player.x, player.y, { vx: player.vx, vy: player.vy });
-    }
+    // Note: Water collision effects now handled in display functions
 }
 
 function handleDisconnectPage() {

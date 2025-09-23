@@ -49,6 +49,23 @@ function displayEnemies(centerX = 0, centerY = -400) {
 
 // Display a single enemy
 function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -400) {
+    // Spawn trail particles if enemy is throttling
+    if (enemy.engine && enemy.engine.power > 0.1) {
+        // Very occasional spawning for subtle effect
+        if (Math.random() < 0.05) { // 5% chance when displaying
+            spawnTrailParticles(enemy.x, enemy.y, enemy.angle, enemy.engine.power);
+        }
+    }
+    
+    // Spawn foam particles if enemy is in water
+    const enemyBiome = getBiomeAtPosition(enemy.x, enemy.y);
+    if (enemyBiome === 'water') {
+        // More frequent spawning for consistent wake
+        if (Math.random() < 0.3) { // 30% chance when displaying (increased from 12%)
+            spawnWaterFoamParticles(enemy.x, enemy.y, { vx: enemy.vx, vy: enemy.vy });
+        }
+    }
+    
     textSize(12);
     textAlign(CENTER);
     stroke(100, 0, 0);
@@ -116,6 +133,23 @@ function displayPlayers(centerX = 0, centerY = -400) {
 }
 
 function displayPlayer(player, drawX = 0, drawY = -400) {
+    // Spawn trail particles if player is throttling
+    if (player.engine && player.engine.power > 0.1) {
+        // Very occasional spawning for subtle effect
+        if (Math.random() < 0.05) { // 5% chance when displaying
+            spawnTrailParticles(player.x, player.y, player.angle, player.engine.power);
+        }
+    }
+    
+    // Spawn foam particles if player is in water
+    const playerBiome = getBiomeAtPosition(player.x, player.y);
+    if (playerBiome === 'water') {
+        // More frequent spawning for consistent wake
+        if (Math.random() < 0.3) { // 30% chance when displaying (increased from 12%)
+            spawnWaterFoamParticles(player.x, player.y, { vx: player.vx, vy: player.vy });
+        }
+    }
+    
     textSize(12);
     textAlign(CENTER);
     stroke(0);
@@ -149,6 +183,15 @@ function displayProjectiles(centerX = 0, centerY = -400) {
 }
 
 function displayProjectile(projectile, drawX = 0, drawY = -400) {
+    // Spawn foam particles if projectile is in water
+    if (projectile.biome === 'water') {
+        // More frequent spawning for consistent foam trails
+        if (Math.random() < 0.4) { // 40% chance when displaying (increased from 15%)
+            const projectileSizeMultiplier = Math.max(0.2, (projectile.size || 1) * 0.3);
+            spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
+        }
+    }
+    
     textSize(12);
     textAlign(CENTER);
     strokeWeight(1);
@@ -175,6 +218,15 @@ function displayCrates(centerX = 0, centerY = -400) {
 }
 
 function displayCrate(crate, centerX = 0, centerY = -400) {
+    // Spawn foam particles if crate is in water and moving
+    const crateBiome = getBiomeAtPosition(crate.x, crate.y);
+    if (crateBiome === 'water') {
+        const crateSpeed = Math.sqrt(crate.vx ** 2 + crate.vy ** 2);
+        if (crateSpeed > 0.5 && Math.random() < 0.35) { // 35% chance when displaying moving crates (increased from 10%)
+            spawnWaterFoamParticles(crate.x, crate.y, { vx: crate.vx, vy: crate.vy }, 1.5);
+        }
+    }
+    
     textSize(12);
     textAlign(CENTER);
     if (crate.type === 'money') {
@@ -758,13 +810,13 @@ function spawnTrailParticles(x, y, angle, throttle) {
     const vx = -Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5;
     const vy = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.5;
     
-    // Trail particle properties (exhaust colors)
+    // Trail particle properties (transparent white exhaust)
     const intensity = Math.min(throttle, 1);
-    const r = 100 + intensity * 155;
-    const g = 50 + intensity * 100;
-    const b = 25;
-    const size = 1 + Math.random() * 2 + intensity;
-    const lifetime = 20 + Math.random() * 20;
+    const r = 255; // White
+    const g = 255; // White
+    const b = 255; // White
+    const size = 0.5 + Math.random() * 1; // Much smaller particles
+    const lifetime = 15 + Math.random() * 10; // Shorter lifetime
     
     spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
 }

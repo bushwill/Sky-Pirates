@@ -1111,6 +1111,7 @@ function checkCommand(command, player) {
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
   let itemtest_command = /^\/itemtest\s+(\d+)$/;
   let weapontest_command = /^\/weapontest\s+(\d+)$/;
+  let clearcrates_command = /^\/clearcrates$/;
 
   let match = command.match(players_command);
   if (match) {
@@ -1160,6 +1161,20 @@ function checkCommand(command, player) {
   if (match) {
     const weaponNumber = parseInt(match[1]);
     weaponTest(weaponNumber, player);
+  }
+
+  match = command.match(clearcrates_command);
+  if (match) {
+    // Clear all existing crates
+    const crateCount = crates.length;
+    crates.length = 0; // Clear the crates array
+    
+    // Respawn all crates
+    generateMoneyCrates();
+    generateStandardComponentCrates();
+    
+    sendNoticeMessage(player.username, `Cleared ${crateCount} crates and respawned all crates.`, 'server');
+    sendNoticeMessageAll(`${player.username} cleared and respawned all crates.`, 'server');
   }
 }
 
