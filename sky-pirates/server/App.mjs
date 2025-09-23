@@ -144,6 +144,9 @@ function updateProjectile(projectile) {
   projectile.x += projectile.vx * deltaTime;
   projectile.y += projectile.vy * deltaTime;
 
+  // Update projectile biome
+  projectile.biome = mapData.getBiomeAtPosition(projectile.x, projectile.y);
+
   // Check for collisions with players
   players.forEach((player) => {
     if (player.username === projectile.owner) return; // Skip collision with self
@@ -373,24 +376,33 @@ function applyRecoveryJello(player, deltaTime) {
   // Deactivate gravity: do not apply gravity in recovery zone
 
   const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-  const stopThreshold = 2; // If speed is below this, stop the player
-  // Friction decreases as speed increases (min 0.9, max 0.99)
-  let friction = 0.9 + Math.min(0.09, speed / 100); // At speed 100, friction is 0.99
-
-  // If speed is very low, stop the player
-  if (speed < stopThreshold) {
-    player.vx = 0;
-    player.vy = 0;
-  } else {
-    // Apply variable friction to slow the player
-    player.vx *= friction;
-    player.vy *= friction;
-  }
-
-  // If throttle is applied, allow propulsion even from zero speed
   const throttle = player.engine.power;
-  if (throttle > player.engine.minPower) {
-    const acceleration = (throttle / player.weight) * deltaTime * 2; // Boosted in recovery
+  
+  // Only apply friction if not throttling - this prevents getting stuck
+  if (throttle <= player.engine.minPower) {
+    const stopThreshold = 0.5; // Much lower threshold when not throttling
+    // Moderate friction (0.85-0.95) instead of high friction
+    let friction = 0.85 + Math.min(0.1, speed / 100); // At speed 100, friction is 0.95
+
+    // If speed is very low and no throttle, stop the player
+    if (speed < stopThreshold) {
+      player.vx = 0;
+      player.vy = 0;
+    } else {
+      // Apply friction to slow the player
+      player.vx *= friction;
+      player.vy *= friction;
+    }
+  } else {
+    // When throttling, apply much lighter friction to allow acceleration
+    // Light friction to provide some resistance but not prevent movement
+    let lightFriction = 0.98 + Math.min(0.015, speed / 200); // Very light friction (0.98-0.995)
+    player.vx *= lightFriction;
+    player.vy *= lightFriction;
+    
+    // Guaranteed minimum propulsion when throttling - ensures movement even from zero
+    const minAcceleration = 0.1; // Minimum acceleration to ensure movement
+    const acceleration = Math.max(minAcceleration, (throttle / player.weight) * deltaTime * 2); // Boosted in recovery
     player.vx += Math.cos(player.angle) * acceleration;
     player.vy += Math.sin(player.angle) * acceleration;
   }
@@ -691,7 +703,8 @@ function applyPlayerGravity(player) {
   const gravityForce = 0.5; // normal gravity
 
   if (player.biome === 'water') {
-    const buoyancyForce = player.chassis.buoyancy; // adjust this to tune buoyancy strength (should be > gravityForce to float)
+    // Enhanced buoyancy for easier water lift-off
+    const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
     // Buoyancy opposes gravity
     player.vy += gravityForce - buoyancyForce;
   } else if (player.biome === 'recovery') {
@@ -783,10 +796,7 @@ function updateHull(player) {
     if (player.money >= player.value) handleRevive(player);
     else handleDeath(player);
   }
-  if (player.biome === 'water') {
-    const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-    player.chassis.hull -= (Math.sqrt(speed)) * deltaTime;
-  }
+  // Removed water hull damage - planes no longer take damage just for being in water
 }
 
 function handleRevive(player) {
@@ -944,7 +954,7 @@ function handleEquipItem(ws, message) {
   }
 };
 
-function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2 }) {
+function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName }) {
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
     sendNoticeMessageAll(username + " joined!", "server")
@@ -952,6 +962,20 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2 }) {
     players.push(player);
     playerSockets.set(username, ws);
     ws.currentUsername = username; // Set username in socket context
+    
+    // Handle party joining
+    if (partyName && partyName.trim()) {
+      let party = parties.find(party => party.name === partyName.trim());
+      if (!party) {
+        parties.push(new Party(partyName.trim()));
+        party = parties.find(party => party.name === partyName.trim());
+        sendNoticeMessage(username, `Created and joined party "${partyName.trim()}"`, 'server');
+      } else {
+        sendNoticeMessage(username, `Joined party "${partyName.trim()}"`, 'server');
+      }
+      party.addPlayer(player);
+    }
+    
     sendMessage(ws, { type: 'login_success', username, map: mapData });
     sendNoticeMessage(username, "Hi!", 'game');
     sendNoticeMessage(username, "Current players: " + players.length, 'server');

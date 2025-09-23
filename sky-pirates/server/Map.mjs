@@ -77,6 +77,20 @@ export class MapObject {
     getRecovery() {
       return this.biomes.find(p => p.type === 'recovery');
     }
+
+    // Get the biome type at a given position
+    getBiomeAtPosition(x, y) {
+      // Check all biomes to see if the position is within any biome
+      for (let i = 0; i < this.biomes.length; i++) {
+        const biome = this.biomes[i];
+        if (biome.x1 <= x && x <= biome.x2 && biome.y1 <= y && y <= biome.y2) {
+          return biome.type;
+        }
+      }
+      
+      // If no matching biome is found, default to 'air'
+      return 'air';
+    }
   
     // Determines if point (px,py) is inside a polygon defined by an array of vertices.
     pointInPolygon(px, py, vertices) {

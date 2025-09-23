@@ -13,5 +13,6 @@ export class Projectile {
         this.g = g;          // Green color component
         this.b = b;          // Blue color component
         this.size = size; // Size of the projectile
+        this.biome = 'air';  // Current biome the projectile is in
     }
 }

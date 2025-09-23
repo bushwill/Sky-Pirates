@@ -130,8 +130,20 @@ class WeaponMenuOption extends MenuOption {
     }
 
     draw() {
-        // Draw the base option background and label
-        fill(this.selected ? [0, 200, 255] : 255);
+        // Draw the base option background with different colors for different selection states
+        let bgColor;
+        if (this.selected === true) {
+            // Navigation highlight (light blue)
+            bgColor = [100, 180, 255];
+        } else if (this.selected === "weapon") {
+            // Weapon selection highlight (darker blue/green)
+            bgColor = [0, 150, 100];
+        } else {
+            // Not selected
+            bgColor = 255;
+        }
+        
+        fill(bgColor);
         stroke(0);
         rect(this.x, this.y, this.w, this.h, 10);
 
@@ -206,8 +218,14 @@ class LoginMenuScreen extends MenuScreen {
         this.loginMsg = '';
         this.color = '#ff8800';
 
+        // Load saved preferences from cookies
+        this.loadSavedPreferences();
+
         // Login button option (drawn separately, not in .options array)
         this.loginButton = new MenuOption("Log In", () => this.tryLogin());
+        
+        // Party name input field
+        this.partyField = new MenuInputField("Party (optional):", 150, 270, 240, 40);
 
         // Simple string list of weapon names (shared for both guns)
         this.weaponNames = [
@@ -232,6 +250,9 @@ class LoginMenuScreen extends MenuScreen {
                 this.color = this.colorPicker.value();
             });
         }
+        
+        // Load saved preferences from cookies (after all fields are created)
+        this.loadSavedPreferences();
     }
 
     draw(x, y, w, h) {
@@ -261,6 +282,11 @@ class LoginMenuScreen extends MenuScreen {
         this.usernameField.x = x + w / 2 - 120;
         this.usernameField.y = y + 170;
         this.usernameField.draw();
+        
+        // Draw party field below username
+        this.partyField.x = x + w / 2 - 120;
+        this.partyField.y = y + 220;
+        this.partyField.draw();
 
         // --- Draw login button ---
         let loginBtnX = x + w / 2 - 60;
@@ -286,8 +312,14 @@ class LoginMenuScreen extends MenuScreen {
             let opt = this.gun1Options[i];
             opt.setPosition(gun1X, gun1Y + i * listSpacing);
             opt.setSize(gunListW, gunListH);
-            // Blue highlight if selected as the weapon, else highlight if navigated
-            opt.selected = (this.selected === i) || (selectedGun1 === i);
+            
+            // Simplified logic: ONLY show weapon selection highlight
+            // Navigation highlight is disabled to prevent conflicts
+            if (selectedGun1 === i) {
+                opt.selected = "weapon";
+            } else {
+                opt.selected = false;
+            }
             opt.draw();
         }
 
@@ -301,7 +333,13 @@ class LoginMenuScreen extends MenuScreen {
             let opt = this.gun2Options[i];
             opt.setPosition(gun2X, gun2Y + i * listSpacing);
             opt.setSize(gunListW, gunListH);
-            opt.selected = (this.selected === i + this.gun1Options.length) || (selectedGun2 === i);
+            
+            // Same simplified logic for gun2
+            if (selectedGun2 === i) {
+                opt.selected = "weapon";
+            } else {
+                opt.selected = false;
+            }
             opt.draw();
         }
 
@@ -342,6 +380,7 @@ class LoginMenuScreen extends MenuScreen {
 
     mousePressed(mx, my, x, y, w, h) {
         this.usernameField.mousePressed(mx, my);
+        this.partyField.mousePressed(mx, my);
 
         // Login button
         let loginBtnX = x + w / 2 - 60;
@@ -379,6 +418,10 @@ class LoginMenuScreen extends MenuScreen {
             this.usernameField.keyPressed(k);
             return;
         }
+        if (this.partyField.focused) {
+            this.partyField.keyPressed(k);
+            return;
+        }
         if (k === 'ArrowUp') this.navigate(-1);
         if (k === 'ArrowDown') this.navigate(1);
     }
@@ -386,6 +429,38 @@ class LoginMenuScreen extends MenuScreen {
         if (this.usernameField.focused) {
             this.usernameField.keyTyped(k);
             return;
+        }
+        if (this.partyField.focused) {
+            this.partyField.keyTyped(k);
+            return;
+        }
+    }
+
+    loadSavedPreferences() {
+        // Load preferences using the global function (if available)
+        if (typeof loadUserPreferences === 'function') {
+            const prefs = loadUserPreferences();
+            
+            if (prefs.name) {
+                this.usernameField.value = prefs.name;
+            }
+            if (prefs.color) {
+                this.color = prefs.color;
+                // Update the color picker if it exists
+                if (this.colorPicker) {
+                    this.colorPicker.value(prefs.color);
+                }
+            }
+            if (prefs.party && this.partyField) {
+                this.partyField.value = prefs.party;
+            }
+            // Set global weapon selections
+            selectedGun1 = prefs.gun1;
+            selectedGun2 = prefs.gun2;
+            
+            // Update navigation position to match the primary weapon selection
+            // This prevents the double-highlight issue
+            this.selected = selectedGun1;
         }
     }
 
@@ -398,12 +473,15 @@ class LoginMenuScreen extends MenuScreen {
         username = name;
         let c = this.colorPicker ? this.colorPicker.value() : this.color;
         [r, g, b] = [red(c), green(c), blue(c)];
+        // Get party name from party field
+        let partyName = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
         // Use weaponNames to get the selected names for login
         loginPlayer(username, {
-            r, g, b,
-            gun1: this.weaponNames[selectedGun1],
-            gun2: this.weaponNames[selectedGun2]
-        });
+            r, g, b
+        }, {
+            gun1: selectedGun1,
+            gun2: selectedGun2
+        }, partyName);
         this.loginMsg = "Logging in...";
     }
 }

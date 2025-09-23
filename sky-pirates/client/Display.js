@@ -432,7 +432,8 @@ function drawGunArc(player, drawX, drawY, options = {}) {
 function drawThrottleArc(player, drawX, drawY) {
     const maxThrottle = player.engine.maxPower;
     const throttle = Math.max(0, player.engine.power); // clamp to 0 if needed
-    const normalized = throttle / maxThrottle;
+    // Prevent division by zero, but allow maxThrottle to be 0 (which would result in normalized = 0)
+    const normalized = maxThrottle > 0 ? Math.max(0, Math.min(1, throttle / maxThrottle)) : 0;
 
     const arcRadius = 40;
     const arcThickness = 5;
@@ -459,7 +460,9 @@ function drawThrottleArc(player, drawX, drawY) {
 function drawPlaneHeat(player, drawX = 0, drawY = 0) {
     const arcRadius = 60;
     const arcThickness = 4;
-    const heatRatio = Math.max(0, Math.min(1, player.engine.heat / player.engine.maxHeat));
+    // Add safety check for negative maxHeat to prevent division issues
+    const maxHeat = Math.max(1, player.engine.maxHeat);
+    const heatRatio = Math.max(0, Math.min(1, player.engine.heat / maxHeat));
     push();
     translate(drawX, drawY);
     strokeWeight(arcThickness);
@@ -467,11 +470,12 @@ function drawPlaneHeat(player, drawX = 0, drawY = 0) {
     // Heat arc (right bottom semicircle: from 2*PI to PI)
     // We'll draw this in the opposite direction so it doesn't overlap
     stroke(255 * heatRatio, 255 - (255 * heatRatio), 255 - (255 * heatRatio), 100 + 155 * heatRatio);
+    const heatEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -heatRatio); // Clamp to prevent full circles
     arc(
         0, 0,
         arcRadius * 1.2, arcRadius * 1.2,
         2 * Math.PI,                    // start at 360°
-        2 * Math.PI - Math.PI * -heatRatio, // go backward to between 360° and 180°
+        heatEndAngle,                   // clamped end angle
         true                           // draw counter-clockwise
     );
     pop();
@@ -491,11 +495,12 @@ function drawPlaneHull(player, drawX = 0, drawY = 0) {
     } else {
         stroke(50, 255, 50, 200);
     }
+    const hullEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -hullRatio); // Clamp to prevent full circles
     arc(
         0, 0,
         arcRadius, arcRadius,
         2 * Math.PI,                    // start at 360°
-        2 * Math.PI - Math.PI * -hullRatio, // go backward to between 360° and 180°
+        hullEndAngle,                   // clamped end angle
         true                           // draw counter-clockwise
     );
     pop();
@@ -643,6 +648,117 @@ function displayAppInfo() {
     textAlign(CENTER);
     text("Ping: " + Math.round(avgPing), windowWidth - 50, windowHeight - 40);
     text("V Alpha", windowWidth - 50, windowHeight - 20);
+}
+
+// Particle System Functions
+function updateParticles() {
+    // Update all particles and remove dead ones
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].isDead) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+function drawParticles() {
+    if (!particles || particles.length === 0) return;
+    
+    // Calculate camera offset for current player
+    let cameraX = 0, cameraY = 0;
+    if (signedIn && players.length > 0) {
+        const currentPlayer = players.find(p => p.username === username);
+        if (currentPlayer) {
+            cameraX = currentPlayer.x - windowWidth / 2;
+            cameraY = currentPlayer.y - windowHeight / 2;
+        }
+    }
+    
+    // Draw all particles
+    particles.forEach(particle => {
+        particle.draw(cameraX, cameraY);
+    });
+}
+
+function spawnParticle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type = 'default') {
+    // Add a new particle to the global particles array
+    particles.push(new Particle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type));
+}
+
+function spawnGunFireParticles(x, y, angle, gunType = 0) {
+    // Create muzzle flash particles
+    const particleCount = 3 + Math.floor(Math.random() * 3); // 3-5 particles
+    
+    for (let i = 0; i < particleCount; i++) {
+        // Random spread around gun angle
+        const spread = (Math.random() - 0.5) * 0.5; // ±0.25 radians
+        const particleAngle = angle + spread;
+        
+        // Forward velocity with randomness
+        const speed = 2 + Math.random() * 3;
+        const vx = Math.cos(particleAngle) * speed;
+        const vy = Math.sin(particleAngle) * speed;
+        
+        // Particle properties based on gun type
+        let r, g, b, size, lifetime;
+        switch (gunType) {
+            case 0: // Machine Gun - yellow/orange
+                r = 255;
+                g = 200 + Math.random() * 55;
+                b = 0;
+                size = 2 + Math.random() * 2;
+                lifetime = 15 + Math.random() * 10;
+                break;
+            case 1: // Cannon - red/orange
+                r = 255;
+                g = 100 + Math.random() * 100;
+                b = 0;
+                size = 3 + Math.random() * 3;
+                lifetime = 20 + Math.random() * 15;
+                break;
+            case 2: // Scorpion - blue/white
+                r = 100 + Math.random() * 155;
+                g = 150 + Math.random() * 105;
+                b = 255;
+                size = 2 + Math.random() * 2;
+                lifetime = 12 + Math.random() * 8;
+                break;
+            default:
+                r = 255; g = 255; b = 0;
+                size = 2; lifetime = 15;
+        }
+        
+        spawnParticle(x, y, 0, vx, vy, 0, r, g, b, size, lifetime);
+    }
+}
+
+function spawnTrailParticles(x, y, angle, throttle) {
+    // Only spawn trail particles if throttle is above minimum
+    if (throttle <= 0.1) return;
+    
+    // Calculate position behind the plane
+    const trailDistance = 15 + Math.random() * 5;
+    const trailX = x - Math.cos(angle) * trailDistance;
+    const trailY = y - Math.sin(angle) * trailDistance;
+    
+    // Random spread for trail particles
+    const spreadX = (Math.random() - 0.5) * 8;
+    const spreadY = (Math.random() - 0.5) * 8;
+    
+    // Velocity based on throttle (opposite to plane direction)
+    const speed = 0.5 + Math.random() * 1;
+    const vx = -Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5;
+    const vy = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.5;
+    
+    // Trail particle properties (exhaust colors)
+    const intensity = Math.min(throttle, 1);
+    const r = 100 + intensity * 155;
+    const g = 50 + intensity * 100;
+    const b = 25;
+    const size = 1 + Math.random() * 2 + intensity;
+    const lifetime = 20 + Math.random() * 20;
+    
+    spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
 }
 
 function windowResized() {
