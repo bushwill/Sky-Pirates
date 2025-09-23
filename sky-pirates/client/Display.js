@@ -450,9 +450,13 @@ function drawThrottleArc(player, drawX, drawY) {
     arc(0, 0, arcRadius * 2, arcRadius * 2, startAngle, endAngle);
 
     // Filled portion based on normalized throttle (from 0 to 1)
-    stroke(0, 255, 0, 220);
-    const throttleAngle = startAngle + (endAngle - startAngle) * normalized;
-    arc(0, 0, arcRadius * 2, arcRadius * 2, startAngle, throttleAngle);
+    if (normalized > 0.001) { // Only draw arc if throttle is above a small threshold
+        stroke(0, 255, 0, 220);
+        const throttleAngle = startAngle + (endAngle - startAngle) * normalized;
+        // Ensure we don't draw a full circle due to angle precision issues
+        const clampedThrottleAngle = Math.max(startAngle + 0.01, Math.min(endAngle, throttleAngle));
+        arc(0, 0, arcRadius * 2, arcRadius * 2, startAngle, clampedThrottleAngle);
+    }
 
     pop();
 }
@@ -469,15 +473,17 @@ function drawPlaneHeat(player, drawX = 0, drawY = 0) {
     noFill();
     // Heat arc (right bottom semicircle: from 2*PI to PI)
     // We'll draw this in the opposite direction so it doesn't overlap
-    stroke(255 * heatRatio, 255 - (255 * heatRatio), 255 - (255 * heatRatio), 100 + 155 * heatRatio);
-    const heatEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -heatRatio); // Clamp to prevent full circles
-    arc(
-        0, 0,
-        arcRadius * 1.2, arcRadius * 1.2,
-        2 * Math.PI,                    // start at 360°
-        heatEndAngle,                   // clamped end angle
-        true                           // draw counter-clockwise
-    );
+    if (heatRatio > 0.001) { // Only draw if above threshold to prevent full circles
+        stroke(255 * heatRatio, 255 - (255 * heatRatio), 255 - (255 * heatRatio), 100 + 155 * heatRatio);
+        const heatEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -heatRatio); // Clamp to prevent full circles
+        arc(
+            0, 0,
+            arcRadius * 1.2, arcRadius * 1.2,
+            2 * Math.PI,                    // start at 360°
+            heatEndAngle,                   // clamped end angle
+            true                           // draw counter-clockwise
+        );
+    }
     pop();
 }
 
@@ -490,19 +496,21 @@ function drawPlaneHull(player, drawX = 0, drawY = 0) {
     strokeWeight(arcThickness);
     noFill();
     // Hull arc (left bottom semicircle: from PI to 2*PI)
-    if (player.keys['r']) {
-        stroke(200, 255, 50, 200)
-    } else {
-        stroke(50, 255, 50, 200);
+    if (hullRatio > 0.001) { // Only draw if above threshold to prevent full circles
+        if (player.keys['r']) {
+            stroke(200, 255, 50, 200)
+        } else {
+            stroke(50, 255, 50, 200);
+        }
+        const hullEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -hullRatio); // Clamp to prevent full circles
+        arc(
+            0, 0,
+            arcRadius, arcRadius,
+            2 * Math.PI,                    // start at 360°
+            hullEndAngle,                   // clamped end angle
+            true                           // draw counter-clockwise
+        );
     }
-    const hullEndAngle = Math.max(Math.PI, 2 * Math.PI - Math.PI * -hullRatio); // Clamp to prevent full circles
-    arc(
-        0, 0,
-        arcRadius, arcRadius,
-        2 * Math.PI,                    // start at 360°
-        hullEndAngle,                   // clamped end angle
-        true                           // draw counter-clockwise
-    );
     pop();
 }
 
