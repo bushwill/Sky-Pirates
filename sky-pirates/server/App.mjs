@@ -1447,7 +1447,28 @@ function checkCommand(command, player) {
 }
 
 setInterval(() => {
-  players = players.filter((player) => millis() - player.lastActivity < INACTIVITY_THRESHOLD);
+  const now = millis();
+  const inactivePlayers = players.filter(player => now - player.lastActivity >= INACTIVITY_THRESHOLD);
+  
+  // Properly kick each inactive player
+  inactivePlayers.forEach(player => {
+    console.log(`Kicking inactive player: ${player.username} (inactive for ${Math.round((now - player.lastActivity) / 1000)}s)`);
+    
+    // Send notification before kicking
+    sendNoticeMessage(player.username, "You have been disconnected due to inactivity (10+ minutes)", 'urgent');
+    
+    // Close their WebSocket connection properly
+    const playerSocket = playerSockets.get(player.username);
+    if (playerSocket && playerSocket.readyState === WebSocket.OPEN) {
+      playerSocket.close(1000, "Inactivity timeout");
+    }
+    
+    // Clean up the socket reference
+    playerSockets.delete(player.username);
+  });
+  
+  // Remove inactive players from the array
+  players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
 }, 60000);
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);

@@ -23,16 +23,10 @@ function connectWebSocket() {
         
         if (wasDisconnected) {
             wasDisconnected = false;
-            // Auto-login if we have cached credentials
-            if (lastLogin) {
-                console.log("Auto-reconnecting with cached credentials...");
-                loginPlayer(lastLogin.name, lastLogin.colorObj, lastLogin.weaponChoices, lastLogin.partyName);
-            } else {
-                // Show the login menu with a message (MenuManager version)
-                if (menuManager && menuManager.screens && menuManager.screens['login']) {
-                    menuManager.show('login');
-                    menuManager.screens['login'].loginMsg = "Reconnected. Please log in again.";
-                }
+            // Always show login screen on reconnect - no auto-login
+            if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                menuManager.show('login');
+                menuManager.screens['login'].loginMsg = "Reconnected. Please log in again.";
             }
         }
     };
@@ -41,6 +35,9 @@ function connectWebSocket() {
         connected = false;
         signedIn = false;
         wasDisconnected = true;
+        
+        // Clear login cache to force re-login on reconnect
+        clearLoginCache();
         
         if (reconnectAttempts < maxReconnectAttempts) {
             reconnectAttempts++;
