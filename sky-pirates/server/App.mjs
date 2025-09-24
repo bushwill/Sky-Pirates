@@ -928,20 +928,8 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_enemies':
       const playerForEnemies = players.find(p => p.username === ws.currentUsername);
-      if (playerForEnemies) {
-        // Filter enemies within culling range (5km = 5000 units)
-        const cullingDistance = 5000;
-        const filteredEnemies = enemies.filter(enemy => {
-          const dist = Math.sqrt(
-            (enemy.x - playerForEnemies.x) ** 2 + 
-            (enemy.y - playerForEnemies.y) ** 2
-          );
-          return dist <= cullingDistance;
-        });
-        sendMessage(ws, { type: 'enemy_data', enemies: filteredEnemies });
-      } else {
-        sendMessage(ws, { type: 'enemy_data', enemies: [] });
-      }
+      const filteredEnemies = filterEntitiesInRange(enemies, playerForEnemies);
+      sendMessage(ws, { type: 'enemy_data', enemies: filteredEnemies });
       break;
     case 'get_parties':
       sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
@@ -951,37 +939,13 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_projectiles':
       const playerForProjectiles = players.find(p => p.username === ws.currentUsername);
-      if (playerForProjectiles) {
-        // Filter projectiles within culling range (5km = 5000 units)
-        const cullingDistance = 5000;
-        const filteredProjectiles = projectiles.filter(proj => {
-          const dist = Math.sqrt(
-            (proj.x - playerForProjectiles.x) ** 2 + 
-            (proj.y - playerForProjectiles.y) ** 2
-          );
-          return dist <= cullingDistance;
-        });
-        sendMessage(ws, { type: 'projectile_data', projectiles: filteredProjectiles });
-      } else {
-        sendMessage(ws, { type: 'projectile_data', projectiles: [] });
-      }
+      const filteredProjectiles = filterEntitiesInRange(projectiles, playerForProjectiles);
+      sendMessage(ws, { type: 'projectile_data', projectiles: filteredProjectiles });
       break;
     case 'get_crates':
       const playerForCrates = players.find(p => p.username === ws.currentUsername);
-      if (playerForCrates) {
-        // Filter crates within culling range (5km = 5000 units)
-        const cullingDistance = 5000;
-        const filteredCrates = crates.filter(crate => {
-          const dist = Math.sqrt(
-            (crate.x - playerForCrates.x) ** 2 + 
-            (crate.y - playerForCrates.y) ** 2
-          );
-          return dist <= cullingDistance;
-        });
-        sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
-      } else {
-        sendMessage(ws, { type: 'crate_data', crates: [] });
-      }
+      const filteredCrates = filterEntitiesInRange(crates, playerForCrates);
+      sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
       break;
     case 'equip_item':
       handleEquipItem(ws, message);
@@ -1095,6 +1059,18 @@ function handlePing(ws, message) {
   };
 
   sendMessage(ws, response); // Encode and send the pong message
+}
+
+// Helper function to filter entities within culling range of a player
+function filterEntitiesInRange(entities, player, cullingDistance = 5000) {
+  if (!player) return [];
+  return entities.filter(entity => {
+    const dist = Math.sqrt(
+      (entity.x - player.x) ** 2 + 
+      (entity.y - player.y) ** 2
+    );
+    return dist <= cullingDistance;
+  });
 }
 
 function sendMessage(ws, data) {
