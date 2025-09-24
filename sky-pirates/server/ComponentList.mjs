@@ -159,7 +159,6 @@ export function createPirateStandardChassis(level = 1, random = true) {
   return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);
 }
 
-// ...existing code...
 export function createCoreStandardChassis(level = 1, random = true) {
   const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
   const adjustedLevel = level - 1;
@@ -173,7 +172,6 @@ export function createCoreStandardChassis(level = 1, random = true) {
   return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);
 }
 
-// ...existing code...
 export function createKamenStandardChassis(level = 1, random = true) {
   const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
   const adjustedLevel = level - 1;
@@ -187,7 +185,6 @@ export function createKamenStandardChassis(level = 1, random = true) {
   return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);
 }
 
-// ...existing code...
 export function createAeroStandardChassis(level = 1, random = true) {
   const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
   const adjustedLevel = level - 1;
@@ -201,7 +198,6 @@ export function createAeroStandardChassis(level = 1, random = true) {
   return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);
 }
 
-// ...existing code...
 export function createNovaStandardChassis(level = 1, random = true) {
   const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
   const adjustedLevel = level - 1;
@@ -224,7 +220,7 @@ export function createPirateStandardWings(level = 1, random = true) {
   const minTurnSpeed = randomFactor * (0.15 + adjustedLevel * 0.05);
   const maxSpeed = randomFactor * (150.0 + adjustedLevel * 15);
   const liftEfficiency = randomFactor * 0.5;
-  const minLiftSpeed = randomFactor * (50.0 - adjustedLevel * 5);
+  const minLiftSpeed = randomFactor * (50.0);
   const liftAngle = randomFactor * (Math.PI / 8 + adjustedLevel * Math.PI / 32);
   const airBrake = true;
   const airBrakeStrength = randomFactor * (2.0 + adjustedLevel * 0.2);
@@ -237,11 +233,11 @@ export function createCoreStandardWings(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Core Standard Wings Lvl " + level;
   const weight = randomFactor * 0.5;
-  const baseTurnSpeed = randomFactor * (2.0 + adjustedLevel * 0.2);
+  const baseTurnSpeed = randomFactor * (2.0 + adjustedLevel * 0.05);
   const minTurnSpeed = randomFactor * (0.2 + adjustedLevel * 0.05);
   const maxSpeed = randomFactor * (180.0 + adjustedLevel * 18);
   const liftEfficiency = randomFactor * 0.5;
-  const minLiftSpeed = randomFactor * (60.0 - adjustedLevel * 5);
+  const minLiftSpeed = randomFactor * (60.0);
   const liftAngle = randomFactor * (Math.PI / 8 + adjustedLevel * Math.PI / 32);
   const airBrake = true;
   const airBrakeStrength = randomFactor * (3.0 + adjustedLevel * 0.3);
@@ -254,11 +250,11 @@ export function createKamenStandardWings(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Kamen Standard Wings Lvl " + level;
   const weight = randomFactor * 1.5;
-  const baseTurnSpeed = randomFactor * (1.5 + adjustedLevel * 0.2);
+  const baseTurnSpeed = randomFactor * (1.5 + adjustedLevel * 0.05);
   const minTurnSpeed = randomFactor * (0.3 + adjustedLevel * 0.05);
   const maxSpeed = randomFactor * (220.0 + adjustedLevel * 18);
   const liftEfficiency = randomFactor * 0.6;
-  const minLiftSpeed = randomFactor * (80.0 - adjustedLevel * 5);
+  const minLiftSpeed = randomFactor * (80.0);
   const liftAngle = randomFactor * (Math.PI / 10 + adjustedLevel * Math.PI / 32);
   const airBrake = true;
   const airBrakeStrength = randomFactor * (2.0 + adjustedLevel * 0.2);
@@ -271,11 +267,11 @@ export function createAeroStandardWings(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Aero Standard Wings Lvl " + level;
   const weight = randomFactor * 0.3;
-  const baseTurnSpeed = randomFactor * (3.0 + adjustedLevel * 0.2);
+  const baseTurnSpeed = randomFactor * (3.0 + adjustedLevel * 0.05);
   const minTurnSpeed = randomFactor * (0.1 + adjustedLevel * 0.05);
   const maxSpeed = randomFactor * (160.0 + adjustedLevel * 18);
   const liftEfficiency = randomFactor * 0.8;
-  const minLiftSpeed = randomFactor * (60.0 - adjustedLevel * 5);
+  const minLiftSpeed = randomFactor * (60.0);
   const liftAngle = randomFactor * (Math.PI / 6 + adjustedLevel * Math.PI / 32);
   const airBrake = true;
   const airBrakeStrength = randomFactor * (4.0 + adjustedLevel * 0.4);
@@ -288,11 +284,11 @@ export function createNovaStandardWings(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Nova Standard Wings Lvl " + level;
   const weight = randomFactor * 1.0;
-  const baseTurnSpeed = randomFactor * (2.2 + adjustedLevel * 0.2);
+  const baseTurnSpeed = randomFactor * (2.2 + adjustedLevel * 0.05);
   const minTurnSpeed = randomFactor * (0.5 + adjustedLevel * 0.05);
   const maxSpeed = randomFactor * (220.0 + adjustedLevel * 18);
   const liftEfficiency = randomFactor * 0.4;
-  const minLiftSpeed = randomFactor * (80.0 - adjustedLevel * 5);
+  const minLiftSpeed = randomFactor * (80.0);
   const liftAngle = randomFactor * (Math.PI / 12 + adjustedLevel * Math.PI / 32);
   const airBrake = true;
   const airBrakeStrength = randomFactor * (3.0 + adjustedLevel * 0.3);
