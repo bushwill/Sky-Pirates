@@ -224,9 +224,29 @@ function updateCrate(crate) {
     const targetX = player.x + Math.cos(ropeAngle) * ROPE_LENGTH;
     const targetY = player.y + Math.sin(ropeAngle) * ROPE_LENGTH;
 
-    // Spring toward rope target
-    crate.vx += (targetX - crate.x) * springStrength * deltaTime;
-    crate.vy += (targetY - crate.y) * springStrength * deltaTime;
+    const deltaX = targetX - crate.x;
+    const deltaY = targetY - crate.y;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // For very distant crates, use teleportation approach to avoid physics instability
+    const TELEPORT_THRESHOLD = 3000; // If crate is more than 3km away, use teleportation
+    
+    if (distance > TELEPORT_THRESHOLD) {
+      // Halve the distance between crate and target position
+      const midX = crate.x + deltaX * 0.5;
+      const midY = crate.y + deltaY * 0.5;
+      
+      crate.x = midX;
+      crate.y = midY;
+      
+      // Reset velocity to prevent physics artifacts
+      crate.vx = 0;
+      crate.vy = 0;
+    } else {
+      // Use normal spring physics for nearby crates
+      crate.vx += deltaX * springStrength * deltaTime;
+      crate.vy += deltaY * springStrength * deltaTime;
+    }
 
     // Apply drag using your formula
     applyCrateDrag(crate, fluidDensity, deltaTime);
@@ -234,9 +254,31 @@ function updateCrate(crate) {
     // Buoyancy/Gravity (float in water)
     applyCrateBuoyancy(crate, biomeType);
 
-    // Rope damping
-    crate.vx *= 0.8;
-    crate.vy *= 0.8;
+    // Enhanced damping for distant crates to prevent oscillation
+    const distanceToTarget = Math.sqrt((targetX - crate.x) ** 2 + (targetY - crate.y) ** 2);
+    
+    // Increase damping based on distance to prevent overshooting
+    let dampingFactor = 0.8; // Base damping
+    if (distanceToTarget > 1000) {
+      // For very distant crates, add extra damping to prevent oscillation
+      const extraDamping = Math.min(0.3, distanceToTarget / 50000); // More damping as distance increases
+      dampingFactor -= extraDamping;
+    }
+    
+    crate.vx *= dampingFactor;
+    crate.vy *= dampingFactor;
+
+    // Dynamic velocity limit based on distance - allow higher speeds for distant crates
+    const BASE_MAX_VELOCITY = 200;
+    const DISTANCE_VELOCITY_SCALE = 0.3; // Reduced from 0.5 to prevent excessive speeds
+    const maxVelocity = Math.min(5000, BASE_MAX_VELOCITY + (distanceToTarget * DISTANCE_VELOCITY_SCALE)); // Cap at 5000
+    
+    const speed = Math.sqrt(crate.vx * crate.vx + crate.vy * crate.vy);
+    if (speed > maxVelocity) {
+      const scale = maxVelocity / speed;
+      crate.vx *= scale;
+      crate.vy *= scale;
+    }
 
     // Update position
     updateCratePosition(crate, deltaTime);
@@ -950,7 +992,7 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_crates':
       const playerForCrates = players.find(p => p.username === ws.currentUsername);
-      const filteredCrates = filterEntitiesInRange(crates, playerForCrates);
+      const filteredCrates = filterCratesInRange(crates, playerForCrates);
       sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
       break;
     case 'equip_item':
@@ -1071,6 +1113,19 @@ function handlePing(ws, message) {
 function filterEntitiesInRange(entities, player, cullingDistance = 2000) {
   if (!player) return [];
   return entities.filter(entity => {
+    const dist = Math.sqrt(
+      (entity.x - player.x) ** 2 + 
+      (entity.y - player.y) ** 2
+    );
+    return dist <= cullingDistance;
+  });
+}
+
+// Helper function to filter crates for a player
+function filterCratesInRange(entities, player, cullingDistance = 2000) {
+  if (!player) return [];
+  return entities.filter(entity => {
+    if (entity.carrier === player.username) return true; // Always include carried crates
     const dist = Math.sqrt(
       (entity.x - player.x) ** 2 + 
       (entity.y - player.y) ** 2

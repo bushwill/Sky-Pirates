@@ -51,15 +51,12 @@ function displayEnemies(centerX = 0, centerY = -400) {
         const enemy = enemies[i];
         const drawX = windowWidth / 2 + (enemy.x - centerX);
         const drawY = windowHeight / 2 + (enemy.y - centerY);
-        if (isOnScreen(drawX, drawY)) {
-            displayEnemy(enemy, drawX, drawY, centerX, centerY);
-        }
+        displayEnemy(enemy, drawX, drawY, centerX, centerY);
     }
 }
 
 // Display a single enemy
 function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -400) {
-    if (!isOnScreen(drawX, drawY)) return;
     // Spawn trail particles if enemy is throttling
     if (enemy.engine && enemy.engine.power > 0.1) {
         // Very occasional spawning for subtle effect
@@ -226,6 +223,17 @@ function displayCrates(centerX = 0, centerY = -400) {
 }
 
 function displayCrate(crate, centerX = 0, centerY = -400) {
+    // Debug logging for attached crates that are far from their carrier
+    if (crate.carrier && crate.carrier === username) {
+        const currentPlayer = players.find(p => p.username === username);
+        if (currentPlayer) {
+            const distanceToPlayer = Math.sqrt((crate.x - currentPlayer.x) ** 2 + (crate.y - currentPlayer.y) ** 2);
+            if (distanceToPlayer > 500) { // Log when crate is more than 500 units away
+                console.log(`[CRATE DEBUG] Player: ${username} at (${currentPlayer.x.toFixed(1)}, ${currentPlayer.y.toFixed(1)}) | Carried Crate at (${crate.x.toFixed(1)}, ${crate.y.toFixed(1)}) | Distance: ${distanceToPlayer.toFixed(1)} | Velocity: (${crate.vx.toFixed(2)}, ${crate.vy.toFixed(2)})`);
+            }
+        }
+    }
+    
     // Spawn foam particles if crate is in water and moving
     const crateBiome = getBiomeAtPosition(crate.x, crate.y);
     if (crateBiome === 'water') {
