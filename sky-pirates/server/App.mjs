@@ -375,7 +375,25 @@ function generateMoneyCrates() {
       x = crateSpawnExclusionRadius + Math.random() * validRange;
     }
     const y = seaLevel;
-    const amount = (Math.abs(x) / 100 + 20).toFixed(0);
+    
+    // Calculate level based on distance (same system as components)
+    let level = 1;
+    if (Math.abs(x) > 140000) level = 10;        // Level 10: Very far (140km+)
+    else if (Math.abs(x) > 120000) level = 9;    // Level 9: 120-140km
+    else if (Math.abs(x) > 100000) level = 8;    // Level 8: 100-120km
+    else if (Math.abs(x) > 80000) level = 7;     // Level 7: 80-100km
+    else if (Math.abs(x) > 60000) level = 6;     // Level 6: 60-80km
+    else if (Math.abs(x) > 40000) level = 5;     // Level 5: 40-60km
+    else if (Math.abs(x) > 25000) level = 4;     // Level 4: 25-40km
+    else if (Math.abs(x) > 14000) level = 3;     // Level 3: 14-25km
+    else if (Math.abs(x) > 5000) level = 2;      // Level 2: 5-14km
+    // Level 1: 0-5km (default)
+    
+    // Money scales as a fraction of average component value for that level
+    const baseAmount = 15 + level * 25; // 40 at level 1, 290 at level 10
+    const randomFactor = 0.8 + Math.random() * 0.4; // 80-120% variation
+    const amount = Math.round(baseAmount * randomFactor);
+    
     generateMoneyCrate(x, y, amount);
   }
 }

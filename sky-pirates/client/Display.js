@@ -602,8 +602,8 @@ function drawCompass(controlledPlayer) {
         textAlign(CENTER, CENTER);
         fill(255);
         let label = (dist / 1000).toFixed(1) + "km";
-        if (controlledPlayer.x < -0.01) text("Center is " + label + " east", windowWidth / 2, 30);
-        else if (controlledPlayer.x > 0.01) text("Center is " + label + " west", windowWidth / 2, 30);
+        if (controlledPlayer.x < -0.01) text(label + " west of center", windowWidth / 2, 30);
+        else if (controlledPlayer.x > 0.01) text(label + " east of center", windowWidth / 2, 30);
     }
 }
 
