@@ -357,13 +357,24 @@ function generateStandardComponentCrates() {
 }
 
 function generateRandomBasicComponentCrate(x, y) {
-  let value = Math.random() * x;
+  let value = Math.abs(x); // Use absolute distance from center
   let level = 1;
   let type = Math.floor(Math.random() * 3); // 0-2 for different component types
   let manufacturer = Math.floor(Math.random() * 4) + 1; // 1-4 for different manufacturers  
   let component = null;
-  if (value > 14000) level = 3;
-  else if (value > 5000) level = 2;
+  
+  // Level distribution based on distance from center
+  if (value > 140000) level = 10;        // Level 10: Very far (140km+)
+  else if (value > 120000) level = 9;    // Level 9: 120-140km
+  else if (value > 100000) level = 8;    // Level 8: 100-120km
+  else if (value > 80000) level = 7;     // Level 7: 80-100km
+  else if (value > 60000) level = 6;     // Level 6: 60-80km
+  else if (value > 40000) level = 5;     // Level 5: 40-60km
+  else if (value > 25000) level = 4;     // Level 4: 25-40km
+  else if (value > 14000) level = 3;     // Level 3: 14-25km
+  else if (value > 5000) level = 2;      // Level 2: 5-14km
+  // Level 1: 0-5km (default)
+  
   if (type < 1) {
     component = createEngine(manufacturer, level); // Create a standard engine component
   } else if (type < 2) {
@@ -916,7 +927,21 @@ function handleIncomingMessage(ws, message) {
       sendMessage(ws, { type: 'player_data', players: players });
       break;
     case 'get_enemies':
-      sendMessage(ws, { type: 'enemy_data', enemies: enemies });
+      const playerForEnemies = players.find(p => p.username === ws.currentUsername);
+      if (playerForEnemies) {
+        // Filter enemies within culling range (5km = 5000 units)
+        const cullingDistance = 5000;
+        const filteredEnemies = enemies.filter(enemy => {
+          const dist = Math.sqrt(
+            (enemy.x - playerForEnemies.x) ** 2 + 
+            (enemy.y - playerForEnemies.y) ** 2
+          );
+          return dist <= cullingDistance;
+        });
+        sendMessage(ws, { type: 'enemy_data', enemies: filteredEnemies });
+      } else {
+        sendMessage(ws, { type: 'enemy_data', enemies: [] });
+      }
       break;
     case 'get_parties':
       sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
@@ -925,10 +950,38 @@ function handleIncomingMessage(ws, message) {
       sendMessage(ws, { type: 'map_data', map: mapData })
       break;
     case 'get_projectiles':
-      sendMessage(ws, { type: 'projectile_data', projectiles: projectiles });
+      const playerForProjectiles = players.find(p => p.username === ws.currentUsername);
+      if (playerForProjectiles) {
+        // Filter projectiles within culling range (5km = 5000 units)
+        const cullingDistance = 5000;
+        const filteredProjectiles = projectiles.filter(proj => {
+          const dist = Math.sqrt(
+            (proj.x - playerForProjectiles.x) ** 2 + 
+            (proj.y - playerForProjectiles.y) ** 2
+          );
+          return dist <= cullingDistance;
+        });
+        sendMessage(ws, { type: 'projectile_data', projectiles: filteredProjectiles });
+      } else {
+        sendMessage(ws, { type: 'projectile_data', projectiles: [] });
+      }
       break;
     case 'get_crates':
-      sendMessage(ws, { type: 'crate_data', crates: crates });
+      const playerForCrates = players.find(p => p.username === ws.currentUsername);
+      if (playerForCrates) {
+        // Filter crates within culling range (5km = 5000 units)
+        const cullingDistance = 5000;
+        const filteredCrates = crates.filter(crate => {
+          const dist = Math.sqrt(
+            (crate.x - playerForCrates.x) ** 2 + 
+            (crate.y - playerForCrates.y) ** 2
+          );
+          return dist <= cullingDistance;
+        });
+        sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
+      } else {
+        sendMessage(ws, { type: 'crate_data', crates: [] });
+      }
       break;
     case 'equip_item':
       handleEquipItem(ws, message);

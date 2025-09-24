@@ -5,6 +5,7 @@ function isOnScreen(drawX, drawY, margin = 0) {
         drawY >= -margin && drawY <= windowHeight + margin
     );
 }
+
 // Draw enemy indicators on screen edge if they have the player targeted and are off-screen
 function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400) {
     if (!controlledPlayer) return;
