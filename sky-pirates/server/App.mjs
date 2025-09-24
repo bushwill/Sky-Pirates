@@ -1119,18 +1119,20 @@ function smoothstep(edge0, edge1, x) {
   return t * t * (3 - 2 * t);
 }
 
-function itemTest(manufacturer, player) {
-  // Create level 1 components for the specified manufacturer
-  const engineComp = createEngine(manufacturer, 1);
-  const chassisComp = createChassis(manufacturer, 1);
-  const wingsComp = createWings(manufacturer, 1);
+function itemTest(manufacturer, level, player) {
+  // Create components for the specified manufacturer and level
+  const engineComp = createEngine(manufacturer, level);
+  const chassisComp = createChassis(manufacturer, level);
+  const wingsComp = createWings(manufacturer, level);
 
-  // Create 3 crates at (500, 0) each carrying the respective component.
-  crates.push(new Crate(500, 0, 'component', engineComp));
-  crates.push(new Crate(500, 0, 'component', chassisComp));
-  crates.push(new Crate(500, 0, 'component', wingsComp));
+  // Create 3 crates at the player's current location, with slight spacing
+  const baseX = player.x;
+  const baseY = player.y;
+  crates.push(new Crate(baseX - 20, baseY, 'component', engineComp));
+  crates.push(new Crate(baseX, baseY, 'component', chassisComp));
+  crates.push(new Crate(baseX + 20, baseY, 'component', wingsComp));
 
-  sendNoticeMessage(player.username, "Created item test crates for manufacturer " + manufacturer, 'server');
+  sendNoticeMessage(player.username, `Created level ${level} item test crates for manufacturer ${manufacturer} at your location`, 'server');
 }
 
 function weaponTest(weaponNumber, player) {
@@ -1148,11 +1150,11 @@ function checkCommand(command, player) {
 
   // Full Privilege Requirement
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
-  let itemtest_command = /^\/itemtest\s+(\d+)$/;
+    let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
   let weapontest_command = /^\/weapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
-
-  let match = command.match(players_command);
+  let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
+  let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;  let match = command.match(players_command);
   if (match) {
     sendNoticeMessage(player.username, players.map(player => player.username).join(", "), 'server');
   }
@@ -1193,7 +1195,8 @@ function checkCommand(command, player) {
   match = command.match(itemtest_command);
   if (match) {
     const manufacturer = parseInt(match[1]);
-    itemTest(manufacturer, player);
+    const level = match[2] ? parseInt(match[2]) : 1; // Default to level 1 if not specified
+    itemTest(manufacturer, level, player);
   }
 
   match = command.match(weapontest_command);
@@ -1214,6 +1217,60 @@ function checkCommand(command, player) {
     
     sendNoticeMessage(player.username, `Cleared ${crateCount} crates and respawned all crates.`, 'server');
     sendNoticeMessageAll(`${player.username} cleared and respawned all crates.`, 'server');
+  }
+
+  match = command.match(tp_command);
+  if (match) {
+    match = command.match(tp_command);
+  if (match) {
+    const x = parseFloat(match[1]);
+    const y = parseFloat(match[2]);
+    
+    // Store current position for feedback
+    const oldX = Math.round(player.x);
+    const oldY = Math.round(player.y);
+    
+    // Teleport the player
+    player.x = x;
+    player.y = y;
+    
+    // Reset velocity to prevent momentum carrying over
+    player.vx = 0;
+    player.vy = 0;
+    
+    sendNoticeMessage(player.username, `Teleported from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
+  }
+
+  match = command.match(tp_other_command);
+  if (match) {
+    const targetUsername = match[1];
+    const x = parseFloat(match[2]);
+    const y = parseFloat(match[3]);
+    
+    // Find the target player
+    const targetPlayer = players.find(p => p.username === targetUsername);
+    
+    if (!targetPlayer) {
+      sendNoticeMessage(player.username, `Player "${targetUsername}" not found.`, 'server');
+      return;
+    }
+    
+    // Store current position for feedback
+    const oldX = Math.round(targetPlayer.x);
+    const oldY = Math.round(targetPlayer.y);
+    
+    // Teleport the target player
+    targetPlayer.x = x;
+    targetPlayer.y = y;
+    
+    // Reset velocity to prevent momentum carrying over
+    targetPlayer.vx = 0;
+    targetPlayer.vy = 0;
+    
+    // Send feedback to both admin and target player
+    sendNoticeMessage(player.username, `Teleported ${targetUsername} from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
+    sendNoticeMessage(targetUsername, `You were teleported to (${Math.round(x)}, ${Math.round(y)}) by ${player.username}`, 'server');
+  }
   }
 }
 
