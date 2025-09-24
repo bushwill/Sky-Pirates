@@ -299,7 +299,7 @@ class LoginMenuScreen extends MenuScreen {
         // Error message - positioned where login button used to be
         if (this.loginMsg) {
             textAlign(CENTER, CENTER);
-            fill(255, 0, 0); 
+            fill(0); 
             textSize(16);
             text(this.loginMsg, x + w / 2, y + 280); // Where login button used to be (y + 270 + 10 for spacing)
         }
