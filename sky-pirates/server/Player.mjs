@@ -36,7 +36,7 @@ export class Player extends Plane {
     this.gun2.reset();
     this.chassis.hull = this.chassis.maxHull; // Reset hull to chassis hull
     this.engine.heat = 0; // Reset engine heat
-    this.engine.power = Math.min(this.engine.maxPower, 100.0); // Reset engine power to minimum
+    this.engine.power = 0; // Reset engine power to minimum
 
     this.detachAllCrates(); // Clear all crdates when respawning
     this.updateWeight(); // Update weight after respawn

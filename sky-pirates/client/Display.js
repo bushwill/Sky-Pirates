@@ -63,8 +63,8 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     // Spawn trail particles if enemy is throttling
     if (enemy.engine && enemy.engine.power > 0.1) {
         // Very occasional spawning for subtle effect
-        if (Math.random() < 0.05) { // 5% chance when displaying
-            spawnTrailParticles(enemy.x, enemy.y, enemy.angle, enemy.engine.power);
+        if (Math.random() < 0.05) { // 5% chance to spawn trail particles
+            spawnTrailParticles(enemy.x, enemy.y, enemy.angle, enemy.engine.power, enemy.engine);
         }
     }
     // Spawn foam particles if enemy is in water
@@ -144,8 +144,8 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     // Spawn trail particles if player is throttling
     if (player.engine && player.engine.power > 0.1) {
         // Very occasional spawning for subtle effect
-        if (Math.random() < 0.05) { // 5% chance when displaying
-            spawnTrailParticles(player.x, player.y, player.angle, player.engine.power);
+        if (Math.random() < 0.05) { // 5% chance to spawn trail particles
+            spawnTrailParticles(player.x, player.y, player.angle, player.engine.power, player.engine, player);
         }
     }
     
@@ -759,6 +759,61 @@ function spawnParticle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type = 'def
     particles.push(new Particle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type));
 }
 
+// Helper function to spawn flame particles (for engines, explosions, etc.)
+function spawnFlameParticles(x, y, count = 5, intensity = 1.0) {
+    for (let i = 0; i < count; i++) {
+        // Random velocity spread for realistic flame movement
+        const vx = (Math.random() - 0.5) * 1 * intensity;
+        const vy = (Math.random() - 0.5) * 1 * intensity;
+        const vz = (Math.random() - 0.5) * 0.5 * intensity;
+        
+        // Simple flame colors - random between red, orange, yellow
+        const colorChoice = Math.random();
+        let r, g, b;
+        if (colorChoice < 0.33) {
+            // Red - ensure it's clearly red
+            r = 255;
+            g = Math.floor(30 + Math.random() * 70);  // 30-99
+            b = 0;
+        } else if (colorChoice < 0.66) {
+            // Orange - ensure it's clearly orange
+            r = 255;
+            g = Math.floor(100 + Math.random() * 100); // 100-199
+            b = 0;
+        } else {
+            // Yellow - much darker to prevent white-like appearance
+            r = 255;
+            g = 255;
+            b = Math.floor(20 + Math.random() * 40); // 20-59 (much darker)
+        }
+        
+        const size = 2 + Math.random() * 3; // Slightly larger particles for visibility
+        const lifetime = 15 + Math.random() * 20; // Slightly longer lifetime for visibility
+        
+        spawnParticle(x, y, 0, vx, vy, vz, r, g, b, size, lifetime, 'flame');
+    }
+}
+
+// Helper function to spawn smoke particles (for engines, damage, etc.)
+function spawnSmokeParticles(x, y, count = 3, intensity = 1.0) {
+    for (let i = 0; i < count; i++) {
+        // Smoke drifts slowly with minimal upward bias
+        const vx = (Math.random() - 0.5) * 0.5 * intensity;
+        const vy = -0.1 * intensity; // Gentle upward movement
+        const vz = (Math.random() - 0.5) * 0.2 * intensity;
+        
+        // Simple gray smoke
+        const r = 100;
+        const g = 100; 
+        const b = 100;
+        
+        const size = 2 + Math.random() * 3;
+        const lifetime = 120 + Math.random() * 80; // Slow dissipation (2-3.3 seconds at 60fps)
+        
+        spawnParticle(x, y, 0, vx, vy, vz, r, g, b, size, lifetime, 'smoke');
+    }
+}
+
 function spawnGunFireParticles(x, y, angle, gunType = 0) {
     // Create muzzle flash particles
     const particleCount = 3 + Math.floor(Math.random() * 3); // 3-5 particles
@@ -804,9 +859,18 @@ function spawnGunFireParticles(x, y, angle, gunType = 0) {
         
         spawnParticle(x, y, 0, vx, vy, 0, r, g, b, size, lifetime);
     }
+    
+    // Add flame particles for enhanced muzzle flash effect
+    const flameIntensity = gunType === 1 ? 0.8 : 0.4; // Cannons get more intense flames
+    spawnFlameParticles(x, y, 2 + gunType, flameIntensity);
+    
+    // Add smoke for larger guns
+    if (gunType >= 1) { // Cannon and larger
+        spawnSmokeParticles(x, y, 1, 0.3);
+    }
 }
 
-function spawnTrailParticles(x, y, angle, throttle) {
+function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null) {
     // Only spawn trail particles if throttle is above minimum
     if (throttle <= 0.1) return;
     
@@ -819,6 +883,35 @@ function spawnTrailParticles(x, y, angle, throttle) {
     const spreadX = (Math.random() - 0.5) * 8;
     const spreadY = (Math.random() - 0.5) * 8;
     
+    // Check engine heat status
+    const heatRatio = engine ? engine.heat / engine.maxHeat : 0;
+    
+    // Check speed vs max speed for overspeed flame effects
+    let overspeedFlames = false;
+    if (player && player.vx !== undefined && player.vy !== undefined) {
+        const currentSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+        const maxSpeed = player.chassis ? player.chassis.topSpeed : 200; // Default to 200 if no chassis data
+        overspeedFlames = currentSpeed > maxSpeed;
+    }
+    
+    // Flame particles when heat is at 100% OR when exceeding max speed
+    if ((engine && heatRatio >= 1.0) || overspeedFlames) {
+        const flameChance = overspeedFlames ? 0.6 : 0.8; // Slightly less frequent for overspeed
+        if (Math.random() < flameChance) {
+            const flameCount = overspeedFlames ? 3 : 2; // More flames when overspeeding
+            spawnFlameParticles(trailX + spreadX, trailY + spreadY, flameCount, 1.0);
+        }
+    }
+    
+    // Smoke appears when heat is above 50%
+    if (engine && heatRatio > 0.5) {
+        const smokeIntensity = Math.min(1.0, (heatRatio - 0.5) / 0.5); // Scales from 50% to 100% heat
+        if (Math.random() < 0.3 * smokeIntensity) { // Chance increases with heat level
+            spawnSmokeParticles(trailX + spreadX, trailY + spreadY, 1, smokeIntensity);
+        }
+    }
+    
+    // Regular exhaust trail (original white particles)
     // Velocity based on throttle (opposite to plane direction)
     const speed = 0.5 + Math.random() * 1;
     const vx = -Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5;

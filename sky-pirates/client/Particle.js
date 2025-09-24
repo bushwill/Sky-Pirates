@@ -24,6 +24,9 @@ class Particle {
         // Particle type for physics
         this.type = type;
         
+        // Alpha transparency (used for smoke and other effects)
+        this.alpha = 255; // Default full opacity
+        
         // Death animation properties
         this.deathDuration = 10; // Frames for death animation
         this.deathTimer = 0;
@@ -83,24 +86,12 @@ class Particle {
                 this.vz *= Math.pow(airDragFactor, deltaTime);
             }
         } else if (this.type === 'flame') {
-            // Flame particles rise due to heat convection
-            this.vy += -0.6 * deltaTime; // Strong upward force from heat
-            
-            // Add slight random flickering movement
-            this.vx += (Math.random() - 0.5) * 0.4 * deltaTime;
-            this.vz += (Math.random() - 0.5) * 0.4 * deltaTime;
-            
+            // Flame particles - no upward movement
             // Light air resistance
-            const flameDragFactor = 0.96;
+            const flameDragFactor = 0.98;
             this.vx *= Math.pow(flameDragFactor, deltaTime);
             this.vy *= Math.pow(flameDragFactor, deltaTime);
             this.vz *= Math.pow(flameDragFactor, deltaTime);
-            
-            // Flames flicker - change color intensity slightly
-            const flicker = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 multiplier
-            this.r = Math.min(255, this.r * flicker);
-            this.g = Math.min(255, this.g * flicker);
-            this.b = Math.min(255, this.b * flicker);
             
             // Check if flame hits water - extinguish quickly
             const currentBiome = getBiomeAtPosition(this.x, this.y);
@@ -110,25 +101,21 @@ class Particle {
             }
             
         } else if (this.type === 'smoke') {
-            // Smoke rises but slower than flame
-            this.vy += -0.3 * deltaTime; // Moderate upward drift
+            // Smoke rises very gently (50% of original)
+            this.vy += -0.1 * deltaTime; // Gentle upward drift
             
             // Add wind-like horizontal drift
-            this.vx += (Math.random() - 0.5) * 0.2 * deltaTime;
-            
-            // Smoke expands as it rises (size increases over time)
-            const ageRatio = 1 - (this.lifetime / this.maxLifetime);
-            this.size = this.originalSize * (1 + ageRatio * 0.5); // Grows up to 1.5x original size
+            this.vx += (Math.random() - 0.5) * 0.1 * deltaTime;
             
             // Heavy air resistance - smoke disperses
-            const smokeDragFactor = 0.92;
+            const smokeDragFactor = 0.95;
             this.vx *= Math.pow(smokeDragFactor, deltaTime);
             this.vy *= Math.pow(smokeDragFactor, deltaTime);
             this.vz *= Math.pow(smokeDragFactor, deltaTime);
             
             // Smoke fades as it ages (alpha decreases)
-            const fadeAmount = ageRatio * 100; // Gradually becomes more transparent
-            this.alpha = Math.max(20, 120 - fadeAmount); // Start at 120, fade to 20 minimum
+            const ageRatio = 1 - (this.lifetime / this.maxLifetime);
+            this.alpha = Math.max(20, 150 * (1 - ageRatio)); // Fade from 150 to 20
         }
         
         // Update position based on velocity
@@ -175,18 +162,37 @@ class Particle {
         const screenX = this.x - cameraX;
         const screenY = this.y - cameraY;
         
-        // Set color with transparency for white particles
-        if (this.r === 255 && this.g === 255 && this.b === 255) {
-            // White particles get transparency based on lifetime
-            const alpha = Math.max(50, (this.lifetime / this.maxLifetime) * 150);
-            fill(this.r, this.g, this.b, alpha);
+        // Simple circle rendering for all particle types
+        if (this.type === 'flame') {
+            // Debug: Check if flame colors are being corrupted
+            if (this.r === 255 && this.g === 255 && this.b === 255) {
+                console.log(`WHITE FLAME PARTICLE DETECTED! RGB(${this.r}, ${this.g}, ${this.b})`);
+            }
+            
+            // Flame particles - simple colored circle
+            fill(this.r, this.g, this.b, 200);
+            noStroke();
+            circle(screenX, screenY, this.size);
+            
+        } else if (this.type === 'smoke') {
+            // Smoke particles - gray circle with fading alpha
+            fill(100, 100, 100, this.alpha);
+            noStroke();
+            circle(screenX, screenY, this.size);
+            
         } else {
-            // Other particles use full opacity
-            fill(this.r, this.g, this.b);
+            // Default particle rendering
+            if (this.r === 255 && this.g === 255 && this.b === 255) {
+                // White particles get transparency based on lifetime
+                const alpha = Math.max(50, (this.lifetime / this.maxLifetime) * 150);
+                fill(this.r, this.g, this.b, alpha);
+            } else {
+                // Other particles use full opacity or custom alpha
+                const alpha = this.alpha !== 255 ? this.alpha : 255;
+                fill(this.r, this.g, this.b, alpha);
+            }
+            noStroke();
+            circle(screenX, screenY, this.size);
         }
-        noStroke();
-        
-        // Draw particle as circle
-        circle(screenX, screenY, this.size);
     }
 }
