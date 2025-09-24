@@ -27,7 +27,7 @@ export class Player extends Plane {
   respawn() {
     this.x = this.startX;
     this.y = this.startY;
-    this.vx = 80;
+    this.vx = 0;
     this.vy = 0;
     this.t_x = 0;
     this.t_y = 0;

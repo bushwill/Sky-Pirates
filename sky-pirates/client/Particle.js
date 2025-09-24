@@ -82,6 +82,53 @@ class Particle {
                 this.vy *= Math.pow(airDragFactor, deltaTime);
                 this.vz *= Math.pow(airDragFactor, deltaTime);
             }
+        } else if (this.type === 'flame') {
+            // Flame particles rise due to heat convection
+            this.vy += -0.6 * deltaTime; // Strong upward force from heat
+            
+            // Add slight random flickering movement
+            this.vx += (Math.random() - 0.5) * 0.4 * deltaTime;
+            this.vz += (Math.random() - 0.5) * 0.4 * deltaTime;
+            
+            // Light air resistance
+            const flameDragFactor = 0.96;
+            this.vx *= Math.pow(flameDragFactor, deltaTime);
+            this.vy *= Math.pow(flameDragFactor, deltaTime);
+            this.vz *= Math.pow(flameDragFactor, deltaTime);
+            
+            // Flames flicker - change color intensity slightly
+            const flicker = 0.8 + Math.random() * 0.4; // 0.8 to 1.2 multiplier
+            this.r = Math.min(255, this.r * flicker);
+            this.g = Math.min(255, this.g * flicker);
+            this.b = Math.min(255, this.b * flicker);
+            
+            // Check if flame hits water - extinguish quickly
+            const currentBiome = getBiomeAtPosition(this.x, this.y);
+            if (currentBiome === 'water' && !this.isDying) {
+                this.isDying = true;
+                this.deathTimer = 5; // Very fast extinguish in water
+            }
+            
+        } else if (this.type === 'smoke') {
+            // Smoke rises but slower than flame
+            this.vy += -0.3 * deltaTime; // Moderate upward drift
+            
+            // Add wind-like horizontal drift
+            this.vx += (Math.random() - 0.5) * 0.2 * deltaTime;
+            
+            // Smoke expands as it rises (size increases over time)
+            const ageRatio = 1 - (this.lifetime / this.maxLifetime);
+            this.size = this.originalSize * (1 + ageRatio * 0.5); // Grows up to 1.5x original size
+            
+            // Heavy air resistance - smoke disperses
+            const smokeDragFactor = 0.92;
+            this.vx *= Math.pow(smokeDragFactor, deltaTime);
+            this.vy *= Math.pow(smokeDragFactor, deltaTime);
+            this.vz *= Math.pow(smokeDragFactor, deltaTime);
+            
+            // Smoke fades as it ages (alpha decreases)
+            const fadeAmount = ageRatio * 100; // Gradually becomes more transparent
+            this.alpha = Math.max(20, 120 - fadeAmount); // Start at 120, fade to 20 minimum
         }
         
         // Update position based on velocity
