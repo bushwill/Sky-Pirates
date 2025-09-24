@@ -294,7 +294,13 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawPlaneData(player, drawX, drawY);
     drawCompass(player);
     drawEnemyTargetIndicators(player, player.x, player.y); // Show enemy indicators on edge
-    if (player.browsing) displayInventory(player, drawX, drawY);
+    if (player.browsing) {
+        displayInventory(player, drawX, drawY);
+    }
+    // Always check for teleport button when in recovery zone
+    if (player.biome === 'recovery') {
+        displayTeleportButton(player);
+    }
 }
 
 function drawOverSpeedFireIcon(player, drawX, drawY) {
@@ -722,6 +728,65 @@ function displayInventory(controlledPlayer) {
             }
         }
     }
+}
+
+function displayTeleportButton(controlledPlayer) {
+    if (!controlledPlayer || !controlledPlayer.twinRecoveryZone) {
+        // Clear button region when not showing
+        teleportButtonRegion = null;
+        return;
+    }
+    
+    // Button position (bottom center of screen)
+    const buttonX = windowWidth / 2;
+    const buttonY = windowHeight - 100;
+    const buttonWidth = 200;
+    const buttonHeight = 40;
+    
+    // Store button region for click detection
+    teleportButtonRegion = {
+        x: buttonX,
+        y: buttonY,
+        width: buttonWidth,
+        height: buttonHeight
+    };
+    
+    // Save current drawing state
+    push();
+    
+    // Reset all text properties to default
+    textFont('Arial'); // Use a standard font
+    textStyle(NORMAL); // Ensure no bold/italic
+    rectMode(CENTER);
+    
+    // Check if mouse is hovering for highlight effect
+    const isHovering = mouseX >= buttonX - buttonWidth/2 && 
+                      mouseX <= buttonX + buttonWidth/2 && 
+                      mouseY >= buttonY - buttonHeight/2 && 
+                      mouseY <= buttonY + buttonHeight/2;
+    
+    // Button background with hover effect
+    fill(isHovering ? 80 : 60, 120, isHovering ? 255 : 200, 200);
+    stroke(255, 255, 255, 180);
+    strokeWeight(2);
+    rect(buttonX, buttonY, buttonWidth, buttonHeight, 8);
+    
+    // Button text
+    fill(255, 255, 255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(16);
+    textStyle(NORMAL);
+    text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, buttonX, buttonY - 2);
+    
+    // Instruction text
+    textSize(12);
+    textStyle(NORMAL);
+    fill(200, 200, 200);
+    text("Press T or click to teleport", buttonX, buttonY + 15);
+    
+    // Restore previous drawing state
+    pop();
 }
 
 function displayAppInfo() {

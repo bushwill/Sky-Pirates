@@ -121,12 +121,23 @@ function updatePlayer(player) {
   const deltaTime = 0.01 * timeSpeed;
   if (player.biome === 'recovery') {
     applyRecoveryJello(player, deltaTime);
+    
+    // Check for recovery zone and twin information
+    const currentRecoveryZone = mapData.getRecoveryZoneAtPosition(player.x, player.y);
+    const twinZone = currentRecoveryZone ? mapData.getTwinRecoveryZone(currentRecoveryZone) : null;
+    
+    // Store twin zone info on player for client
+    player.currentRecoveryZone = currentRecoveryZone;
+    player.twinRecoveryZone = twinZone;
+    
     if (player.inventory.length > 0) {
       if (player.browsing === false) player.browsing = true; // Set browsing flag if player has items in inventory
     }
   } else if (player.browsing === true) {
     player.browsing = false; // Reset browsing flag if player is not in recovery biome
-    sendNoticeMessage(player.username, "Sold all items for $" + player.sellAll(), 'pickup'); // Sell all items when leaving recovery biome
+    player.currentRecoveryZone = null; // Clear recovery zone info
+    player.twinRecoveryZone = null;
+    sendNoticeMessage(player.username, "Sold all items for $" + player.sellAll(), 'game'); // Sell all items when leaving recovery biome
   }
 }
 
@@ -619,7 +630,9 @@ function applyHeat(player, speed, deltaTime) {
   if (player.biome === 'water') {
     dispersed *= 2; // Increase heat dispersion in water
   } else if (player.biome === 'recovery') {
-    dispersed *= 10; // Increase heat dispersion in recovery biome
+    // Instantly reset heat to 0 in recovery zones
+    player.engine.heat = 0;
+    return; // Exit early since heat is already handled
   }
 
   if (player.engine.heat >= player.engine.maxHeat && generated > dispersed) {
@@ -718,6 +731,12 @@ function updateGunCooldown(gun, deltaTime) {
 }
 
 function updateGunHeat(player, gun, deltaTime) {
+  if (player.biome === 'recovery') {
+    // Instantly reset gun heat to 0 in recovery zones
+    gun.heat = 0;
+    return;
+  }
+  
   if (gun.heat > 0) {
     gun.heat = Math.max(0, gun.heat - player.chassis.heatDispersion * deltaTime);
   }
@@ -1001,6 +1020,9 @@ function handleIncomingMessage(ws, message) {
     case 'ping':
       handlePing(ws, message);
       break;
+    case 'teleport_to_twin':
+      handleTeleportToTwin(ws, message);
+      break;
   }
 }
 
@@ -1021,6 +1043,47 @@ function handleEquipItem(ws, message) {
   } else {
     console.warn('Player not found for equip_item:', ws.currentUsername);
   }
+};
+
+function handleTeleportToTwin(ws, message) {
+  const player = players.find(p => p.username === ws.currentUsername);
+  if (!player) {
+    console.warn('Player not found for teleport:', ws.currentUsername);
+    return;
+  }
+
+  // Check if player is in a recovery zone
+  const currentRecoveryZone = mapData.getRecoveryZoneAtPosition(player.x, player.y);
+  if (!currentRecoveryZone) {
+    sendNoticeMessage(ws.currentUsername, 'You must be in a recovery zone to teleport!', 'urgent');
+    return;
+  }
+
+  // Check if the recovery zone has a twin
+  const twinZone = mapData.getTwinRecoveryZone(currentRecoveryZone);
+  if (!twinZone) {
+    sendNoticeMessage(ws.currentUsername, 'This recovery zone has no twin destination!', 'urgent');
+    return;
+  }
+
+  // Calculate center of twin recovery zone
+  const twinCenterX = (twinZone.x1 + twinZone.x2) / 2;
+  const twinCenterY = (twinZone.y1 + twinZone.y2) / 2;
+
+  // Store current position for feedback
+  const oldX = Math.round(player.x);
+  const oldY = Math.round(player.y);
+
+  // Teleport the player to the twin zone center
+  player.x = twinCenterX;
+  player.y = twinCenterY;
+
+  // Reset velocity to prevent momentum carrying over
+  player.vx = 0;
+  player.vy = 0;
+
+  // Send feedback messages
+  sendNoticeMessage(ws.currentUsername, `Teleported from ${currentRecoveryZone.id} to ${twinZone.id}!`, 'game');
 };
 
 function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName }) {
@@ -1194,7 +1257,7 @@ function weaponTest(weaponNumber, player) {
   // Create level 1 components for the specified manufacturer
   const weapon = createEnemyGun(weaponNumber, 1);
   player.equip(weapon);
-  sendNoticeMessage(player.username, "Equipped weapon " + weapon.name, 'server');
+  sendNoticeMessage(player.username, "Equipped weapon " + weapon.name, 'game');
 }
 
 function checkCommand(command, player) {

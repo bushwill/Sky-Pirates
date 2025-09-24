@@ -5,8 +5,17 @@ function mousePressed() {
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
         menuManager.current.mousePressed(mouseX, mouseY, mx, my, mw, mh);
-    } else if (signedIn && inventoryRegions.length > 0) {
-        handleInventoryClick(mouseX, mouseY);
+    } else if (signedIn) {
+        // Check teleport button first (higher priority)
+        if (teleportButtonRegion) {
+            const teleportClicked = handleTeleportButtonClick(mouseX, mouseY);
+            if (teleportClicked) return; // If teleport button was clicked, don't check inventory
+        }
+        
+        // Then check inventory
+        if (inventoryRegions.length > 0) {
+            handleInventoryClick(mouseX, mouseY);
+        }
     }
 }
 
@@ -33,6 +42,10 @@ function keyPressed() {
             if (keyCode === ENTER) {
                 chatting = true;
                 helpWindow = false;
+            }
+            // Handle teleport key
+            else if (key === 't' || key === 'T') {
+                handleTeleportRequest();
             }
         }
     }

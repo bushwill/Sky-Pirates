@@ -26,6 +26,9 @@ let particles = [];
 // Each element will be an object: { item, x, y, size }
 let inventoryRegions = [];
 
+// Global variable to store teleport button region
+let teleportButtonRegion = null;
+
 let chat_messages = [];
 let notice_messages = [];
 
@@ -345,6 +348,41 @@ function handleDisconnectPage() {
 // --- Utility ---
 function hasNonWhitespace(str) {
     return str.trim().length > 0;
+}
+
+// --- Teleport Functions ---
+function handleTeleportRequest() {
+    const controlledPlayer = players.find(player => player.username === username);
+    if (!controlledPlayer || !controlledPlayer.twinRecoveryZone) {
+        return; // No twin zone available
+    }
+    
+    sendTeleportMessage();
+}
+
+function handleTeleportButtonClick(mouseX, mouseY) {
+    if (!teleportButtonRegion) return false;
+    
+    const isInside = mouseX >= teleportButtonRegion.x - teleportButtonRegion.width/2 && 
+                     mouseX <= teleportButtonRegion.x + teleportButtonRegion.width/2 && 
+                     mouseY >= teleportButtonRegion.y - teleportButtonRegion.height/2 && 
+                     mouseY <= teleportButtonRegion.y + teleportButtonRegion.height/2;
+    
+    if (isInside) {
+        handleTeleportRequest();
+        return true; // Button was clicked
+    }
+    
+    return false; // Button was not clicked
+}
+
+function sendTeleportMessage() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'teleport_to_twin'
+        };
+        ws.send(msgpack.encode(message));
+    }
 }
 
 let testing = false;
