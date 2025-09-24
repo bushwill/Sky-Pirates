@@ -10,7 +10,6 @@ export class Plane {
     this.g = g;
     this.b = b;
     this.size = 10;
-    this.repairSpeed = 5.0; // Repair speed in units per second
 
     this.chassis = createChassis(0, 1); // Standard chassis
     this.engine = createEngine(0, 1); // Standard engine

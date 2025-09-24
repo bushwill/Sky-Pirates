@@ -601,7 +601,7 @@ function createBullet(player, gun) {
 }
 
 function applyRepairs(player, deltaTime) {
-  const repairRate = player.repairSpeed; // Hull repaired per second
+  const repairRate = player.chassis.maxHull / 15; // Hull repaired per second
 
   if (player.chassis.hull < player.chassis.maxHull && player.biome !== 'water') {
     player.chassis.hull += repairRate * deltaTime;
