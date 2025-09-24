@@ -88,7 +88,7 @@ export function createPirateStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 1.0;
   const maxPower = randomFactor * (350.0 + adjustedLevel * 200.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * 0.06;
+  const heatEfficiency = randomFactor * (0.06 - adjustedLevel * 0.002);
   const maxHeat = randomFactor * (80.0 + adjustedLevel * 10.0);
   const value = randomFactor * (20 + adjustedLevel * 60);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
@@ -101,7 +101,7 @@ export function createCoreStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 1.5;
   const maxPower = randomFactor * (400.0 + adjustedLevel * 200.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * 0.05;
+  const heatEfficiency = randomFactor * (0.05 - adjustedLevel * 0.0015);
   const maxHeat = randomFactor * (100.0 + adjustedLevel * 10.0);
   const value = randomFactor * (80 + adjustedLevel * 200);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
@@ -114,7 +114,7 @@ export function createKamenStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 3.0;
   const maxPower = randomFactor * (600.0 + adjustedLevel * 200.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * 0.04;
+  const heatEfficiency = randomFactor * (0.04 - adjustedLevel * 0.001);
   const maxHeat = randomFactor * (200.0 + adjustedLevel * 50.0);
   const value = randomFactor * (100 + adjustedLevel * 300);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
@@ -127,7 +127,7 @@ export function createAeroStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 0.8;
   const maxPower = randomFactor * (400.0 + adjustedLevel * 200.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * 0.05;
+  const heatEfficiency = randomFactor * (0.05 - adjustedLevel * 0.0015);
   const maxHeat = randomFactor * (100.0 + adjustedLevel * 10.0);
   const value = randomFactor * (80 + adjustedLevel * 200);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
@@ -140,7 +140,7 @@ export function createNovaStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 2.0;
   const maxPower = randomFactor * (800.0 + adjustedLevel * 400.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * 0.05;
+  const heatEfficiency = randomFactor * (0.05 - adjustedLevel * 0.0015);
   const maxHeat = randomFactor * (150.0 + adjustedLevel * 20.0);
   const value = randomFactor * (200 + adjustedLevel * 500);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
@@ -348,7 +348,7 @@ export function createPeaShooterEngine(level = 1, random = true) {
   const weight = randomFactor * 1.0;
   const maxPower = randomFactor * (150.0 + adjustedLevel * 50.0);
   const minPower = 0.0;
-  const heatEfficiency = randomFactor * 0.06;
+  const heatEfficiency = randomFactor * (0.06 - adjustedLevel * 0.002);
   const maxHeat = randomFactor * (80.0 + adjustedLevel * 10.0);
   const value = randomFactor * (10 + adjustedLevel * 60);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);

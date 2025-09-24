@@ -1282,6 +1282,7 @@ function checkCommand(command, player) {
   // No Privilege Requirement
   let players_command = /^\/players$/;
   let parties_command = /^\/party\s(\w+)$/;
+  let align_command = /^\/align$/;
   let privilege_command = /^\/Shluck$/;
 
   // Full Privilege Requirement
@@ -1308,6 +1309,41 @@ function checkCommand(command, player) {
       party.addPlayer(player);
       sendNoticeMessage(player.username, "Joined party " + name, 'server');
     }
+  }
+
+  match = command.match(align_command);
+  if (match) {
+    // Snap player angle to nearest 90-degree direction
+    const currentAngle = normalizeAngle(player.angle);
+    
+    // Define the four cardinal directions in radians
+    const directions = [
+      { angle: 0, name: "right" },           // 0° - Right
+      { angle: Math.PI / 2, name: "down" },  // 90° - Down  
+      { angle: Math.PI, name: "left" },      // 180° - Left
+      { angle: -Math.PI / 2, name: "up" }    // -90° - Up
+    ];
+    
+    // Find the closest direction
+    let closestDirection = directions[0];
+    let smallestDiff = Math.abs(currentAngle - directions[0].angle);
+    
+    for (let dir of directions) {
+      let diff = Math.abs(currentAngle - dir.angle);
+      // Handle wraparound case (e.g., -179° vs 179°)
+      if (diff > Math.PI) {
+        diff = 2 * Math.PI - diff;
+      }
+      if (diff < smallestDiff) {
+        smallestDiff = diff;
+        closestDirection = dir;
+      }
+    }
+    
+    // Set player angle to the closest cardinal direction
+    player.angle = closestDirection.angle;
+    
+    sendNoticeMessage(player.username, `Aligned to face ${closestDirection.name}`, 'game');
   }
 
   match = command.match(privilege_command);
