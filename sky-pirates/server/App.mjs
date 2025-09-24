@@ -564,7 +564,7 @@ function checkDetach(plane) {
 
 function checkSpawnEnemyPlane(plane) {
   const now = Date.now();
-  if (plane.keys['p'] && (now - lastEnemySpawnTime > enemySpawnRate)) {
+  if (plane.keys['p'] && plane.privileges && (now - lastEnemySpawnTime > enemySpawnRate)) {
     lastEnemySpawnTime = now;
     const enemy = new NavySalvagePlane(
       plane.biome,
