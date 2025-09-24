@@ -54,6 +54,11 @@ const wss = new WebSocketServer({
   perMessageDeflate: { zlibDeflateOptions: { level: 9 } } // Highest compression
 });
 
+// Debug WebSocket connection attempts
+server.on('upgrade', (request, socket, head) => {
+  console.log('WebSocket upgrade request received:', request.url, request.headers);
+});
+
 function millis() {
   return Date.now() - startMillis;
 }
@@ -895,7 +900,8 @@ function getSerializableParties() {
   }));
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, request) => {
+  console.log('WebSocket connection established from:', request.socket.remoteAddress, 'URL:', request.url);
   ws.currentUsername = null; // Initialize username per connection
 
   ws.on('message', (data) => {
@@ -1062,7 +1068,7 @@ function handlePing(ws, message) {
 }
 
 // Helper function to filter entities within culling range of a player
-function filterEntitiesInRange(entities, player, cullingDistance = 5000) {
+function filterEntitiesInRange(entities, player, cullingDistance = 2000) {
   if (!player) return [];
   return entities.filter(entity => {
     const dist = Math.sqrt(
