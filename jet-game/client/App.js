@@ -62,6 +62,19 @@ function setup() {
   restartGame();
 }
 
+  // Prevent default scrolling on mobile by returning false in p5.js touch event handlers
+  function touchStarted() {
+    return false;
+  }
+
+  function touchMoved() {
+    return false;
+  }
+
+  function touchEnded() {
+    return false;
+  }
+
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
