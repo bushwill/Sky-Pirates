@@ -121,8 +121,26 @@ function updatePlane(plane) {
   updatePosition(plane);
 }
 
+// Update a single enemy boat (AI controlled)
+function updateBoat(boat) {
+  // Boats handle their own gun targeting but need gun heat/cooldown updates
+  const deltaTime = 0.01 * timeSpeed;
+  if (boat.gun1) {
+    updateGunCooldown(boat.gun1, deltaTime);
+    updateGunHeat(boat, boat.gun1, deltaTime);
+  }
+  if (boat.gun2) {
+    updateGunCooldown(boat.gun2, deltaTime);
+    updateGunHeat(boat, boat.gun2, deltaTime);
+  }
+}
+
 function updateEnemy(enemy) {
-  if (enemy instanceof EnemyPlane) updatePlane(enemy);
+  if (enemy instanceof EnemyPlane) {
+    updatePlane(enemy);
+  } else if (enemy instanceof NavySalvageBoat) {
+    updateBoat(enemy);
+  }
   enemy.updateAI(players);
   // Destroy enemy if it enters recovery biome
   if (enemy.biome === 'recovery') {
@@ -192,7 +210,9 @@ function updateProjectile(projectile) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance < player.size + projectile.size) {
-      player.chassis.hull -= projectile.damage; // Apply damage to player
+      // Apply damage to player's hull (support both player.chassis.hull and player.hull)
+      if (typeof player.hull === 'number') player.hull -= projectile.damage;
+      else if (player.chassis && typeof player.chassis.hull === 'number') player.chassis.hull -= projectile.damage;
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }
   });
@@ -205,7 +225,9 @@ function updateProjectile(projectile) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance < enemy.size + projectile.size) {
-      enemy.chassis.hull -= projectile.damage; // Apply damage to enemy
+      // Apply damage to enemy hull; boats may have enemy.hull while planes use enemy.chassis.hull
+      if (typeof enemy.hull === 'number') enemy.hull -= projectile.damage;
+      else if (enemy.chassis && typeof enemy.chassis.hull === 'number') enemy.chassis.hull -= projectile.damage;
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }
   });
@@ -617,12 +639,22 @@ function createBullet(player, gun) {
 }
 
 function applyRepairs(player, deltaTime) {
-  const repairRate = player.chassis.maxHull / 15; // Hull repaired per second
+  // Support both direct hull and chassis.hull
+  const maxHull = (typeof player.maxHull === 'number') ? player.maxHull : (player.chassis && typeof player.chassis.maxHull === 'number' ? player.chassis.maxHull : null);
+  if (!maxHull) return;
+  const repairRate = maxHull / 15; // Hull repaired per second
 
-  if (player.chassis.hull < player.chassis.maxHull && player.biome !== 'water') {
-    player.chassis.hull += repairRate * deltaTime;
-    if (player.chassis.hull > player.chassis.maxHull) {
-      player.chassis.hull = player.chassis.maxHull; // Clamp to max hull
+  if (player.biome === 'water') return; // No repairs in water
+
+  if (typeof player.hull === 'number') {
+    if (player.hull < maxHull) {
+      player.hull += repairRate * deltaTime;
+      if (player.hull > maxHull) player.hull = maxHull;
+    }
+  } else if (player.chassis && typeof player.chassis.hull === 'number') {
+    if (player.chassis.hull < maxHull) {
+      player.chassis.hull += repairRate * deltaTime;
+      if (player.chassis.hull > maxHull) player.chassis.hull = maxHull; // Clamp to max hull
     }
   }
 }
@@ -670,7 +702,9 @@ function applyHeat(player, speed, deltaTime) {
   }
 
   if (player.engine.heat >= player.engine.maxHeat && generated > dispersed) {
-    player.chassis.hull -= (generated - dispersed) / 5; // Hull damage if heat is too high
+    const heatDamage = (generated - dispersed) / 5;
+    if (typeof player.hull === 'number') player.hull -= heatDamage;
+    else if (player.chassis && typeof player.chassis.hull === 'number') player.chassis.hull -= heatDamage; // Hull damage if heat is too high
   } else {
     player.engine.heat += (generated - dispersed);
   }
@@ -905,13 +939,25 @@ function applyPlayerDrag(player, deltaTime) {
   if (Math.abs(player.vy) < 0.001) player.vy = 0;
 }
 
-function updateHull(player) {
+function updateHull(entity) {
   const deltaTime = 0.01 * timeSpeed;
-  if (player.chassis.hull <= 0) {
-    if (player.money >= player.value) handleRevive(player);
-    else handleDeath(player);
+  // Support both direct hull (boats) and chassis.hull (planes/players)
+  const hull = (typeof entity.hull === 'number') ? entity.hull : (entity.chassis && typeof entity.chassis.hull === 'number' ? entity.chassis.hull : null);
+  const maxHull = (typeof entity.maxHull === 'number') ? entity.maxHull : (entity.chassis && typeof entity.chassis.maxHull === 'number' ? entity.chassis.maxHull : null);
+
+  if (hull !== null && hull <= 0) {
+    // Determine if this entity is a player (has money/value) or an enemy
+    const isPlayer = players.some(p => p.username === entity.username);
+    if (isPlayer) {
+      if (entity.money >= entity.value) handleRevive(entity);
+      else handleDeath(entity);
+    } else {
+      // For enemies, just remove them
+      handleDeath(entity);
+    }
   }
-  // Removed water hull damage - planes no longer take damage just for being in water
+
+  // No automatic hull drain in water here; repair/heat systems handle repair/damage elsewhere.
 }
 
 function handleRevive(player) {

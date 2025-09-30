@@ -75,7 +75,6 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     // Spawn foam particles if enemy is in water
     const enemyBiome = getBiomeAtPosition(enemy.x, enemy.y);
     if (enemyBiome === 'water') {
-        // More frequent spawning for consistent wake
         if (Math.random() < 0.3) { // 30% chance when displaying (increased from 12%)
             spawnWaterFoamParticles(enemy.x, enemy.y, { vx: enemy.vx, vy: enemy.vy });
         }
@@ -86,52 +85,23 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
     push();
     translate(drawX, drawY);
+    
+    // Draw enemy based on type using dedicated functions
     if (enemyType.includes('Plane')) {
-        // Plane: draw triangle
-        rotate(enemy.angle);
-        triangle(-5, -3, -5, 3, 7, 0);
+        drawEnemyPlane(enemy);
     } else if (enemyType.includes('Boat')) {
-        // Boat: draw a simple navy boat shape
-        let sz = enemy.size ?? 20;
-        // Hull
-        fill(enemy.r ?? 80, enemy.g ?? 80, enemy.b ?? 200);
-        stroke(40, 40, 100);
-        beginShape();
-        vertex(-sz/2, sz/4);
-        vertex(0, sz/2);
-        vertex(sz/2, sz/4);
-        vertex(sz/2, -sz/4);
-        vertex(0, -sz/2);
-        vertex(-sz/2, -sz/4);
-        endShape(CLOSE);
-        // Cabin
-        fill(200, 200, 255);
-        rect(0, -sz/8, sz/4, sz/4, 3);
-        // Gun (if firing)
-        if (enemy.isFiring && enemy.aimPoint && enemy.aimPoint.x !== null && enemy.aimPoint.y !== null) {
-            stroke(255,0,0);
-            strokeWeight(3);
-            let gunLen = sz/2;
-            let gunAngle = enemy.angle ?? 0;
-            let gx = Math.cos(gunAngle) * gunLen;
-            let gy = Math.sin(gunAngle) * gunLen;
-            line(0, 0, gx, gy);
-            strokeWeight(1);
-        }
-    // (No per-type label here; unified label will be drawn below)
+        drawEnemyBoat(enemy);
     } else {
-        // Not a plane: draw square
-        let sz = enemy.size ?? 10;
-        rectMode(CENTER);
-        rect(0, 0, sz, sz);
-    // (No per-type label here; unified label will be drawn below)
+        drawEnemyDefault(enemy);
     }
+    
     pop();
     // Draw enemy hull/health arc (guard chassis fields)
     const arcRadius = 60;
     const arcThickness = 4;
-    const hull = enemy.chassis && typeof enemy.chassis.hull === 'number' ? enemy.chassis.hull : 0;
-    const maxHull = enemy.chassis && typeof enemy.chassis.maxHull === 'number' ? enemy.chassis.maxHull : 1;
+    // Support both direct hull (boats) and chassis.hull (planes/players)
+    const hull = (typeof enemy.hull === 'number') ? enemy.hull : (enemy.chassis && typeof enemy.chassis.hull === 'number' ? enemy.chassis.hull : 0);
+    const maxHull = (typeof enemy.maxHull === 'number') ? enemy.maxHull : (enemy.chassis && typeof enemy.chassis.maxHull === 'number' ? enemy.chassis.maxHull : 1);
     const hullRatio = Math.max(0, Math.min(1, hull / maxHull));
     push();
     translate(drawX, drawY);
@@ -613,7 +583,10 @@ function drawPlaneHeat(player, drawX = 0, drawY = 0) {
 function drawPlaneHull(player, drawX = 0, drawY = 0) {
     const arcRadius = 60;
     const arcThickness = 4;
-    const hullRatio = Math.max(0, Math.min(1, player.chassis.hull / player.chassis.maxHull));
+    // Support both direct hull (boats) and chassis.hull (planes/players)
+    const currentHull = (typeof player.hull === 'number') ? player.hull : (player.chassis && typeof player.chassis.hull === 'number' ? player.chassis.hull : 0);
+    const maxHull = (typeof player.maxHull === 'number') ? player.maxHull : (player.chassis && typeof player.chassis.maxHull === 'number' ? player.chassis.maxHull : 1);
+    const hullRatio = Math.max(0, Math.min(1, currentHull / maxHull));
     push();
     translate(drawX, drawY);
     strokeWeight(arcThickness);
@@ -1046,6 +1019,46 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
     const lifetime = 15 + Math.random() * 10; // Shorter lifetime
     
     spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
+}
+
+// Enemy drawing functions - abstracted for better organization
+function drawEnemyPlane(enemy) {
+    // Plane: draw triangle
+    rotate(enemy.angle);
+    triangle(-5, -3, -5, 3, 7, 0);
+}
+
+function drawEnemyBoat(enemy) {
+    // Simple boat: trapezoid shape with red gun line
+    const base = enemy.size ?? 30;
+    const length = base * 1.2;
+    const height = base * 0.5;
+
+    // Hull trapezoid (flat deck on top, pointed hull bottom)
+    fill(120, 120, 120);
+    noStroke();
+    beginShape();
+    vertex(-length/2, -height/5);     // top left (deck)
+    vertex(length/2, -height/5);      // top right (deck) - flat top
+    vertex(length/3, height/2);       // bottom right (hull point)
+    vertex(-length/3, height/2);      // bottom left (hull point)
+    endShape(CLOSE);
+
+    // Red gun line - rotates to follow gun angle
+    const gunAngle = enemy.gun1?.angle ?? 0;
+    
+    stroke(255, 0, 0);
+    strokeWeight(3);
+    const gunLength = length * 0.4;
+    line(0, 0, Math.cos(gunAngle) * gunLength, Math.sin(gunAngle) * gunLength);
+    noStroke();
+}
+
+function drawEnemyDefault(enemy) {
+    // Default enemy: draw square
+    let sz = enemy.size ?? 10;
+    rectMode(CENTER);
+    rect(0, 0, sz, sz);
 }
 
 function windowResized() {

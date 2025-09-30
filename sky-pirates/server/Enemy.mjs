@@ -38,6 +38,11 @@ export class EnemyBoat {
     this.target = target;
     this.keys = {};
     this.messages = [];
+    // Default size and chassis so projectiles can collide and damage hull
+    this.size = 25;
+    // Boats don't get plane chassis; give them a simple hull property instead
+    this.maxHull = 100; // reasonable default for enemy boats
+    this.hull = this.maxHull;
   }
 
   updateAI() {
@@ -269,9 +274,14 @@ export class NavySalvageBoat extends EnemyBoat {
     const aimX = predictedX;
     const aimY = predictedY;
     const aimAngle = Math.atan2(aimY - this.y, aimX - this.x);
-    this.angle = aimAngle;
+    
+    // Set gun angle, not boat angle (boats stay horizontal)
+    if (this.gun1) {
+      this.gun1.angle = aimAngle;
+    }
     this.aimPoint = { x: aimX, y: aimY };
-    const shootDistance = 600;
+    
+    const shootDistance = 1000;
     if (distToTarget < shootDistance && this.gun1) {
       this.selectedGun = 1;
       this.keys.mouse = true;
