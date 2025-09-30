@@ -8,7 +8,7 @@ import fs from 'fs';
 
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
-import { NavySalvagePlane, EnemyPlane } from './Enemy.mjs';
+import { NavySalvagePlane, NavySalvageBoat, EnemyPlane } from './Enemy.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
@@ -61,6 +61,22 @@ server.on('upgrade', (request, socket, head) => {
 
 function millis() {
   return Date.now() - startMillis;
+}
+
+// Helper: return the water surface Y at a given x coordinate.
+// Picks the water biome that contains x (x1 <= x <= x2) or falls back to the first water biome.
+// Returns the numerically smaller of y1 and y2 (higher on-screen), or null if none found.
+function getWaterSurfaceAt(x) {
+  if (!mapData || !Array.isArray(mapData.biomes)) return null;
+  let waterBiome = mapData.biomes.find(b => b.type === 'water' && b.x1 <= x && x <= b.x2);
+  if (!waterBiome) waterBiome = mapData.biomes.find(b => b.type === 'water');
+  if (!waterBiome) return null;
+
+  const y1 = (typeof waterBiome.y1 === 'number') ? waterBiome.y1 : Infinity;
+  const y2 = (typeof waterBiome.y2 === 'number') ? waterBiome.y2 : Infinity;
+  const surfaceY = Math.min(y1, y2);
+  if (!isFinite(surfaceY)) return null;
+  return surfaceY;
 }
 
 function updatePlayers() {
@@ -1278,7 +1294,50 @@ function weaponTest(weaponNumber, player) {
   sendNoticeMessage(player.username, "Equipped weapon " + weapon.name, 'game');
 }
 
+function enemyTest(player, type = 0) {
+  try {
+    if (type === 0) {
+      const enemy = new NavySalvagePlane(
+        player.biome,
+        `NavySalvage_${Date.now()}`,
+        50, 50, 200,
+        player.x,
+        player.y - 500
+      );
+      enemies.push(enemy);
+      console.log(`Spawned plane ${enemy.username} at ${enemy.x},${enemy.y}`);
+      sendNoticeMessage(player.username, `Spawned plane ${enemy.username}`, 'server');
+    } else if (type === 1) {
+      // Spawn boat at player's x and at ocean surface.
+      // Prefer the water biome that contains the player's x, otherwise fall back to the first water biome.
+      let waterBiome = mapData.biomes.find(b => b.type === 'water' && b.x1 <= player.x && player.x <= b.x2);
+      if (!waterBiome) waterBiome = mapData.biomes.find(b => b.type === 'water');
+
+      // Determine surface Y using helper
+      let waterY = getWaterSurfaceAt(player.x);
+      if (waterY === null) waterY = 310;
+
+      const enemy = new NavySalvageBoat(
+        player.biome,
+        `NavyBoat_${Date.now()}`,
+        50, 50, 200,
+        player.x,
+        waterY
+      );
+      enemies.push(enemy);
+      console.log(`Spawned boat ${enemy.username} at ${enemy.x},${enemy.y}`);
+      sendNoticeMessage(player.username, `Spawned boat ${enemy.username}`, 'server');
+    } else {
+      sendNoticeMessage(player.username, `Unknown enemy type ${type}`, 'server');
+    }
+  } catch (err) {
+    console.error('Failed to spawn enemy:', err);
+    sendNoticeMessage(player.username, 'Failed to spawn enemy: ' + err.message, 'server');
+  }
+}
+
 function checkCommand(command, player) {
+  let match;
   // No Privilege Requirement
   let players_command = /^\/players$/;
   let parties_command = /^\/party\s(\w+)$/;
@@ -1287,11 +1346,15 @@ function checkCommand(command, player) {
 
   // Full Privilege Requirement
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
-    let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
+  let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
   let weapontest_command = /^\/weapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
-  let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;  let match = command.match(players_command);
+  let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
+  let enemytest_command = /^\/enemytest\s+(\d+)$/;
+
+  
+  match = command.match(players_command);
   if (match) {
     sendNoticeMessage(player.username, players.map(player => player.username).join(", "), 'server');
   }
@@ -1348,11 +1411,33 @@ function checkCommand(command, player) {
 
   match = command.match(privilege_command);
   if (match) {
-    sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
-    player.privileges = true;
+    try {
+      sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
+      player.privileges = true;
+    } catch (err) {
+      console.error('Error enabling privileges for', player && player.username, err);
+      // Avoid crashing the server; notify the admin if possible
+      try {
+        sendNoticeMessage(player.username, 'Failed to enable privileges: ' + (err && err.message), 'server');
+      } catch (e) {
+        console.error('Also failed to send failure notice:', e);
+      }
+    }
   }
 
   if (!player.privileges) return false;
+
+  // Admin-only commands
+  match = command.match(enemytest_command);
+  if (match) {
+    const type = parseInt(match[1]);
+    if (typeof enemyTest === 'function') {
+      enemyTest(player, type);
+    } else {
+      sendNoticeMessage(player.username, "enemyTest() not implemented.", 'server');
+    }
+    return true;
+  }
 
   match = command.match(ep_command);
   if (match) {

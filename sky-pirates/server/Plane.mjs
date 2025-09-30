@@ -4,6 +4,7 @@ import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 
 export class Plane {
   constructor(biome, username, r, g, b, x, y) {
+    this.type = 'Plane';
     this.keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
     this.username = username;
     this.r = r;

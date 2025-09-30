@@ -58,6 +58,14 @@ function displayEnemies(centerX = 0, centerY = -400) {
 // Display a single enemy
 function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -400) {
     // Spawn trail particles if enemy is throttling
+    if (!enemy) {
+        console.warn('displayEnemy called with invalid enemy:', enemy);
+        return;
+    }
+
+    // Normalize type to a string to avoid .includes on undefined
+    const enemyType = (typeof enemy.type === 'string') ? enemy.type : '';
+
     if (enemy.engine && enemy.engine.power > 0.1) {
         // Very occasional spawning for subtle effect
         if (Math.random() < 0.05) { // 5% chance to spawn trail particles
@@ -78,13 +86,53 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
     push();
     translate(drawX, drawY);
-    rotate(enemy.angle);
-    triangle(-5, -3, -5, 3, 7, 0);
+    if (enemyType.includes('Plane')) {
+        // Plane: draw triangle
+        rotate(enemy.angle);
+        triangle(-5, -3, -5, 3, 7, 0);
+    } else if (enemyType.includes('Boat')) {
+        // Boat: draw a simple navy boat shape
+        let sz = enemy.size ?? 20;
+        // Hull
+        fill(enemy.r ?? 80, enemy.g ?? 80, enemy.b ?? 200);
+        stroke(40, 40, 100);
+        beginShape();
+        vertex(-sz/2, sz/4);
+        vertex(0, sz/2);
+        vertex(sz/2, sz/4);
+        vertex(sz/2, -sz/4);
+        vertex(0, -sz/2);
+        vertex(-sz/2, -sz/4);
+        endShape(CLOSE);
+        // Cabin
+        fill(200, 200, 255);
+        rect(0, -sz/8, sz/4, sz/4, 3);
+        // Gun (if firing)
+        if (enemy.isFiring && enemy.aimPoint && enemy.aimPoint.x !== null && enemy.aimPoint.y !== null) {
+            stroke(255,0,0);
+            strokeWeight(3);
+            let gunLen = sz/2;
+            let gunAngle = enemy.angle ?? 0;
+            let gx = Math.cos(gunAngle) * gunLen;
+            let gy = Math.sin(gunAngle) * gunLen;
+            line(0, 0, gx, gy);
+            strokeWeight(1);
+        }
+    // (No per-type label here; unified label will be drawn below)
+    } else {
+        // Not a plane: draw square
+        let sz = enemy.size ?? 10;
+        rectMode(CENTER);
+        rect(0, 0, sz, sz);
+    // (No per-type label here; unified label will be drawn below)
+    }
     pop();
-    // Draw enemy hull/health arc
+    // Draw enemy hull/health arc (guard chassis fields)
     const arcRadius = 60;
     const arcThickness = 4;
-    const hullRatio = Math.max(0, Math.min(1, enemy.chassis.hull / enemy.chassis.maxHull));
+    const hull = enemy.chassis && typeof enemy.chassis.hull === 'number' ? enemy.chassis.hull : 0;
+    const maxHull = enemy.chassis && typeof enemy.chassis.maxHull === 'number' ? enemy.chassis.maxHull : 1;
+    const hullRatio = Math.max(0, Math.min(1, hull / maxHull));
     push();
     translate(drawX, drawY);
     strokeWeight(arcThickness);
@@ -111,13 +159,12 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
         pop();
     }
 
-    fill(255, 50, 50);
+    // Draw a single unified label for the enemy above its position.
+    fill(255);
     textSize(12);
-    if (!enemy || !enemy.username) {
-        console.warn("Invalid enemy or missing username:", enemy);
-        return;
-    }
-    text(enemy.faction ?? "Enemy", drawX, drawY - 15);
+    const showNameGlobal = (enemy.username && !String(enemy.username).startsWith('Navy'));
+    const labelText = showNameGlobal ? enemy.username : (enemy.faction ?? "Enemy");
+    text(labelText, drawX, drawY - 15);
 }
 
 function displayPlayers(centerX = 0, centerY = -400) {

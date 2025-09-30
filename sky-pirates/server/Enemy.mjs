@@ -25,6 +25,7 @@ export class EnemyPlane extends Plane {
 
 export class EnemyBoat {
   constructor(biome, username, r, g, b, x, y, faction = null, target = null) {
+    this.type = 'Boat';
     this.biome = biome;
     this.username = username;
     this.r = r;
@@ -36,6 +37,7 @@ export class EnemyBoat {
     this.angle = 0;
     this.target = target;
     this.keys = {};
+    this.messages = [];
   }
 
   updateAI() {
