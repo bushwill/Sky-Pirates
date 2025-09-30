@@ -25,7 +25,7 @@ export class Plane {
     this.startY = y; // Initial Y position
     this.x = x;
     this.y = y;
-    this.vx = 80;
+    this.vx = 0;
     this.vy = 0;
     this.t_x = 0;
     this.t_y = 0;
