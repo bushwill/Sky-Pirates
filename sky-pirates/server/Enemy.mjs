@@ -220,11 +220,10 @@ export class NavySalvagePlane extends EnemyPlane {
 export class NavySalvageBoat extends EnemyBoat {
   constructor(biome, username, r, g, b, x, y) {
     super(biome, username, r, g, b, x, y, 'navy');
+    this.maxHull = 1000;
+    this.hull = this.maxHull;
     this.gun1 = createEnemyGun(0, 1); // You can adjust gun type as needed
     this.gun2 = null;
-    this.engine = null; // No engine, does not move
-    this.chassis = createEnemyChassis(0, 1);
-    this.wings = createEnemyWings(0, 1);
     this.isFiring = false;
     this.aimPoint = { x: null, y: null };
   }
