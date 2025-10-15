@@ -98,43 +98,6 @@ function updateEnemies() {
   });
 }
 
-// Update a single enemy plane (AI controlled)
-// Shared plane update logic for both players and enemies
-function updatePlane(plane) {
-  const deltaTime = 0.01 * timeSpeed;
-  const speed = getSpeed(plane);
-
-  if (!plane.keys['r']) {
-    applyTurning(plane, speed, deltaTime);
-    applyThrottle(plane);
-    checkPlayerShooting(plane);
-    checkDetach(plane);
-  } else {
-    applyRepairs(plane, deltaTime);
-  }
-  applyPropulsion(plane, deltaTime);
-  applyHeat(plane, speed, deltaTime);
-  updateGuns(plane, deltaTime);
-  applyLiftForce(plane, speed, deltaTime);
-  applyPlayerGravity(plane);
-  applyPlayerDrag(plane, deltaTime);
-  updatePosition(plane);
-}
-
-// Update a single enemy boat (AI controlled)
-function updateBoat(boat) {
-  // Boats handle their own gun targeting but need gun heat/cooldown updates
-  const deltaTime = 0.01 * timeSpeed;
-  if (boat.gun1) {
-    updateGunCooldown(boat.gun1, deltaTime);
-    updateGunHeat(boat, boat.gun1, deltaTime);
-  }
-  if (boat.gun2) {
-    updateGunCooldown(boat.gun2, deltaTime);
-    updateGunHeat(boat, boat.gun2, deltaTime);
-  }
-}
-
 function updateEnemy(enemy) {
   if (enemy instanceof EnemyPlane) {
     updatePlane(enemy);
@@ -175,6 +138,38 @@ function updatePlayer(player) {
   }
 }
 
+// Update a single enemy plane (AI controlled)
+// Shared plane update logic for both players and enemies
+function updatePlane(plane) {
+  if (!validatePlaneCoordinates(plane)) return;
+  const deltaTime = 0.01 * timeSpeed;
+  const speed = getSpeed(plane);
+
+  if (!plane.keys['r']) {
+    applyTurning(plane, speed, deltaTime);
+    applyThrottle(plane);
+    checkPlayerShooting(plane);
+    checkDetach(plane);
+  } else {
+    applyRepairs(plane, deltaTime);
+  }
+  applyPropulsion(plane, deltaTime);
+  applyHeat(plane, speed, deltaTime);
+  updateGuns(plane, deltaTime);
+  applyLiftForce(plane, speed, deltaTime);
+  applyPlayerGravity(plane);
+  applyPlayerDrag(plane, deltaTime);
+  updatePosition(plane);
+}
+
+// Update a single enemy boat (AI controlled)
+function updateBoat(boat) {
+  // Boats handle their own gun targeting but need gun heat/cooldown updates and shooting
+  const deltaTime = 0.01 * timeSpeed;
+  updateGuns(boat, deltaTime);
+  checkPlayerShooting(boat);
+}
+
 function updateProjectiles() {
   projectiles.forEach((projectile) => {
     updateProjectile(projectile);
@@ -210,9 +205,10 @@ function updateProjectile(projectile) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance < player.size + projectile.size) {
-      // Apply damage to player's hull (support both player.chassis.hull and player.hull)
-      if (typeof player.hull === 'number') player.hull -= projectile.damage;
-      else if (player.chassis && typeof player.chassis.hull === 'number') player.chassis.hull -= projectile.damage;
+      // Call entity's damage handler
+      if (player.onDamaged) {
+        player.onDamaged(projectile);
+      }
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }
   });
@@ -225,9 +221,10 @@ function updateProjectile(projectile) {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     if (distance < enemy.size + projectile.size) {
-      // Apply damage to enemy hull; boats may have enemy.hull while planes use enemy.chassis.hull
-      if (typeof enemy.hull === 'number') enemy.hull -= projectile.damage;
-      else if (enemy.chassis && typeof enemy.chassis.hull === 'number') enemy.chassis.hull -= projectile.damage;
+      // Call entity's damage handler
+      if (enemy.onDamaged) {
+        enemy.onDamaged(projectile);
+      }
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }
   });
@@ -713,18 +710,18 @@ function applyHeat(player, speed, deltaTime) {
   player.engine.heat = Math.max(0, Math.min(player.engine.maxHeat, player.engine.heat));
 }
 
-function validatePlayerCoordinates(player) {
+function validatePlaneCoordinates(plane) {
   if (
-    typeof player.t_x !== 'number' ||
-    typeof player.t_y !== 'number' ||
-    typeof player.x !== 'number' ||
-    typeof player.y !== 'number'
+    typeof plane.t_x !== 'number' ||
+    typeof plane.t_y !== 'number' ||
+    typeof plane.x !== 'number' ||
+    typeof plane.y !== 'number'
   ) {
-    console.error(`Invalid coordinates for player ${player.username}:`, {
-      t_x: player.t_x,
-      t_y: player.t_y,
-      x: player.x,
-      y: player.y,
+    console.error(`Invalid coordinates for plane ${plane.username}:`, {
+      t_x: plane.t_x,
+      t_y: plane.t_y,
+      x: plane.x,
+      y: plane.y,
     });
     return false;
   }
@@ -798,43 +795,44 @@ function updateGunCooldown(gun, deltaTime) {
   }
 }
 
-function updateGunHeat(player, gun, deltaTime) {
-  if (player.biome === 'recovery') {
+function updateGunHeat(entity, gun, deltaTime) {
+  if (entity.biome === 'recovery') {
     // Instantly reset gun heat to 0 in recovery zones
     gun.heat = 0;
     return;
   }
   
   if (gun.heat > 0) {
-    gun.heat = Math.max(0, gun.heat - player.chassis.heatDispersion * deltaTime);
+    // Use chassis.heatDispersion for players, default value for enemies
+    const heatDispersion = entity.chassis?.heatDispersion ?? 30;
+    gun.heat = Math.max(0, gun.heat - heatDispersion * deltaTime);
   }
 }
 
-function updateGuns(player, deltaTime) {
-  if (!validatePlayerCoordinates(player)) return;
-
-  const targetAngle = getTargetAngle(player);
+function updateGuns(entity, deltaTime) {
+  const targetAngle = getTargetAngle(entity);
 
   if (isNaN(targetAngle)) {
-    console.error(`NaN targetAngle for player ${player.username}`, {
+    console.error(`NaN targetAngle for entity ${entity.username}`, {
       targetAngle,
-      gun1Angle: player.gun1?.angle,
-      gun2Angle: player.gun2?.angle,
+      gun1Angle: entity.gun1?.angle,
+      gun2Angle: entity.gun2?.angle,
     });
     return;
   }
 
-  if (player.gun1) {
-    updateGunAngle(player, player.gun1, targetAngle, deltaTime);
-    player.gun1.angle = clampAngle(player.gun1.angle, player.angle, player.gun1.maxAngle);
-    updateGunCooldown(player.gun1, deltaTime);
-    updateGunHeat(player, player.gun1, deltaTime);
+  if (entity.gun1) {
+    updateGunAngle(entity, entity.gun1, targetAngle, deltaTime);
+    entity.gun1.angle = clampAngle(entity.gun1.angle, entity.angle, entity.gun1.maxAngle);
+    updateGunCooldown(entity.gun1, deltaTime);
+    updateGunHeat(entity, entity.gun1, deltaTime);
   }
-  if (player.gun2) {
-    updateGunAngle(player, player.gun2, targetAngle, deltaTime);
-    player.gun2.angle = clampAngle(player.gun2.angle, player.angle, player.gun2.maxAngle);
-    updateGunCooldown(player.gun2, deltaTime);
-    updateGunHeat(player, player.gun2, deltaTime);
+
+  if (entity.gun2) {
+    updateGunAngle(entity, entity.gun2, targetAngle, deltaTime);
+    entity.gun2.angle = clampAngle(entity.gun2.angle, entity.angle, entity.gun2.maxAngle);
+    updateGunCooldown(entity.gun2, deltaTime);
+    updateGunHeat(entity, entity.gun2, deltaTime);
   }
 }
 

@@ -139,4 +139,14 @@ export class Plane {
     this.money += parseInt(totalValue, 10); // Add the total value to the player's money
     return totalValue; // Return the total value of sold crates
   }
+
+  // Called when this entity takes damage from a projectile
+  onDamaged(projectile) {
+    // Apply damage to hull (supports both plane chassis.hull and direct hull property)
+    if (typeof this.hull === 'number') {
+      this.hull -= projectile.damage;
+    } else if (this.chassis && typeof this.chassis.hull === 'number') {
+      this.chassis.hull -= projectile.damage;
+    }
+  }
 }

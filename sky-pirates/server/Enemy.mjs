@@ -52,6 +52,16 @@ export class EnemyBoat {
   findTarget() {
     console.log("Can't find target of unspecified enemy");
   }
+
+  // Called when this entity takes damage from a projectile
+  onDamaged(projectile) {
+    // Apply damage to hull
+    if (typeof this.hull === 'number') {
+      this.hull -= projectile.damage;
+    } else if (this.chassis && typeof this.chassis.hull === 'number') {
+      this.chassis.hull -= projectile.damage;
+    }
+  }
 }
 
 export class NavySalvagePlane extends EnemyPlane {
@@ -114,7 +124,7 @@ export class NavySalvagePlane extends EnemyPlane {
       const dx = target.x - this.x;
       const dy = target.y - this.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < minDist) {
+      if (dist < minDist && dist < 1500) {
         minDist = dist;
         nearest = target;
       }
@@ -168,7 +178,7 @@ export class NavySalvagePlane extends EnemyPlane {
     this.t_y = aimY;
     this.aimPoint = { x: aimX, y: aimY };
     // --- Shooting logic ---
-    const shootDistance = 600;
+    const shootDistance = 1000;
     if (distToTarget < shootDistance && this.gun1) {
       // Check if aim spot is within gun's firing arc
       const gunAngle = this.gun1.angle;
@@ -220,15 +230,29 @@ export class NavySalvagePlane extends EnemyPlane {
 export class NavySalvageBoat extends EnemyBoat {
   constructor(biome, username, r, g, b, x, y) {
     super(biome, username, r, g, b, x, y, 'navy');
+    this.angle = -Math.PI / 2; // Point boat upward so gun can cover upper hemisphere
     this.maxHull = 1000;
     this.hull = this.maxHull;
-    this.gun1 = createEnemyGun(0, 1); // You can adjust gun type as needed
+    this.gun1 = createEnemyGun(1, 1); // You can adjust gun type as needed
     this.gun2 = null;
     this.isFiring = false;
     this.aimPoint = { x: null, y: null };
+    this.isAggressive = false; // Start passive
+    this.lastDamagedBy = null; // Track who damaged this boat
+    this.t_x = x; // Initialize target position to own position
+    this.t_y = y;
   }
 
   updateAI(players) {
+    // Only become aggressive if damaged
+    if (!this.isAggressive) {
+      // Passive - just sit idle
+      this.isFiring = false;
+      this.keys = {};
+      return;
+    }
+
+    // Aggressive behavior - target the player who damaged us
     if (!this.target || !players.some(p => p.username === this.target.username)) {
       this.findTarget(players);
     }
@@ -242,6 +266,17 @@ export class NavySalvageBoat extends EnemyBoat {
 
   findTarget(players) {
     if (!players || players.length === 0) return null;
+    
+    // If we were damaged by a specific player, target them
+    if (this.lastDamagedBy) {
+      const attacker = players.find(p => p.username === this.lastDamagedBy);
+      if (attacker) {
+        this.target = attacker;
+        return attacker;
+      }
+    }
+    
+    // Otherwise target nearest player
     let minDist = Infinity;
     let nearest = null;
     for (const player of players) {
@@ -272,12 +307,10 @@ export class NavySalvageBoat extends EnemyBoat {
     const predictedY = targetY + targetVY * timeToHit;
     const aimX = predictedX;
     const aimY = predictedY;
-    const aimAngle = Math.atan2(aimY - this.y, aimX - this.x);
     
-    // Set gun angle, not boat angle (boats stay horizontal)
-    if (this.gun1) {
-      this.gun1.angle = aimAngle;
-    }
+    // Set t_x and t_y for updateGuns to use (don't set gun angle directly)
+    this.t_x = aimX;
+    this.t_y = aimY;
     this.aimPoint = { x: aimX, y: aimY };
     
     const shootDistance = 1000;
@@ -288,6 +321,18 @@ export class NavySalvageBoat extends EnemyBoat {
     } else {
       this.keys.mouse = false;
       this.isFiring = false;
+    }
+  }
+
+  // Override damage handling to become aggressive
+  onDamaged(projectile) {
+    // Call parent method to apply damage
+    super.onDamaged(projectile);
+    
+    // Become aggressive and remember the attacker
+    if (!this.isAggressive && projectile.owner) {
+      this.isAggressive = true;
+      this.lastDamagedBy = projectile.owner;
     }
   }
 }
