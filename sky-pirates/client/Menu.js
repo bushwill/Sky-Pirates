@@ -224,6 +224,9 @@ class LoginMenuScreen extends MenuScreen {
         // Login button option (drawn separately, not in .options array)
         this.loginButton = new MenuOption("Log In", () => this.tryLogin());
         
+        // Settings button
+        this.settingsButton = new MenuOption("Settings", () => menuManager.show('settings'));
+        
         // Party name input field
         this.partyField = new MenuInputField("Party (optional):", 150, 270, 240, 40);
 
@@ -295,6 +298,14 @@ class LoginMenuScreen extends MenuScreen {
         this.loginButton.setSize(120, 40);
         this.loginButton.selected = (this.selected === -1);
         this.loginButton.draw();
+        
+        // --- Draw settings button in top-right corner ---
+        let settingsBtnX = x + w - 130; // 130px from right edge
+        let settingsBtnY = y + 20; // 20px from top
+        this.settingsButton.setPosition(settingsBtnX, settingsBtnY);
+        this.settingsButton.setSize(110, 40);
+        this.settingsButton.selected = false; // Not part of navigation
+        this.settingsButton.draw();
 
         // Error message - positioned where login button used to be
         if (this.loginMsg) {
@@ -386,6 +397,14 @@ class LoginMenuScreen extends MenuScreen {
     mousePressed(mx, my, x, y, w, h) {
         this.usernameField.mousePressed(mx, my);
         this.partyField.mousePressed(mx, my);
+        
+        // Settings button - in top-right corner
+        let settingsBtnX = x + w - 130;
+        let settingsBtnY = y + 20;
+        if (mx > settingsBtnX && mx < settingsBtnX + 110 && my > settingsBtnY && my < settingsBtnY + 40) {
+            this.settingsButton.callback();
+            return;
+        }
 
         // Login button - updated to match new position (right of party field)
         let loginBtnX = x + w / 2 + 120 + 10;
@@ -488,5 +507,104 @@ class LoginMenuScreen extends MenuScreen {
             gun2: selectedGun2
         }, partyName);
         this.loginMsg = "Logging in...";
+    }
+}
+
+class SettingsMenuScreen extends MenuScreen {
+    constructor() {
+        super("Settings");
+        
+        // Camera toggle option
+        this.cameraToggle = new MenuOption(
+            settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed",
+            () => this.toggleCamera()
+        );
+        
+        // Back button
+        this.backButton = new MenuOption("Back", () => menuManager.show('login'));
+        
+        this.selected = 0;
+    }
+
+    toggleCamera() {
+        settings.dynamicCamera = !settings.dynamicCamera;
+        this.cameraToggle.label = settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed";
+        
+        // Save settings to cookies
+        if (typeof saveSettings === 'function') {
+            saveSettings(settings);
+        }
+    }
+
+    draw(x, y, w, h) {
+        rectMode(CORNER);
+        fill(255, 255, 255, 200);
+        noStroke();
+        rect(x, y, w, h, 30);
+
+        fill(0);
+        textSize(40);
+        textAlign(CENTER, CENTER);
+        text("Settings", x + w / 2, y + 80);
+
+        // Draw camera toggle
+        let optionY = y + 200;
+        let optionSpacing = 70;
+        
+        this.cameraToggle.setPosition(x + w / 2 - 150, optionY);
+        this.cameraToggle.setSize(300, 50);
+        this.cameraToggle.selected = (this.selected === 0);
+        this.cameraToggle.draw();
+        
+        // Draw camera description
+        textSize(14);
+        fill(100);
+        textAlign(CENTER, TOP);
+        text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60);
+        text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80);
+
+        // Draw back button
+        optionY += optionSpacing + 100;
+        this.backButton.setPosition(x + w / 2 - 100, optionY);
+        this.backButton.setSize(200, 50);
+        this.backButton.selected = (this.selected === 1);
+        this.backButton.draw();
+    }
+
+    navigate(dir) {
+        this.selected = (this.selected + dir + 2) % 2;
+    }
+
+    choose() {
+        if (this.selected === 0) {
+            this.cameraToggle.callback();
+        } else if (this.selected === 1) {
+            this.backButton.callback();
+        }
+    }
+
+    mousePressed(mx, my, x, y, w, h) {
+        if (this.cameraToggle.mousePressed(mx, my)) {
+            this.selected = 0;
+            this.cameraToggle.callback();
+            return;
+        }
+        
+        if (this.backButton.mousePressed(mx, my)) {
+            this.selected = 1;
+            this.backButton.callback();
+            return;
+        }
+    }
+
+    keyPressed(k) {
+        if (k === 'ArrowUp') this.navigate(-1);
+        if (k === 'ArrowDown') this.navigate(1);
+        if (k === 'Enter') this.choose();
+        if (k === 'Escape') this.backButton.callback();
+    }
+
+    keyTyped(k) {
+        // No text input in settings
     }
 }

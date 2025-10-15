@@ -100,12 +100,34 @@ function updateEnemies() {
 }
 
 function updateEnemy(enemy) {
+  // Update AI first to determine if enemy has a target
+  enemy.updateAI(players);
+  
+  // Only do full physics/gun updates if enemy has a target (optimization)
   if (enemy instanceof EnemyPlane) {
-    updatePlane(enemy);
+    if (enemy.target || enemy.aiState === "traveling" || enemy.aiState === "attacking") {
+      updatePlane(enemy);
+    } else {
+      // When idle/searching with no target, just do minimal updates
+      const deltaTime = 0.01 * timeSpeed;
+      // Update gun cooldowns/heat but skip angle calculations
+      if (enemy.gun1) {
+        updateGunCooldown(enemy.gun1, deltaTime);
+        updateGunHeat(enemy, enemy.gun1, deltaTime);
+      }
+      if (enemy.gun2) {
+        updateGunCooldown(enemy.gun2, deltaTime);
+        updateGunHeat(enemy, enemy.gun2, deltaTime);
+      }
+      // Still apply physics to let them drift/fall naturally
+      applyPlayerGravity(enemy);
+      applyPlayerDrag(enemy, deltaTime);
+      updatePosition(enemy);
+    }
   } else if (enemy instanceof NavySalvageBoat) {
     updateBoat(enemy);
   }
-  enemy.updateAI(players);
+  
   // Destroy enemy if it enters recovery biome
   if (enemy.biome === 'recovery') {
     handleDeath(enemy); // Remove enemy from the game
@@ -167,8 +189,22 @@ function updatePlane(plane) {
 function updateBoat(boat) {
   // Boats handle their own gun targeting but need gun heat/cooldown updates and shooting
   const deltaTime = 0.01 * timeSpeed;
-  updateGuns(boat, deltaTime);
-  checkPlayerShooting(boat);
+  
+  // Only update guns if the boat has a target (optimization to reduce CPU usage)
+  if (boat.target) {
+    updateGuns(boat, deltaTime);
+    checkPlayerShooting(boat);
+  } else {
+    // Just update gun cooldowns/heat when idle, skip angle calculations
+    if (boat.gun1) {
+      updateGunCooldown(boat.gun1, deltaTime);
+      updateGunHeat(boat, boat.gun1, deltaTime);
+    }
+    if (boat.gun2) {
+      updateGunCooldown(boat.gun2, deltaTime);
+      updateGunHeat(boat, boat.gun2, deltaTime);
+    }
+  }
 }
 
 function updateProjectiles() {

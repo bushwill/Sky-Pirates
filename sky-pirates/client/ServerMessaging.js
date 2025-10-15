@@ -364,7 +364,7 @@ function getConnectionStatus() {
 }
 
 // Cookie utility functions
-function setCookie(name, value, days = 30) {
+function setCookie(name, value, days = 90) {
     const expires = new Date();
     expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
     document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
@@ -398,6 +398,28 @@ function saveUserPreferences(name, color, gun1, gun2, party = "") {
     setCookie('skypirates_party', party);
 }
 
+// Save settings to cookies
+function saveSettings(settings) {
+    setCookie('skypirates_settings', JSON.stringify(settings));
+}
+
+// Load settings from cookies
+function loadSettings() {
+    const settingsStr = getCookie('skypirates_settings');
+    if (settingsStr) {
+        try {
+            return JSON.parse(settingsStr);
+        } catch (e) {
+            console.error('Failed to parse settings cookie:', e);
+        }
+    }
+    
+    // Return default settings if none found
+    return {
+        dynamicCamera: false
+    };
+}
+
 // Load user preferences from cookies
 function loadUserPreferences() {
     const name = getCookie('skypirates_username');
@@ -422,5 +444,6 @@ function clearAllSkyPiratesCookies() {
     deleteCookie('skypirates_gun1');
     deleteCookie('skypirates_gun2');
     deleteCookie('skypirates_party');
+    deleteCookie('skypirates_settings');
     console.log('All Sky Pirates cookies cleared');
 }

@@ -79,6 +79,15 @@ export class NavySalvagePlane extends EnemyPlane {
   }
 
   updateAI(players) {
+    // Early exit if no players to reduce CPU usage
+    if (!players || players.length === 0) {
+      this.target = null;
+      this.aiState = "idle";
+      this.keys = {};
+      this.isFiring = false;
+      return;
+    }
+    
     if (this.aiState === "idle" || this.aiState === null) {
       this.aiState = "searching";
     } else if (this.aiState === "searching") {
@@ -242,6 +251,12 @@ export class NavySalvageBoat extends EnemyBoat {
   }
 
   updateAI(players) {
+    // Early exit if no players to reduce CPU usage
+    if (!players || players.length === 0) {
+      this.resetToPassive();
+      return;
+    }
+    
     // Look for any player with navyTargeted = true
     if (!this.target) {
       this.findTarget(players);
@@ -267,8 +282,7 @@ export class NavySalvageBoat extends EnemyBoat {
       this.combatTargets();
     } else {
       // No valid target, stay idle
-      this.isFiring = false;
-      this.keys = {};
+      this.resetToPassive();
     }
   }
   

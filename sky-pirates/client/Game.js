@@ -50,8 +50,10 @@ let chatting = false;
 
 let clientEstimating = true;
 
-// Camera settings
-let dynamicCamera = true; // Toggle between fixed (false) and mouse-influenced (true) camera
+// Settings dictionary - contains all user-configurable settings
+let settings = {
+    dynamicCamera: true
+};
 
 // --- Menu and color picker setup ---
 let menuManager;
@@ -70,6 +72,13 @@ function setup() {
     window.addEventListener("mousedown", handleMouseDown);
     window.addEventListener("mouseup", handleMouseUp);
 
+    // Load settings from cookies
+    if (typeof loadSettings === 'function') {
+        const loadedSettings = loadSettings();
+        // Merge loaded settings with defaults
+        settings = { ...settings, ...loadedSettings };
+    }
+
     colorPicker = createColorPicker('#ff8800');
     // Set to initial position, will be updated each frame in draw()
     colorPicker.hide();
@@ -78,6 +87,7 @@ function setup() {
 
     // Add screens
     menuManager.addScreen('login', new LoginMenuScreen(colorPicker));
+    menuManager.addScreen('settings', new SettingsMenuScreen());
     // ... add your other menus here
 
     // Start at login
@@ -334,7 +344,7 @@ function screenToWorld(screenX, screenY, cameraWorldX, cameraWorldY) {
 // Uses smooth interpolation based on mouse distance from center
 function getCameraCenter(player, mouseScreenX, mouseScreenY) {
     // If dynamic camera is disabled, just return player position
-    if (!dynamicCamera) {
+    if (!settings.dynamicCamera) {
         return {
             x: player.x,
             y: player.y
