@@ -70,6 +70,8 @@ export function createEnemyGun(selection, level = 1) {
             return createPeaShooter(level);
         case 1:
             return createBoatGun(level);
+        case 2:
+            return createBoatScorpion(level);
         default:
             throw new Error("Invalid gun selection");
     }
@@ -97,12 +99,28 @@ export function createBoatGun(level, random = true) {
     const weight = randomFactor * 1.0;
     const maxHeat = randomFactor * (120.0 + level * 20.0);
     const heatEfficiency = randomFactor * (20.0 - level * 2.0);
-    const damage = randomFactor * (40.0 + level * 20.0);
-    const cooldownTime = randomFactor * 800;
+    const damage = randomFactor * (30.0 + level * 10.0);
+    const cooldownTime = randomFactor * 1500;
     const projectileSpeed = randomFactor * (1400.0 + level * 200.0);
     const projectileSize = randomFactor * (2.5 + level * 0.5);
     const maxAngle = Math.PI;
     const value = randomFactor * (50 + level * 30);
+
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+}
+
+export function createBoatScorpion(level, random = true) {
+    const randomFactor = random ? 0.9 + Math.random() * 0.2 : 1;
+    const name = "Scorpion Lvl " + level;
+    const weight = randomFactor * 1.5;
+    const maxHeat = randomFactor * (100.0 + level * 25.0);
+    const heatEfficiency = randomFactor * (4.0 - level);
+    const damage = randomFactor * (8.0 + level);
+    const cooldownTime = randomFactor * (70 - level * 10);
+    const projectileSpeed = randomFactor * (1000.0 + level * 100.0);
+    const projectileSize = randomFactor * 0.5;
+    const maxAngle = Math.PI;
+    const value = randomFactor * (10 + level * 10);
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
 }

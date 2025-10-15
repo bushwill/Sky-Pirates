@@ -828,18 +828,12 @@ function updateParticles() {
     }
 }
 
-function drawParticles() {
+function drawParticles(centerX = 0, centerY = -400) {
     if (!particles || particles.length === 0) return;
     
-    // Calculate camera offset for current player
-    let cameraX = 0, cameraY = 0;
-    if (signedIn && players.length > 0) {
-        const currentPlayer = players.find(p => p.username === username);
-        if (currentPlayer) {
-            cameraX = currentPlayer.x - windowWidth / 2;
-            cameraY = currentPlayer.y - windowHeight / 2;
-        }
-    }
+    // Calculate camera offset from center position
+    const cameraX = centerX - windowWidth / 2;
+    const cameraY = centerY - windowHeight / 2;
     
     // Draw all particles
     particles.forEach(particle => {

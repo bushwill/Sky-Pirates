@@ -188,6 +188,8 @@ function handleDecodedMessage(decodedMessage) {
             r = 0; g = 0; b = 0;
             chatting = false;
             current_chat = "";
+            // Reset all keys to prevent stuck inputs on respawn
+            keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
             // Clear cached credentials since player was destroyed
             clearLoginCache();
             // Show login menu with death message

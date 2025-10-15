@@ -84,6 +84,7 @@ function updatePlayers() {
     checkPlayerBiome(player);
     updatePlayer(player);
     updateHull(player);
+    player.updateNavyAggro(); // Check if navy aggro has timed out
     player.messages = player.messages.filter((msg) => millis() - msg[0] < 8000);
   });
 }
@@ -223,7 +224,7 @@ function updateProjectile(projectile) {
     if (distance < enemy.size + projectile.size) {
       // Call entity's damage handler
       if (enemy.onDamaged) {
-        enemy.onDamaged(projectile);
+        enemy.onDamaged(projectile, players);
       }
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
     }

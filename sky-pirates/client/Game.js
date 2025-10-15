@@ -50,6 +50,9 @@ let chatting = false;
 
 let clientEstimating = true;
 
+// Camera settings
+let dynamicCamera = true; // Toggle between fixed (false) and mouse-influenced (true) camera
+
 // --- Menu and color picker setup ---
 let menuManager;
 let colorPicker;
@@ -149,25 +152,32 @@ function handleGameDisplay(controlledPlayer) {
     textAlign(CENTER);
     stroke(0)
     if (controlledPlayer && signedIn) {
+        // Display help menu prompt for first 10 seconds
         if (millis() - signedInTime < 10000 && !helpWindow) {
             textSize(16);
             text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
             textSize(12);
         }
+        
+        // Calculate camera center between player and mouse cursor
+        const cameraCenter = getCameraCenter(controlledPlayer, mouseX, mouseY);
+        const centerX = cameraCenter.x;
+        const centerY = cameraCenter.y;
+        
         const mapPolygonsMap = getMapPolygonsMap(mapData);
-        preparePolygonsForDrawing(mapPolygonsMap, controlledPlayer.x, controlledPlayer.y);
-        drawMapPolygonsSides(mapPolygonsMap, controlledPlayer.x, controlledPlayer.y);
+        preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
+        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
 
         // Draw particles behind all game objects
         updateParticles();
-        drawParticles();
+        drawParticles(centerX, centerY);
 
-        displayCrates(controlledPlayer.x, controlledPlayer.y);
-        drawMapPolygonsFronts(mapPolygonsMap, controlledPlayer.x, controlledPlayer.y);
-        drawPartyIndicator(controlledPlayer, controlledPlayer.x, controlledPlayer.y);
-        displayProjectiles(controlledPlayer.x, controlledPlayer.y);
-        displayPlayers(controlledPlayer.x, controlledPlayer.y);
-        displayEnemies(controlledPlayer.x, controlledPlayer.y);
+        displayCrates(centerX, centerY);
+        drawMapPolygonsFronts(mapPolygonsMap, centerX, centerY);
+        drawPartyIndicator(controlledPlayer, centerX, centerY);
+        displayProjectiles(centerX, centerY);
+        displayPlayers(centerX, centerY);
+        displayEnemies(centerX, centerY);
         if (helpWindow && !chatting) handleHelpWindow();
     } else {
         const mapPolygonsMap = getMapPolygonsMap(mapData);
@@ -310,4 +320,55 @@ function sendTeleportMessage() {
     }
 }
 
-let testing = false;
+// Helper function to convert screen coordinates to world coordinates
+function screenToWorld(screenX, screenY, cameraWorldX, cameraWorldY) {
+    const offsetX = screenX - width / 2;
+    const offsetY = screenY - height / 2;
+    return {
+        x: cameraWorldX + offsetX,
+        y: cameraWorldY + offsetY
+    };
+}
+
+// Helper function to calculate camera center between player and mouse
+// Uses smooth interpolation based on mouse distance from center
+function getCameraCenter(player, mouseScreenX, mouseScreenY) {
+    // If dynamic camera is disabled, just return player position
+    if (!dynamicCamera) {
+        return {
+            x: player.x,
+            y: player.y
+        };
+    }
+    
+    // Convert mouse screen coordinates to world coordinates
+    const mouseWorld = screenToWorld(mouseScreenX, mouseScreenY, player.x, player.y);
+    
+    // Calculate normalized mouse distance from screen center (0-1)
+    // Use max of horizontal and vertical distances for consistent edge behavior
+    const mouseDX = Math.abs(mouseScreenX - width / 2);
+    const mouseDY = Math.abs(mouseScreenY - height / 2);
+    
+    // Normalize each dimension separately, then take the maximum
+    // This creates a square deadzone instead of circular
+    const normalizedX = mouseDX / (width / 2);
+    const normalizedY = mouseDY / (height / 2);
+    const normalizedDistance = Math.max(normalizedX, normalizedY);
+    
+    // Clamp to 1.0 (in case mouse goes slightly outside canvas)
+    const clampedDistance = Math.min(normalizedDistance, 1.0);
+    
+    // Use smooth curve for interpolation (ease-out quadratic)
+    // When mouse is at center (0): t = 0 (camera at player)
+    // When mouse is at edge (1): t = 0.67 (camera 2/3 towards mouse)
+    const t = clampedDistance * clampedDistance * 0.67;
+    
+    // Interpolate between player position and mouse position
+    return {
+        x: player.x + (mouseWorld.x - player.x) * t,
+        y: player.y + (mouseWorld.y - player.y) * t
+    };
+}
+
+let testing = true;
+

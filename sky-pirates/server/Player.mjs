@@ -22,6 +22,10 @@ export class Player extends Plane {
     this.lastActivity = Date.now() - startMillis;
     this.startMillis = startMillis;
     this.privileges = false;
+    
+    // Navy aggro tracking
+    this.navyTargeted = false; // Whether this player is currently targeted by navy
+    this.lastNavyActivity = 0; // Timestamp of last navy-related activity (spotted or damaged navy)
   }
 
   respawn() {
@@ -120,6 +124,28 @@ export class Player extends Plane {
     this.crates.forEach(crate => crate.detach()); // Clear carrier reference for all crates
     this.crates = []; // Clear the carrying array
     this.updatePlane(); // Update player's weight after detaching all crates
+  }
+
+  // Update navy aggro status based on timer
+  updateNavyAggro() {
+    const now = Date.now();
+    const aggroTimeout = 2 * 60 * 1000; // 2 minutes in milliseconds
+    
+    if (this.navyTargeted) {
+      // Check if aggro has timed out
+      const timeSinceActivity = now - this.lastNavyActivity;
+      
+      if (timeSinceActivity > aggroTimeout) {
+        // Reset aggro status
+        this.navyTargeted = false;
+      }
+    }
+  }
+  
+  // Mark player as having navy activity (spotted or damaged navy)
+  markNavyActivity() {
+    this.lastNavyActivity = Date.now();
+    this.navyTargeted = true;
   }
 
   sellAll() {

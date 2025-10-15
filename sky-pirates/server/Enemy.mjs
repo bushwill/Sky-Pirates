@@ -231,55 +231,71 @@ export class NavySalvageBoat extends EnemyBoat {
   constructor(biome, username, r, g, b, x, y) {
     super(biome, username, r, g, b, x, y, 'navy');
     this.angle = -Math.PI / 2; // Point boat upward so gun can cover upper hemisphere
-    this.maxHull = 1000;
+    this.maxHull = 400;
     this.hull = this.maxHull;
     this.gun1 = createEnemyGun(1, 1); // You can adjust gun type as needed
     this.gun2 = null;
     this.isFiring = false;
     this.aimPoint = { x: null, y: null };
-    this.isAggressive = false; // Start passive
-    this.lastDamagedBy = null; // Track who damaged this boat
     this.t_x = x; // Initialize target position to own position
     this.t_y = y;
   }
 
   updateAI(players) {
-    // Only become aggressive if damaged
-    if (!this.isAggressive) {
-      // Passive - just sit idle
-      this.isFiring = false;
-      this.keys = {};
-      return;
-    }
-
-    // Aggressive behavior - target the player who damaged us
-    if (!this.target || !players.some(p => p.username === this.target.username)) {
+    // Look for any player with navyTargeted = true
+    if (!this.target) {
       this.findTarget(players);
     }
+    
+    // Check if current target is still valid
     if (this.target) {
+      // If target no longer has navyTargeted flag, clear target
+      if (!this.target.navyTargeted) {
+        this.resetToPassive();
+        return;
+      }
+      
+      // If target disconnected, find new target
+      if (!players.some(p => p.username === this.target.username)) {
+        this.findTarget(players);
+      }
+    }
+    
+    // If we have a valid target, mark them as spotted and engage
+    if (this.target && this.target.navyTargeted) {
+      this.target.markNavyActivity();
       this.combatTargets();
     } else {
+      // No valid target, stay idle
       this.isFiring = false;
       this.keys = {};
     }
   }
+  
+  resetToPassive() {
+    this.target = null;
+    this.isFiring = false;
+    this.keys = {};
+  }
 
   findTarget(players) {
-    if (!players || players.length === 0) return null;
-    
-    // If we were damaged by a specific player, target them
-    if (this.lastDamagedBy) {
-      const attacker = players.find(p => p.username === this.lastDamagedBy);
-      if (attacker) {
-        this.target = attacker;
-        return attacker;
-      }
+    if (!players || players.length === 0) {
+      this.target = null;
+      return null;
     }
     
-    // Otherwise target nearest player
+    // Find players with navyTargeted = true
+    const targetedPlayers = players.filter(p => p.navyTargeted);
+    
+    if (targetedPlayers.length === 0) {
+      this.target = null;
+      return null;
+    }
+    
+    // Target the nearest player with navyTargeted = true
     let minDist = Infinity;
     let nearest = null;
-    for (const player of players) {
+    for (const player of targetedPlayers) {
       const dx = player.x - this.x;
       const dy = player.y - this.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -305,8 +321,11 @@ export class NavySalvageBoat extends EnemyBoat {
     const timeToHit = distToTarget / projectileSpeed;
     const predictedX = targetX + targetVX * timeToHit;
     const predictedY = targetY + targetVY * timeToHit;
-    const aimX = predictedX;
-    const aimY = predictedY;
+    
+    // Randomly select a spot between current and predicted position
+    const t = Math.random();
+    const aimX = targetX + (predictedX - targetX) * t;
+    const aimY = targetY + (predictedY - targetY) * t;
     
     // Set t_x and t_y for updateGuns to use (don't set gun angle directly)
     this.t_x = aimX;
@@ -324,15 +343,17 @@ export class NavySalvageBoat extends EnemyBoat {
     }
   }
 
-  // Override damage handling to become aggressive
-  onDamaged(projectile) {
+  // Override damage handling to mark player as navy target
+  onDamaged(projectile, players) {
     // Call parent method to apply damage
     super.onDamaged(projectile);
     
-    // Become aggressive and remember the attacker
-    if (!this.isAggressive && projectile.owner) {
-      this.isAggressive = true;
-      this.lastDamagedBy = projectile.owner;
+    // Find the attacking player and mark them as navy target
+    if (projectile.owner) {
+      const attacker = players?.find(p => p.username === projectile.owner);
+      if (attacker) {
+        attacker.markNavyActivity();
+      }
     }
   }
 }
