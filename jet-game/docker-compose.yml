@@ -4,9 +4,8 @@ services:
       context: ./client
     ports:
       - "82:80"
-
-  scoreboard:
-    build:
-      context: ./server
-    ports:
-      - "3001:3001"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.2'

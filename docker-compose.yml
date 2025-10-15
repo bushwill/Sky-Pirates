@@ -7,11 +7,21 @@ services:
       - "443:443"
     environment:
       SERVER_HOST: server
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.3'
 
   landingpage:
     build:
       context: ./landingpage
     # No external ports - accessed via client proxy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.2'
       
   server:
     build:
@@ -20,20 +30,28 @@ services:
       - "3000:3000"
     volumes:
       - ./sky-pirates/server:/server
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   jet-game:
     build:
       context: ./jet-game/client
     # No external ports - accessed via client proxy
-
-  jet-game-server:
-    build:
-      context: ./jet-game/server
-    ports:
-      - "3001:3001"
-    # WebSocket server for jet-game scoreboard
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.2'
     
   maize-model:
     build:
       context: ./maize-model-online
     # No external ports - accessed via client proxy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.2'

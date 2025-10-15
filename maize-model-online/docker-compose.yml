@@ -4,3 +4,8 @@ services:
       context: ./client
     ports:
       - "81:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.2'
