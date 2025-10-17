@@ -252,6 +252,25 @@ export class NavySalvagePlane extends EnemyPlane {
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
     
+    // Special handling for 180-degree turns (switching from left to right or vice versa)
+    // When turning from left (π) to right (0) or right (0) to left (π), force the appropriate direction
+    const currentIsLeft = Math.abs(this.angle - Math.PI) < Math.PI / 2;
+    const targetIsLeft = Math.abs(targetAngle - Math.PI) < Math.PI / 2;
+    
+    // If we're switching between left and right directions
+    if (currentIsLeft !== targetIsLeft) {
+      // Turning from left to right: turn clockwise (positive angle, use D key)
+      if (currentIsLeft && !targetIsLeft) {
+        // Force clockwise turn by making angleDiff positive if it's not already
+        if (angleDiff < 0) angleDiff += 2 * Math.PI;
+      }
+      // Turning from right to left: turn counterclockwise (negative angle, use A key)
+      else if (!currentIsLeft && targetIsLeft) {
+        // Force counterclockwise turn by making angleDiff negative if it's not already
+        if (angleDiff > 0) angleDiff -= 2 * Math.PI;
+      }
+    }
+    
     if (angleDiff < -0.05) {
       this.keys.a = true;
       this.keys.d = false;
@@ -267,10 +286,14 @@ export class NavySalvagePlane extends EnemyPlane {
     this.keys.w = true; // Always accelerating to maintain speed
     this.keys.s = false;
     
-    // Drop crates when directly above the boat - use the 'f' key to trigger detachAllCrates
-    const distToBoatX = this.fleetBoat ? Math.abs(this.x - this.fleetBoat.x) : Infinity;
-    if (this.crates && this.crates.length > 0 && distToBoatX <= 10) {
-      // Press 'f' to drop crates when close to boat
+    // Drop crates when within 50 units of the boat - use the 'f' key to trigger detachAllCrates
+    const distToBoat = this.fleetBoat ? Math.sqrt(
+      Math.pow(this.x - this.fleetBoat.x, 2) + 
+      Math.pow(this.y - this.fleetBoat.y, 2)
+    ) : Infinity;
+    
+    if (this.crates && this.crates.length > 0 && distToBoat <= 50) {
+      // Hold 'f' to drop crates when within 50 units of boat
       this.keys.f = true;
     } else {
       // Stop dropping crates when not near boat

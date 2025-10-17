@@ -465,8 +465,16 @@ function updateCrate(crate) {
     const distance = Math.sqrt(dx * dx + dy * dy);
     const attach_radius = 2 * (new_player.size + crate.size + 5); // Double the pickup distance
     if (distance <= attach_radius && new_player.username !== crate.carrier) {
+      // If crate is currently carried by someone, detach it from them first
+      if (crate.carrier) {
+        const previousCarrier = players.find(p => p.username === crate.carrier) || 
+                               enemies.find(e => e.username === crate.carrier);
+        if (previousCarrier && previousCarrier.detachCrate) {
+          previousCarrier.detachCrate(crate);
+        }
+      }
+      // Now attach to new player
       new_player.attachCrate(crate);
-      if (player) player.detachCrate(crate); // Detach from previous carrier if any
     }
   });
   

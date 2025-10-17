@@ -520,6 +520,12 @@ class SettingsMenuScreen extends MenuScreen {
             () => this.toggleCamera()
         );
         
+        // Screen shake toggle option
+        this.shakeToggle = new MenuOption(
+            settings.screenShake ? "Screen Shake: On" : "Screen Shake: Off",
+            () => this.toggleShake()
+        );
+        
         // Back button
         this.backButton = new MenuOption("Back", () => menuManager.show('login'));
         
@@ -529,6 +535,16 @@ class SettingsMenuScreen extends MenuScreen {
     toggleCamera() {
         settings.dynamicCamera = !settings.dynamicCamera;
         this.cameraToggle.label = settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed";
+        
+        // Save settings to cookies
+        if (typeof saveSettings === 'function') {
+            saveSettings(settings);
+        }
+    }
+
+    toggleShake() {
+        settings.screenShake = !settings.screenShake;
+        this.shakeToggle.label = settings.screenShake ? "Screen Shake: On" : "Screen Shake: Off";
         
         // Save settings to cookies
         if (typeof saveSettings === 'function') {
@@ -548,8 +564,8 @@ class SettingsMenuScreen extends MenuScreen {
         text("Settings", x + w / 2, y + 80);
 
         // Draw camera toggle
-        let optionY = y + 200;
-        let optionSpacing = 70;
+        let optionY = y + 160;
+        let optionSpacing = 100;
         
         this.cameraToggle.setPosition(x + w / 2 - 150, optionY);
         this.cameraToggle.setSize(300, 50);
@@ -563,22 +579,37 @@ class SettingsMenuScreen extends MenuScreen {
         text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60);
         text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80);
 
+        // Draw screen shake toggle
+        optionY += optionSpacing;
+        this.shakeToggle.setPosition(x + w / 2 - 150, optionY);
+        this.shakeToggle.setSize(300, 50);
+        this.shakeToggle.selected = (this.selected === 1);
+        this.shakeToggle.draw();
+        
+        // Draw shake description
+        textSize(14);
+        fill(100);
+        textAlign(CENTER, TOP);
+        text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60);
+
         // Draw back button
-        optionY += optionSpacing + 100;
+        optionY += optionSpacing;
         this.backButton.setPosition(x + w / 2 - 100, optionY);
         this.backButton.setSize(200, 50);
-        this.backButton.selected = (this.selected === 1);
+        this.backButton.selected = (this.selected === 2);
         this.backButton.draw();
     }
 
     navigate(dir) {
-        this.selected = (this.selected + dir + 2) % 2;
+        this.selected = (this.selected + dir + 3) % 3;
     }
 
     choose() {
         if (this.selected === 0) {
             this.cameraToggle.callback();
         } else if (this.selected === 1) {
+            this.shakeToggle.callback();
+        } else if (this.selected === 2) {
             this.backButton.callback();
         }
     }
@@ -590,8 +621,14 @@ class SettingsMenuScreen extends MenuScreen {
             return;
         }
         
-        if (this.backButton.mousePressed(mx, my)) {
+        if (this.shakeToggle.mousePressed(mx, my)) {
             this.selected = 1;
+            this.shakeToggle.callback();
+            return;
+        }
+        
+        if (this.backButton.mousePressed(mx, my)) {
+            this.selected = 2;
             this.backButton.callback();
             return;
         }

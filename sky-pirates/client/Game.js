@@ -52,7 +52,8 @@ let clientEstimating = true;
 
 // Settings dictionary - contains all user-configurable settings
 let settings = {
-    dynamicCamera: true
+    dynamicCamera: true,
+    screenShake: true
 };
 
 // --- Menu and color picker setup ---
@@ -373,10 +374,36 @@ function getCameraCenter(player, mouseScreenX, mouseScreenY) {
     // When mouse is at edge (1): t = 0.67 (camera 2/3 towards mouse)
     const t = clampedDistance * clampedDistance * 0.67;
     
+    // Calculate base camera position
+    let camX = player.x + (mouseWorld.x - player.x) * t;
+    let camY = player.y + (mouseWorld.y - player.y) * t;
+    
+    // Add screen shake based on speed if enabled
+    if (settings.screenShake) {
+        const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+        const shakeIntensity = Math.min(speed * 0.05, 3); // Max 3 units of shake
+        
+        // Use time-based noise with multiple frequencies for more variation
+        const time = millis() * 0.001; // Convert to seconds
+        const shakeX = (
+            Math.sin(time * 2.3) * Math.cos(time * 1.7) * 0.5 +
+            Math.sin(time * 3.1) * 0.3 +
+            Math.cos(time * 1.3) * Math.sin(time * 2.7) * 0.2
+        ) * shakeIntensity;
+        const shakeY = (
+            Math.cos(time * 1.9) * Math.sin(time * 2.1) * 0.5 +
+            Math.cos(time * 2.8) * 0.3 +
+            Math.sin(time * 1.5) * Math.cos(time * 3.3) * 0.2
+        ) * shakeIntensity;
+        
+        camX += shakeX;
+        camY += shakeY;
+    }
+    
     // Interpolate between player position and mouse position
     return {
-        x: player.x + (mouseWorld.x - player.x) * t,
-        y: player.y + (mouseWorld.y - player.y) * t
+        x: camX,
+        y: camY
     };
 }
 
