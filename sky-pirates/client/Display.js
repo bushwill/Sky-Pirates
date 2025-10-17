@@ -135,6 +135,13 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     const showNameGlobal = (enemy.username && !String(enemy.username).startsWith('Navy'));
     const labelText = showNameGlobal ? enemy.username : (enemy.faction ?? "Enemy");
     text(labelText, drawX, drawY - 15);
+
+    // Display AI state when testing is enabled
+    if (testing && enemy.aiState) {
+        fill(0, 255, 0); // Green text for AI state
+        textSize(10);
+        text(`AI: ${enemy.aiState}`, drawX, drawY - 30); // Display above the enemy label
+    }
 }
 
 function displayPlayers(centerX = 0, centerY = -400) {
@@ -274,7 +281,7 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
     const s = crate.size; // size scale
     stroke(168, 144, 103);
 
-    // If crate is attached to a player, draw a line (rope) to the carrier
+    // If crate is attached to a player or enemy, draw a line (rope) to the carrier
     if (crate.carrier) {
         // Find the carrier player object by username
         const carrierPlayer = players.find(p => p.username === crate.carrier);
@@ -282,6 +289,14 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
             const carrierDrawX = windowWidth / 2 + (carrierPlayer.x - centerX);
             const carrierDrawY = windowHeight / 2 + (carrierPlayer.y - centerY);
             line(drawX, drawY, carrierDrawX, carrierDrawY);
+        } else {
+            // Check if carrier is an enemy
+            const carrierEnemy = enemies.find(e => e.username === crate.carrier);
+            if (carrierEnemy) {
+                const carrierDrawX = windowWidth / 2 + (carrierEnemy.x - centerX);
+                const carrierDrawY = windowHeight / 2 + (carrierEnemy.y - centerY);
+                line(drawX, drawY, carrierDrawX, carrierDrawY);
+            }
         }
     }
 
@@ -1039,12 +1054,16 @@ function drawEnemyBoat(enemy) {
     endShape(CLOSE);
 
     // Red gun line - rotates to follow gun angle
-    const gunAngle = enemy.gun1?.angle ?? 0;
+    // gun1.angle is the absolute world angle where the gun is pointing
+    // But we're in a translated (not rotated) coordinate system
+    // So we need to draw the gun at: gun.angle - boat.angle
+    const gunWorldAngle = enemy.gun1?.angle ?? 0;
+    const gunLocalAngle = gunWorldAngle;
     
     stroke(255, 0, 0);
     strokeWeight(3);
     const gunLength = length * 0.4;
-    line(0, 0, Math.cos(gunAngle) * gunLength, Math.sin(gunAngle) * gunLength);
+    line(0, 0, Math.cos(gunLocalAngle) * gunLength, Math.sin(gunLocalAngle) * gunLength);
     noStroke();
 }
 

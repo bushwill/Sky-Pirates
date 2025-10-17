@@ -28,8 +28,10 @@ export function createMachineGun(level, random = true) {
     const projectileSize = randomFactor * (1 + level * 0.25);
     const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 36);
     const value = randomFactor * (10 + level * 10);
+    const adjustedLevel = level - 1;
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0); // Match Pirate chassis
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }
 
 export function createCannon(level, random = true) {
@@ -44,8 +46,10 @@ export function createCannon(level, random = true) {
     const projectileSize = randomFactor * (2.0 + level * 0.5);
     const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 60);
     const value = randomFactor * (10 + level * 10);
+    const adjustedLevel = level - 1;
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0); // Match Pirate chassis
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }
 
 export function createScorpion(level, random = true) {
@@ -60,8 +64,10 @@ export function createScorpion(level, random = true) {
     const projectileSize = randomFactor * 0.5;
     const maxAngle = randomFactor * (Math.PI / 48 + level * Math.PI / 96);
     const value = randomFactor * (10 + level * 10);
+    const adjustedLevel = level - 1;
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0); // Match Pirate chassis
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }
 
 export function createEnemyGun(selection, level = 1) {
@@ -89,8 +95,10 @@ export function createPeaShooter(level, random = true) {
     const projectileSize = randomFactor * (0.75 + level * 0.25);
     const maxAngle = Math.PI / 8 + level * Math.PI / 24;
     const value = randomFactor * (20 + level * 30);
+    const adjustedLevel = level - 1;
+    const heatDispersion = randomFactor * (12.5 + adjustedLevel * 2.0); // Match enemy plane chassis
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }
 
 export function createBoatGun(level, random = true) {
@@ -105,8 +113,9 @@ export function createBoatGun(level, random = true) {
     const projectileSize = randomFactor * (2.5 + level * 0.5);
     const maxAngle = Math.PI;
     const value = randomFactor * (50 + level * 30);
+    const heatDispersion = 30; // Default fallback (boats don't have chassis)
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }
 
 export function createBoatScorpion(level, random = true) {
@@ -121,6 +130,7 @@ export function createBoatScorpion(level, random = true) {
     const projectileSize = randomFactor * 0.5;
     const maxAngle = Math.PI;
     const value = randomFactor * (10 + level * 10);
+    const heatDispersion = 30; // Default fallback (boats don't have chassis)
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion);
 }

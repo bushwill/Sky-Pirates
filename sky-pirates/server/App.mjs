@@ -17,7 +17,7 @@ import { createEnemyGun } from './WeaponList.mjs';
 
 const admin_name = 'Shluck'
 
-const mapData = new MapObject();
+export const mapData = new MapObject();
 const recovery = mapData.getRecovery();
 
 const app = express();
@@ -43,20 +43,30 @@ let max_money_crates = crateScale * 40; // Maximum number of crates allowed
 let max_component_crates = crateScale * 10; // Maximum number of component crates allowed
 let crateSpawnExclusionRadius = 1000; // Crates will not spawn within this distance from x=0
 
+// Fleet boat tracking
+const MAX_FLEET_BOATS = 5;
+const MIN_FLEET_DISTANCE = 30000; // 30km minimum distance between fleet boats
+let lastFleetSpawnTime = 0;
+const FLEET_SPAWN_COOLDOWN = 1 * 60 * 1000;
+let AUTO_SPAWN_FLEETS = true; // Set to true to enable automatic fleet spawning
+let fleetCounter = 1; // Simple counter for fleet naming
+
 const startMillis = Date.now();
 
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  
+  // Initialize 5 fleet boats at valid spots
+  console.log('Initializing fleet boats...');
+  for (let i = 0; i < 5; i++) {
+    spawnFleetBoat();
+  }
+  console.log(`Initialized ${enemies.filter(e => e.isFleetBoat).length} fleet boats`);
 });
 
 const wss = new WebSocketServer({
   server,
   perMessageDeflate: { zlibDeflateOptions: { level: 9 } } // Highest compression
-});
-
-// Debug WebSocket connection attempts
-server.on('upgrade', (request, socket, head) => {
-  console.log('WebSocket upgrade request received:', request.url, request.headers);
 });
 
 function millis() {
@@ -91,39 +101,65 @@ function updatePlayers() {
 
 // Enemy plane update loop
 function updateEnemies() {
+  // Early exit if no players
+  if (players.length === 0) return;
+  
   enemies.forEach((enemy) => {
     checkPlayerBiome(enemy);
+    
+    // Always update all enemies regardless of distance
     updateEnemy(enemy, players);
+    
     updateHull(enemy);
     enemy.messages = enemy.messages.filter((msg) => millis() - msg[0] < 8000);
   });
 }
 
+function updateFleets() {
+  if (players.length === 0) return;
+  
+  const now = Date.now();
+  
+  // Only do expensive checks every 5 seconds
+  if (now - lastFleetSpawnTime < 5000) return;
+  
+  // Spawn new fleet if auto-spawn is enabled
+  if (AUTO_SPAWN_FLEETS) {
+    const fleetBoats = enemies.filter(e => e.isFleetBoat);
+    if (fleetBoats.length < MAX_FLEET_BOATS && now - lastFleetSpawnTime > FLEET_SPAWN_COOLDOWN) {
+      if (spawnFleetBoat()) lastFleetSpawnTime = now;
+    }
+  }
+  
+  // Clean up orphaned planes (planes whose fleet boat died)
+  // Only check planes that have a fleetBoat reference
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const enemy = enemies[i];
+    if (enemy.type && enemy.type.includes('Plane') && enemy.faction === 'navy' && enemy.fleetBoat) {
+      // Check if the fleet boat still exists in enemies array
+      const boatStillExists = enemies.includes(enemy.fleetBoat);
+      if (!boatStillExists) {
+        console.log(`Plane ${enemy.username} lost its fleet boat, becoming independent`);
+        enemy.fleetBoat = null; // Plane becomes independent
+      }
+    }
+  }
+}
+
+// ===== END FLEET SYSTEM =====
+
 function updateEnemy(enemy) {
   // Update AI first to determine if enemy has a target
-  enemy.updateAI(players);
+  // Pass crates and enemies to planes for salvage operations
+  if (enemy instanceof NavySalvagePlane) {
+    enemy.updateAI(players, crates, enemies);
+  } else {
+    enemy.updateAI(players);
+  }
   
-  // Only do full physics/gun updates if enemy has a target (optimization)
+  // Always do full physics/gun updates for all enemies
   if (enemy instanceof EnemyPlane) {
-    if (enemy.target || enemy.aiState === "traveling" || enemy.aiState === "attacking") {
-      updatePlane(enemy);
-    } else {
-      // When idle/searching with no target, just do minimal updates
-      const deltaTime = 0.01 * timeSpeed;
-      // Update gun cooldowns/heat but skip angle calculations
-      if (enemy.gun1) {
-        updateGunCooldown(enemy.gun1, deltaTime);
-        updateGunHeat(enemy, enemy.gun1, deltaTime);
-      }
-      if (enemy.gun2) {
-        updateGunCooldown(enemy.gun2, deltaTime);
-        updateGunHeat(enemy, enemy.gun2, deltaTime);
-      }
-      // Still apply physics to let them drift/fall naturally
-      applyPlayerGravity(enemy);
-      applyPlayerDrag(enemy, deltaTime);
-      updatePosition(enemy);
-    }
+    updatePlane(enemy);
   } else if (enemy instanceof NavySalvageBoat) {
     updateBoat(enemy);
   }
@@ -149,6 +185,12 @@ function updatePlayer(player) {
     // Store twin zone info on player for client
     player.currentRecoveryZone = currentRecoveryZone;
     player.twinRecoveryZone = twinZone;
+    
+    // Reset navy target status when in recovery zone (safe zone)
+    if (player.navyTargeted) {
+      player.navyTargeted = false;
+      player.navyActivityTime = 0;
+    }
     
     if (player.inventory.length > 0) {
       if (player.browsing === false) player.browsing = true; // Set browsing flag if player has items in inventory
@@ -252,7 +294,11 @@ function updateProjectile(projectile) {
 
   // Check for collisions with enemies
   enemies.forEach((enemy) => {
-    if (enemy.username === projectile.owner) return; // Skip collision with self
+    // Skip if projectile owner is self or another enemy
+    if (enemy.username === projectile.owner) return;
+    const ownerIsEnemy = enemies.some(e => e.username === projectile.owner);
+    if (ownerIsEnemy) return; // Enemies can't damage other enemies
+    
     const dx = Math.abs(enemy.x - projectile.x);
     const dy = Math.abs(enemy.y - projectile.y);
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -286,15 +332,18 @@ function updateCrate(crate) {
   // Determine the crate's biome for drag/buoyancy
   let fluidDensity = 1.0;
   let biomeType = null;
+  // Look up the carrier - could be a player or enemy
   const player = players.find(p => p.username === crate.carrier);
-  // Look up the player object by username
+  const enemy = enemies.find(e => e.username === crate.carrier);
+  const carrier = player || enemy;
+  
   if (crate.carrier) {
-    if (!player) {
+    if (!carrier) {
       crate.detach();
       return;
     } // Defensive: skip update if carrier is missing
-    // Check if crate is in any recovery zone using biome detection
-    if (mapData.getBiomeAtPosition(crate.x, crate.y) === 'recovery') {
+    // Check if crate is in any recovery zone using biome detection (only for players)
+    if (player && mapData.getBiomeAtPosition(crate.x, crate.y) === 'recovery') {
       crate.open(player) // Open crate when in recovery zone
       if (crate.type === 'money') sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
       else if (crate.type === 'component') sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
@@ -302,10 +351,10 @@ function updateCrate(crate) {
       return;
     }
     // --- Rope physics ---
-    // Find the rope's target position (behind the player)
-    const ropeAngle = player.angle + Math.PI;
-    const targetX = player.x + Math.cos(ropeAngle) * ROPE_LENGTH;
-    const targetY = player.y + Math.sin(ropeAngle) * ROPE_LENGTH;
+    // Find the rope's target position (behind the carrier)
+    const ropeAngle = carrier.angle + Math.PI;
+    const targetX = carrier.x + Math.cos(ropeAngle) * ROPE_LENGTH;
+    const targetY = carrier.y + Math.sin(ropeAngle) * ROPE_LENGTH;
 
     const deltaX = targetX - crate.x;
     const deltaY = targetY - crate.y;
@@ -418,6 +467,31 @@ function updateCrate(crate) {
     if (distance <= attach_radius && new_player.username !== crate.carrier) {
       new_player.attachCrate(crate);
       if (player) player.detachCrate(crate); // Detach from previous carrier if any
+    }
+  });
+  
+  // Collision: Attach to enemy planes (for salvage operations)
+  enemies.forEach((enemy) => {
+    // Check if enemy is a plane (has fleetBoat property or is NavySalvagePlane)
+    if (enemy.type && enemy.type.includes('Plane') && enemy.faction === 'navy') {
+      const dx = enemy.x - crate.x;
+      const dy = enemy.y - crate.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const attach_radius = 2 * (enemy.size + crate.size + 5); // Double the pickup distance
+      if (distance <= attach_radius && enemy.username !== crate.carrier) {
+        if (enemy.attachCrate) {
+          // If crate is currently carried by someone, detach it from them first
+          if (crate.carrier) {
+            const previousCarrier = players.find(p => p.username === crate.carrier) || 
+                                   enemies.find(e => e.username === crate.carrier);
+            if (previousCarrier && previousCarrier.detachCrate) {
+              previousCarrier.detachCrate(crate);
+            }
+          }
+          // Now attach to enemy
+          enemy.attachCrate(crate);
+        }
+      }
     }
   });
 }
@@ -639,7 +713,6 @@ function checkSpawnEnemyPlane(plane) {
   if (plane.keys['p'] && plane.privileges && (now - lastEnemySpawnTime > enemySpawnRate)) {
     lastEnemySpawnTime = now;
     const enemy = new NavySalvagePlane(
-      plane.biome,
       `NavySalvage_${Date.now()}`,
       50, 50, 200,
       plane.x,
@@ -840,8 +913,8 @@ function updateGunHeat(entity, gun, deltaTime) {
   }
   
   if (gun.heat > 0) {
-    // Use chassis.heatDispersion for players, default value for enemies
-    const heatDispersion = entity.chassis?.heatDispersion ?? 30;
+    // Use gun's own heatDispersion property
+    const heatDispersion = gun.heatDispersion ?? 30; // Fallback to 30 if not set
     gun.heat = Math.max(0, gun.heat - heatDispersion * deltaTime);
   }
 }
@@ -1058,6 +1131,175 @@ function checkPlayerBiome(player) {
   player.biome = foundBiome;
 }
 
+function findLargestGapForFleetBoat() {
+  const waterBiome = mapData.biomes.find(b => b.type === 'water');
+  if (!waterBiome) return null;
+  
+  const waterY = Math.min(waterBiome.y1, waterBiome.y2);
+  const RECOVERY_ZONE_BUFFER = 500; // Stay 500m away from recovery zones
+  
+  // Get all fleet boats
+  const fleetBoats = enemies.filter(e => e.isFleetBoat && e instanceof NavySalvageBoat);
+  
+  // Get all recovery zones from map
+  const recoveryZones = mapData.biomes.filter(b => b.type === 'recovery');
+  
+  // If no fleet boats exist, spawn anywhere on the map (away from recovery zones)
+  if (fleetBoats.length === 0) {
+    // Try random positions until we find one far from all recovery zones
+    for (let attempts = 0; attempts < 20; attempts++) {
+      let x;
+      // Avoid spawning in exclusion zone
+      if (Math.random() < 0.5) {
+        x = -mapData.sizeX + Math.random() * (mapData.sizeX - crateSpawnExclusionRadius * 2);
+      } else {
+        x = crateSpawnExclusionRadius * 2 + Math.random() * (mapData.sizeX - crateSpawnExclusionRadius * 2);
+      }
+      
+      // Check distance to all recovery zones
+      let tooClose = false;
+      for (const zone of recoveryZones) {
+        const zoneCenterX = (zone.x1 + zone.x2) / 2;
+        const zoneHalfWidth = (zone.x2 - zone.x1) / 2;
+        const distanceToZone = Math.abs(x - zoneCenterX) - zoneHalfWidth;
+        
+        if (distanceToZone < RECOVERY_ZONE_BUFFER) {
+          tooClose = true;
+          break;
+        }
+      }
+      
+      if (!tooClose) {
+        return { x, y: waterY };
+      }
+    }
+    return null; // Couldn't find suitable location after 20 attempts
+  }
+  
+  // Sort fleet boats by x position
+  const sortedBoats = [...fleetBoats].sort((a, b) => a.x - b.x);
+  
+  // Find largest gap that can fit a new fleet with MIN_FLEET_DISTANCE on both sides
+  let largestGap = { size: 0, x1: 0, x2: 0 };
+  
+  // Check gap before first boat
+  const firstGapSize = sortedBoats[0].x - (-mapData.sizeX);
+  if (firstGapSize > largestGap.size) {
+    largestGap = { size: firstGapSize, x1: -mapData.sizeX, x2: sortedBoats[0].x };
+  }
+  
+  // Check gaps between boats
+  for (let i = 0; i < sortedBoats.length - 1; i++) {
+    const gapSize = sortedBoats[i + 1].x - sortedBoats[i].x;
+    if (gapSize > largestGap.size) {
+      largestGap = { size: gapSize, x1: sortedBoats[i].x, x2: sortedBoats[i + 1].x };
+    }
+  }
+  
+  // Check gap after last boat
+  const lastGapSize = mapData.sizeX - sortedBoats[sortedBoats.length - 1].x;
+  if (lastGapSize > largestGap.size) {
+    largestGap = { size: lastGapSize, x1: sortedBoats[sortedBoats.length - 1].x, x2: mapData.sizeX };
+  }
+  
+  // A viable gap must be at least 2 * MIN_FLEET_DISTANCE
+  const minViableGapSize = MIN_FLEET_DISTANCE * 2;
+  if (largestGap.size < minViableGapSize) {
+    return null; // No viable gap
+  }
+  
+  // Calculate the viable spawn range
+  let viableX1 = largestGap.x1 + MIN_FLEET_DISTANCE;
+  let viableX2 = largestGap.x2 - MIN_FLEET_DISTANCE;
+  
+  // Exclude recovery zones and their 500m buffers, plus center exclusion zone
+  const exclusions = [];
+  
+  // Add center exclusion zone (crates)
+  const exclusionMin = -crateSpawnExclusionRadius * 2;
+  const exclusionMax = crateSpawnExclusionRadius * 2;
+  exclusions.push({ x1: exclusionMin, x2: exclusionMax });
+  
+  // Add all recovery zones with 500m buffer
+  for (const zone of recoveryZones) {
+    exclusions.push({ x1: zone.x1 - RECOVERY_ZONE_BUFFER, x2: zone.x2 + RECOVERY_ZONE_BUFFER });
+  }
+  
+  // Sort exclusions by x1
+  exclusions.sort((a, b) => a.x1 - b.x1);
+  
+  // Find segments of viable range not in exclusion zones
+  const viableSegments = [];
+  let currentStart = viableX1;
+  
+  for (const exclusion of exclusions) {
+    // If exclusion starts after viable range, we're done
+    if (exclusion.x1 >= viableX2) break;
+    
+    // If exclusion ends before viable range starts, skip it
+    if (exclusion.x2 <= viableX1) continue;
+    
+    // If there's a gap before this exclusion, add it as a segment
+    if (currentStart < exclusion.x1 && exclusion.x1 <= viableX2) {
+      viableSegments.push({ x1: currentStart, x2: Math.min(exclusion.x1, viableX2) });
+    }
+    
+    // Move current start to after this exclusion
+    currentStart = Math.max(currentStart, exclusion.x2);
+  }
+  
+  // Add final segment if there's space after all exclusions
+  if (currentStart < viableX2) {
+    viableSegments.push({ x1: currentStart, x2: viableX2 });
+  }
+  
+  // If no viable segments, can't spawn
+  if (viableSegments.length === 0) {
+    return null;
+  }
+  
+  // Choose segment weighted by size
+  const totalSize = viableSegments.reduce((sum, seg) => sum + (seg.x2 - seg.x1), 0);
+  let randomPoint = Math.random() * totalSize;
+  
+  for (const segment of viableSegments) {
+    const segmentSize = segment.x2 - segment.x1;
+    if (randomPoint < segmentSize) {
+      const x = segment.x1 + randomPoint;
+      return { x, y: waterY };
+    }
+    randomPoint -= segmentSize;
+  }
+  
+  return null; // Fallback
+}
+
+function spawnFleetBoat() {
+  const location = findLargestGapForFleetBoat();
+  if (!location) return null;
+  
+  const boatUsername = `Navy-Boat-${fleetCounter}`;
+  fleetCounter++; // Increment counter for next fleet
+  
+  const boat = new NavySalvageBoat(
+    boatUsername,
+    50, 50, 200, // navy blue
+    location.x,
+    location.y,
+    3 // spawn with 3 planes
+  );
+  
+  // Add boat to enemies
+  enemies.push(boat);
+  
+  // Spawn its planes
+  const planes = boat.spawnPlanes();
+  enemies.push(...planes);
+  
+  console.log(`Fleet boat ${boatUsername} spawned at (${Math.round(location.x)}, ${Math.round(location.y)}) with ${planes.length} planes`);
+  return boat;
+}
+
 function checkParties() {
   parties.forEach((party) => {
     if (party.players.length > 0) {
@@ -1111,7 +1353,30 @@ function handleIncomingMessage(ws, message) {
     case 'get_enemies':
       const playerForEnemies = players.find(p => p.username === ws.currentUsername);
       const filteredEnemies = filterEntitiesInRange(enemies, playerForEnemies);
-      sendMessage(ws, { type: 'enemy_data', enemies: filteredEnemies });
+      // Serialize enemies with minimal data for client
+      const serializedEnemies = filteredEnemies.map(enemy => {
+        if (enemy.toClientData) {
+          return enemy.toClientData();
+        }
+        // Fallback for enemies without toClientData method
+        return {
+          type: enemy.type,
+          username: enemy.username,
+          faction: enemy.faction,
+          x: enemy.x,
+          y: enemy.y,
+          angle: enemy.angle,
+          vx: enemy.vx,
+          vy: enemy.vy,
+          r: enemy.r,
+          g: enemy.g,
+          b: enemy.b,
+          size: enemy.size,
+          hull: enemy.hull ?? enemy.chassis?.hull ?? 0,
+          maxHull: enemy.maxHull ?? enemy.chassis?.maxHull ?? 1
+        };
+      });
+      sendMessage(ws, { type: 'enemy_data', enemies: serializedEnemies });
       break;
     case 'get_parties':
       sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
@@ -1379,7 +1644,6 @@ function enemyTest(player, type = 0) {
   try {
     if (type === 0) {
       const enemy = new NavySalvagePlane(
-        player.biome,
         `NavySalvage_${Date.now()}`,
         50, 50, 200,
         player.x,
@@ -1399,7 +1663,6 @@ function enemyTest(player, type = 0) {
       if (waterY === null) waterY = 310;
 
       const enemy = new NavySalvageBoat(
-        player.biome,
         `NavyBoat_${Date.now()}`,
         50, 50, 200,
         player.x,
@@ -1430,6 +1693,7 @@ function checkCommand(command, player) {
   let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
   let weapontest_command = /^\/weapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
+  let spawnfleet_command = /^\/spawnfleet$/;
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let enemytest_command = /^\/enemytest\s+(\d+)$/;
@@ -1525,7 +1789,7 @@ function checkCommand(command, player) {
     let value = parseFloat(match[1]);
     player.engine.maxPower = value;
     player.chassis.topSpeed = value ** 2;
-    player.chassis.heatDispersion = value * player.engine.heatEfficiency;
+    player.chassis.heatDispersion = value * player.engine.heatEfficiency; // For engine heat cooling
     player.wings.maxSpeed = value ** 2;
     sendNoticeMessage(player.username, "Changed max engine power to " + value, 'server');
   }
@@ -1555,6 +1819,34 @@ function checkCommand(command, player) {
     
     sendNoticeMessage(player.username, `Cleared ${crateCount} crates and respawned all crates.`, 'server');
     sendNoticeMessageAll(`${player.username} cleared and respawned all crates.`, 'server');
+  }
+
+  match = command.match(spawnfleet_command);
+  if (match) {
+    // Spawn fleet at player's X coordinate, Y = 310 (sea level)
+    const spawnX = player.x;
+    const spawnY = 310;
+    
+    const boatUsername = `Navy-Boat-${fleetCounter}`;
+    fleetCounter++; // Increment counter for next fleet
+    
+    const boat = new NavySalvageBoat(
+      boatUsername,
+      50, 50, 200, // navy blue
+      spawnX,
+      spawnY,
+      3 // spawn with 3 planes
+    );
+    
+    // Add boat to enemies
+    enemies.push(boat);
+    
+    // Spawn its planes
+    const planes = boat.spawnPlanes();
+    enemies.push(...planes);
+    
+    sendNoticeMessage(player.username, `Fleet spawned at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes.`, 'server');
+    console.log(`Fleet boat ${boatUsername} spawned by admin at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes`);
   }
 
   match = command.match(tp_command);
@@ -1639,6 +1931,7 @@ setInterval(() => {
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
 setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
+setInterval(() => { updateFleets() }, 5000); // Update fleets every 5 seconds for cleanup/spawning
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
