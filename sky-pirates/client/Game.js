@@ -59,6 +59,8 @@ let settings = {
 // --- Menu and color picker setup ---
 let menuManager;
 let colorPicker;
+// Whether the menu overlay is visible during gameplay (toggle with ESC)
+let menuVisible = false;
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
@@ -68,8 +70,8 @@ function setup() {
     textAlign(CENTER);
     background(255, 155, 0);
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
+    // p5 provides keyPressed/keyTyped/ keyReleased hooks — use those instead of duplicating DOM key events
+    // (window listeners for keydown/keyup were removed to avoid duplicate input handling)
     window.addEventListener("mousedown", handleMouseDown);
     window.addEventListener("mouseup", handleMouseUp);
 
@@ -134,6 +136,14 @@ function draw() {
             }
             if (mapData) {
                 handleGameDisplay(controlledPlayer);
+                // Draw menu overlay if toggled during gameplay
+                if (menuVisible) {
+                    let mw = width * 0.6;
+                    let mh = height * 0.8;
+                    let mx = (width - mw) / 2;
+                    let my = (height - mh) / 2;
+                    menuManager.draw(mx, my, mw, mh);
+                }
             }
         }
     }

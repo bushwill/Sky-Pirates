@@ -11,7 +11,8 @@ class MenuManager {
 
     show(name) {
         this.current = this.screens[name];
-        if (name === 'login' && this.colorPicker) {
+        // Only show the color picker on the login screen when the user is NOT already signed in
+        if (name === 'login' && this.colorPicker && !signedIn) {
             this.colorPicker.show();
         } else if (this.colorPicker) {
             this.colorPicker.hide();
@@ -194,7 +195,24 @@ class MenuInputField {
 
     keyPressed(k) {
         if (!this.focused) return false;
-        if (keyCode === BACKSPACE) {
+        // If a DOM key string was passed (from our handleKeyDown), handle it here
+        if (typeof k === 'string') {
+            // Backspace handling
+            if (k === 'Backspace') {
+                this.value = this.value.slice(0, -1);
+                return true;
+            }
+            // Printable single-character keys: append
+            if (k.length === 1 && this.value.length < 13) {
+                this.value += k;
+                return true;
+            }
+            // Ignore other keys here
+            return false;
+        }
+
+        // Fallback: legacy p5 keyCode handling
+        if (typeof keyCode !== 'undefined' && keyCode === BACKSPACE) {
             this.value = this.value.slice(0, -1);
             return true;
         }
@@ -202,7 +220,7 @@ class MenuInputField {
     }
     keyTyped(k) {
         if (!this.focused) return false;
-        if (k.length === 1 && this.value.length < 13) {
+        if (typeof k === 'string' && k.length === 1 && this.value.length < 13) {
             this.value += k;
             return true;
         }
@@ -213,6 +231,11 @@ class MenuInputField {
 class LoginMenuScreen extends MenuScreen {
     constructor(colorPicker) {
         super("Login");
+        // Customizable headers for login vs pause (signed-in) views
+        this.loginHeader = "What be yar bird's nomenclature, matey?";
+        this.loginSubheader = "[Translated] What's your plane's name?";
+        this.pauseHeader = "";
+        this.pauseSubheader = "There's no greater love in a sailor's heart than his vessel.";
         this.usernameField = new MenuInputField("Name:", 150, 220, 240, 40);
         this.colorPicker = colorPicker;
         this.loginMsg = '';
@@ -267,7 +290,8 @@ class LoginMenuScreen extends MenuScreen {
         fill(0);
         textSize(40);
 
-        if (this.colorPicker) {
+        // Only position/show color picker when not already signed in
+        if (!signedIn && this.colorPicker) {
             this.colorPicker.position(x + w / 2 + 120, y + 183);
         }
 
@@ -277,14 +301,29 @@ class LoginMenuScreen extends MenuScreen {
         } else {
             text("SKY PIRATES", x + w / 2, y + 50);
         }
-        textSize(20)
-        text("What be yar bird's nomenclature, matey?", x + w / 2, y + 100)
-        text("[Translated] What's your plane's name?", x + w / 2, y + 140)
+        textSize(20);
+        // Show different header/subheader depending on whether this is the pre-login screen or the in-game pause menu
+        if (signedIn) {
+            text(this.pauseHeader, x + w / 2, y + 100);
+            text(this.pauseSubheader, x + w / 2, y + 140);
+        } else {
+            text(this.loginHeader, x + w / 2, y + 100);
+            text(this.loginSubheader, x + w / 2, y + 140);
+        }
 
         // Draw input field centered horizontally
         this.usernameField.x = x + w / 2 - 120;
         this.usernameField.y = y + 170;
-        this.usernameField.draw();
+        // If already signed in, display username read-only; otherwise draw editable field
+        if (signedIn) {
+            fill(50);
+            textAlign(LEFT, CENTER);
+            textSize(18);
+            const displayName = username || this.usernameField.value || '(unknown)';
+            text(displayName, this.usernameField.x + 8, this.usernameField.y + this.usernameField.h / 2);
+        } else {
+            this.usernameField.draw();
+        }
         
         // Draw party field below username
         this.partyField.x = x + w / 2 - 120;
@@ -294,10 +333,12 @@ class LoginMenuScreen extends MenuScreen {
         // --- Draw login button to the right of party field ---
         let loginBtnX = x + w / 2 + 120 + 10; // Right of party field with 10px spacing
         let loginBtnY = y + 220; // Same Y as party field
-        this.loginButton.setPosition(loginBtnX, loginBtnY);
-        this.loginButton.setSize(120, 40);
-        this.loginButton.selected = (this.selected === -1);
-        this.loginButton.draw();
+    this.loginButton.setPosition(loginBtnX, loginBtnY);
+    this.loginButton.setSize(120, 40);
+    // Change label when signed in: allow changing party mid-match
+    this.loginButton.label = signedIn ? "Change Party" : "Log In";
+    this.loginButton.selected = (this.selected === -1);
+    this.loginButton.draw();
         
         // --- Draw settings button in top-right corner ---
         let settingsBtnX = x + w - 130; // 130px from right edge
@@ -316,52 +357,55 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         // --- Draw weapon lists ---
-        let listSpacing = 54;
-        let listYOffset = y + 360; // Position well below error message area
-        let gunListW = 180, gunListH = 44;
-        let gunListPad = 40;
+        // If the player is already signed in, hide weapon selection (can't change weapons from pause menu)
+        if (!signedIn) {
+            let listSpacing = 54;
+            let listYOffset = y + 360; // Position well below error message area
+            let gunListW = 180, gunListH = 44;
+            let gunListPad = 40;
 
-        // Gun1 list (left)
-        let gun1X = x + w / 2 - gunListW - gunListPad;
-        let gun1Y = listYOffset;
-        textSize(22);
-        fill(0);
-        textAlign(CENTER, CENTER);
-        text("Gun 1", gun1X + gunListW / 2, gun1Y - 34);
-        for (let i = 0; i < this.gun1Options.length; i++) {
-            let opt = this.gun1Options[i];
-            opt.setPosition(gun1X, gun1Y + i * listSpacing);
-            opt.setSize(gunListW, gunListH);
-            
-            // Simplified logic: ONLY show weapon selection highlight
-            // Navigation highlight is disabled to prevent conflicts
-            if (selectedGun1 === i) {
-                opt.selected = "weapon";
-            } else {
-                opt.selected = false;
+            // Gun1 list (left)
+            let gun1X = x + w / 2 - gunListW - gunListPad;
+            let gun1Y = listYOffset;
+            textSize(22);
+            fill(0);
+            textAlign(CENTER, CENTER);
+            text("Gun 1", gun1X + gunListW / 2, gun1Y - 34);
+            for (let i = 0; i < this.gun1Options.length; i++) {
+                let opt = this.gun1Options[i];
+                opt.setPosition(gun1X, gun1Y + i * listSpacing);
+                opt.setSize(gunListW, gunListH);
+                
+                // Simplified logic: ONLY show weapon selection highlight
+                // Navigation highlight is disabled to prevent conflicts
+                if (selectedGun1 === i) {
+                    opt.selected = "weapon";
+                } else {
+                    opt.selected = false;
+                }
+                opt.draw();
             }
-            opt.draw();
-        }
 
-        // Gun2 list (right)
-        let gun2X = x + w / 2 + gunListPad;
-        let gun2Y = listYOffset;
-        textSize(22);
-        fill(0);
-        textAlign(CENTER, CENTER);
-        text("Gun 2", gun2X + gunListW / 2, gun2Y - 34);
-        for (let i = 0; i < this.gun2Options.length; i++) {
-            let opt = this.gun2Options[i];
-            opt.setPosition(gun2X, gun2Y + i * listSpacing);
-            opt.setSize(gunListW, gunListH);
-            
-            // Same simplified logic for gun2
-            if (selectedGun2 === i) {
-                opt.selected = "weapon";
-            } else {
-                opt.selected = false;
+            // Gun2 list (right)
+            let gun2X = x + w / 2 + gunListPad;
+            let gun2Y = listYOffset;
+            textSize(22);
+            fill(0);
+            textAlign(CENTER, CENTER);
+            text("Gun 2", gun2X + gunListW / 2, gun2Y - 34);
+            for (let i = 0; i < this.gun2Options.length; i++) {
+                let opt = this.gun2Options[i];
+                opt.setPosition(gun2X, gun2Y + i * listSpacing);
+                opt.setSize(gunListW, gunListH);
+                
+                // Same simplified logic for gun2
+                if (selectedGun2 === i) {
+                    opt.selected = "weapon";
+                } else {
+                    opt.selected = false;
+                }
+                opt.draw();
             }
-            opt.draw();
         }
     }
 
@@ -395,7 +439,8 @@ class LoginMenuScreen extends MenuScreen {
     }
 
     mousePressed(mx, my, x, y, w, h) {
-        this.usernameField.mousePressed(mx, my);
+    // Only allow focusing the username field when not signed in
+    if (!signedIn) this.usernameField.mousePressed(mx, my);
         this.partyField.mousePressed(mx, my);
         
         // Settings button - in top-right corner
@@ -411,7 +456,12 @@ class LoginMenuScreen extends MenuScreen {
         let loginBtnY = y + 220;
         if (mx > loginBtnX && mx < loginBtnX + 120 && my > loginBtnY && my < loginBtnY + 40) {
             this.selected = -1;
-            this.loginButton.callback();
+            // If signed in, change party action should only update party
+            if (signedIn) {
+                this.changeParty();
+            } else {
+                this.loginButton.callback();
+            }
             return;
         }
 
@@ -507,6 +557,27 @@ class LoginMenuScreen extends MenuScreen {
             gun2: selectedGun2
         }, partyName);
         this.loginMsg = "Logging in...";
+    }
+
+    // Change party while already signed in
+    changeParty() {
+        if (!signedIn) return;
+        let partyName = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+        // If partyName is empty, treat as an explicit clear request and send clearParty flag
+        if (!partyName) {
+            // Send login message with clearParty=true to instruct server to leave current party
+            loginPlayer(username, { r, g, b }, { gun1: selectedGun1, gun2: selectedGun2 }, "", true);
+            this.loginMsg = 'Removing from party...';
+            setTimeout(() => {
+                this.loginMsg = '';
+                if (typeof menuVisible !== 'undefined') menuVisible = false;
+            }, 1500);
+            return;
+        }
+
+        // Re-use loginPlayer to update the party on the server side; preserve existing username and color
+        loginPlayer(username, { r, g, b }, { gun1: selectedGun1, gun2: selectedGun2 }, partyName, false);
+        this.loginMsg = "Updating party...";
     }
 }
 

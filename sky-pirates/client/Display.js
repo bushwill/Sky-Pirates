@@ -198,6 +198,8 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     if (player.party) {
         fill(player.party.r, player.party.g, player.party.b);
     }
+    // Ensure no stroke is applied to player text (prevents white outlines from leaking UI state)
+    noStroke();
     text(player.username, drawX, drawY - 15);
 }
 
@@ -366,6 +368,9 @@ function drawOverSpeedFireIcon(player, drawX, drawY) {
 
 
 function drawPlaneData(player) {
+    // Ensure no stroke is applied to these HUD text elements so they don't inherit
+    // stroke from other UI panels (prevents white outline artifact).
+    noStroke();
     fill(255);
     textAlign(LEFT);
     textSize(12);
@@ -626,6 +631,8 @@ function drawPlaneHull(player, drawX = 0, drawY = 0) {
 }
 
 function drawSpeed(player, drawX, drawY) {
+    // Defensive noStroke to avoid outlines from previous UI drawing state
+    noStroke();
     fill(255);
     text(Math.sqrt(player.vx ** 2 + player.vy ** 2).toFixed(0), drawX, drawY - 50);
 }
@@ -826,6 +833,7 @@ function displayTeleportButton(controlledPlayer) {
 
 function displayAppInfo() {
     fill(255, 255, 255);
+    noStroke();
     textSize(16);
     textAlign(CENTER);
     text("Ping: " + Math.round(avgPing), windowWidth - 50, windowHeight - 40);

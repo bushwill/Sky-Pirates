@@ -118,8 +118,23 @@ function handleDecodedMessage(decodedMessage) {
         case 'login_success':
             signedIn = true;
             signedInTime = millis();
-            menuManager.show("main"); // or whatever is your game screen
-            console.log("Successfully logged in!");
+            // If server sent an 'updated' message it's a party/info update while already logged in
+            if (decodedMessage.message === 'updated') {
+                // Close any overlay menu and show a brief confirmation in the login screen area
+                if (typeof menuVisible !== 'undefined') menuVisible = false;
+                if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].loginMsg = 'Party updated.';
+                    // Clear the message after a short delay
+                    setTimeout(() => {
+                        if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                            menuManager.screens['login'].loginMsg = '';
+                        }
+                    }, 2000);
+                }
+            } else {
+                menuManager.show("main"); // or whatever is your game screen
+                console.log("Successfully logged in!");
+            }
             break;
             
         case 'login_failed':
@@ -283,7 +298,7 @@ function getMapData() {
 }
 
 // Accept username and color params from menu, not HTML inputs
-function loginPlayer(name, colorObj, weaponChoices = null, partyName = "") {
+function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clearParty = false) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         if (menuManager && menuManager.screens && menuManager.screens['login']) {
             if (reconnecting) {
@@ -330,6 +345,7 @@ function loginPlayer(name, colorObj, weaponChoices = null, partyName = "") {
         selectedGun1,
         selectedGun2,
         partyName: partyName.trim(),
+        clearParty: !!clearParty,
     };
 
     const encodedMessage = msgpack.encode(message);

@@ -1338,8 +1338,21 @@ wss.on('connection', (ws, request) => {
   ws.on('close', () => {
     if (ws.currentUsername) {
       let player = players.find((p) => p.username === ws.currentUsername);
-      player.detachAllCrates();
-      players = players.filter((p) => p.username !== ws.currentUsername);
+      if (player) {
+        // Defensive: only call methods if the player object still exists
+        if (typeof player.detachAllCrates === 'function') {
+          try {
+            player.detachAllCrates();
+          } catch (err) {
+            console.error('Error detaching crates for player on close:', err);
+          }
+        }
+        players = players.filter((p) => p.username !== ws.currentUsername);
+      } else {
+        console.warn(`ws.close: no player object found for username ${ws.currentUsername}`);
+      }
+
+      // Always remove socket mapping and notify
       playerSockets.delete(ws.currentUsername);
       sendNoticeMessageAll(ws.currentUsername + ' has disconnected', 'server');
       console.log(`Player disconnected: ${ws.currentUsername}`);
@@ -1405,11 +1418,11 @@ function handleIncomingMessage(ws, message) {
     case 'equip_item':
       handleEquipItem(ws, message);
       break;
-    case 'ping':
-      handlePing(ws, message);
-      break;
     case 'teleport_to_twin':
       handleTeleportToTwin(ws, message);
+      break;
+    case 'ping':
+      handlePing(ws, message);
       break;
   }
 }
@@ -1474,15 +1487,16 @@ function handleTeleportToTwin(ws, message) {
   sendNoticeMessage(ws.currentUsername, `Teleported from ${currentRecoveryZone.id} to ${twinZone.id}!`, 'game');
 };
 
-function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName }) {
+function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty }) {
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
-    sendNoticeMessageAll(username + " joined!", "server")
+    // New player logging in
+    sendNoticeMessageAll(username + " joined!", "server");
     const player = new Player('air', username, r, g, b, 0, -400, startMillis, selectedGun1, selectedGun2);
     players.push(player);
     playerSockets.set(username, ws);
     ws.currentUsername = username; // Set username in socket context
-    
+
     // Handle party joining
     if (partyName && partyName.trim()) {
       let party = parties.find(party => party.name === partyName.trim());
@@ -1495,7 +1509,7 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       }
       party.addPlayer(player);
     }
-    
+
     sendMessage(ws, { type: 'login_success', username, map: mapData });
     sendNoticeMessage(username, "Hi!", 'game');
     sendNoticeMessage(username, "Current players: " + players.length, 'server');
@@ -1505,7 +1519,62 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       player.privileges = true; // Grant admin privileges
     }
   } else {
-    sendMessage(ws, { type: 'login_failed', message: 'Username already in use.' });
+    // Username already exists. Allow update if this message comes from the same socket that owns the player
+    const existingSocket = playerSockets.get(username);
+    // Consider it the same owner if the ws already has currentUsername set to this username
+    const sameOwner = (existingSocket === ws) || (ws.currentUsername === username) || (!existingSocket && ws.currentUsername === username);
+    if (sameOwner) {
+      // Treat as an in-place update (party change / color update)
+      // Update color if provided
+      if (typeof r === 'number') existingPlayer.r = r;
+      if (typeof g === 'number') existingPlayer.g = g;
+      if (typeof b === 'number') existingPlayer.b = b;
+      // Update selected guns only if provided (client may omit on party-change)
+      if (typeof selectedGun1 !== 'undefined') existingPlayer.selectedGun1 = selectedGun1;
+      if (typeof selectedGun2 !== 'undefined') existingPlayer.selectedGun2 = selectedGun2;
+
+      // Handle party joining/updating only when a non-empty partyName is provided.
+      // If partyName is missing or empty and clearParty is not set, leave the existingPlayer.party unchanged.
+      if (typeof partyName !== 'undefined' && partyName && partyName.trim()) {
+        const trimmed = partyName.trim();
+        let party = parties.find(party => party.name === trimmed);
+        if (!party) {
+          parties.push(new Party(trimmed));
+          party = parties.find(party => party.name === trimmed);
+          sendNoticeMessage(username, `Created and joined party "${trimmed}"`, 'server');
+        } else {
+          sendNoticeMessage(username, `Joined party "${trimmed}"`, 'server');
+        }
+        party.addPlayer(existingPlayer);
+      }
+      else if (clearParty) {
+        // Explicit request to leave party
+        if (existingPlayer.party && existingPlayer.party.name) {
+          const old = parties.find(p => p.name === existingPlayer.party.name);
+          if (old && typeof old.removePlayer === 'function') {
+            old.removePlayer(existingPlayer);
+            sendNoticeMessage(username, `Left party "${old.name}"`, 'server');
+          } else {
+            // Fallback: just clear the player's party object
+            existingPlayer.party = null;
+            sendNoticeMessage(username, 'Left party', 'server');
+          }
+        } else {
+          // No party to leave
+          sendNoticeMessage(username, 'Not in a party.', 'server');
+        }
+      }
+
+      // Ensure the socket mapping and context are set
+      playerSockets.set(username, ws);
+      ws.currentUsername = username;
+
+      sendMessage(ws, { type: 'login_success', username, map: mapData, message: 'updated' });
+      sendNoticeMessage(username, 'Login info updated.', 'game');
+    } else {
+      // Different socket owns this username - reject with clearer message
+      sendMessage(ws, { type: 'login_failed', message: 'Username already in use by another connection.' });
+    }
   }
 }
 
