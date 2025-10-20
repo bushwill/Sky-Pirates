@@ -344,41 +344,51 @@ function screenToWorld(screenX, screenY, cameraWorldX, cameraWorldY) {
 // Helper function to calculate camera center between player and mouse
 // Uses smooth interpolation based on mouse distance from center
 function getCameraCenter(player, mouseScreenX, mouseScreenY) {
-    // If dynamic camera is disabled, just return player position
+    // Compute base camera position depending on dynamicCamera setting
+    let camX, camY;
     if (!settings.dynamicCamera) {
-        return {
-            x: player.x,
-            y: player.y
-        };
-    }
-    
-    // Convert mouse screen coordinates to world coordinates
-    const mouseWorld = screenToWorld(mouseScreenX, mouseScreenY, player.x, player.y);
-    
-    // Calculate normalized mouse distance from screen center (0-1)
-    // Use max of horizontal and vertical distances for consistent edge behavior
-    const mouseDX = Math.abs(mouseScreenX - width / 2);
-    const mouseDY = Math.abs(mouseScreenY - height / 2);
-    
-    // Normalize each dimension separately, then take the maximum
-    // This creates a square deadzone instead of circular
-    const normalizedX = mouseDX / (width / 2);
-    const normalizedY = mouseDY / (height / 2);
-    const normalizedDistance = Math.max(normalizedX, normalizedY);
-    
-    // Clamp to 1.0 (in case mouse goes slightly outside canvas)
-    const clampedDistance = Math.min(normalizedDistance, 1.0);
-    
+        // Static camera: center directly on player
+        camX = player.x;
+        camY = player.y;
+    } else {
+        // Dynamic camera: follow mouse smoothly between player and cursor
+        // Convert mouse screen coordinates to world coordinates
+        const mouseWorld = screenToWorld(mouseScreenX, mouseScreenY, player.x, player.y);
+        
+        // Calculate normalized mouse distance from screen center (0-1)
+        // Use max of horizontal and vertical distances for consistent edge behavior
+        const mouseDX = Math.abs(mouseScreenX - width / 2);
+        const mouseDY = Math.abs(mouseScreenY - height / 2);
+        
+        // Normalize each dimension separately, then take the maximum
+        // This creates a square deadzone instead of circular
+        const normalizedX = mouseDX / (width / 2);
+        const normalizedY = mouseDY / (height / 2);
+        const normalizedDistance = Math.max(normalizedX, normalizedY);
+        
+        // Clamp to 1.0 (in case mouse goes slightly outside canvas)
+        const clampedDistance = Math.min(normalizedDistance, 1.0);
+        
     // Use smooth curve for interpolation (ease-out quadratic)
     // When mouse is at center (0): t = 0 (camera at player)
-    // When mouse is at edge (1): t = 0.67 (camera 2/3 towards mouse)
-    const t = clampedDistance * clampedDistance * 0.67;
+    // When mouse is at edge (1): t = 0.67 (camera 2/3 towards mouse) on reference screens
+    // Scale the maximum interpolation by screen size so larger displays get a less aggressive camera.
+    // Compute a screen scale factor (based on diagonal logical pixels) relative to a reference diagonal.
+    const diag = Math.sqrt(width * width + height * height);
+    const REFERENCE_DIAG = 1400; // reference diagonal (logical pixels) where behavior is unchanged
+    const screenScale = Math.max(0.5, Math.min(2.0, diag / REFERENCE_DIAG));
+    // Dampening reduces the effective t on larger screens. Use sqrt for gentle curve.
+    const dampening = 1 / Math.sqrt(screenScale);
+    const baseMax = 0.67; // original maximum interpolation at edge
+    const maxT = baseMax * dampening; // scaled max interpolation
+    const t = clampedDistance * clampedDistance * maxT;
+        
+        // Calculate base camera position
+        camX = player.x + (mouseWorld.x - player.x) * t;
+        camY = player.y + (mouseWorld.y - player.y) * t;
+    }
     
-    // Calculate base camera position
-    let camX = player.x + (mouseWorld.x - player.x) * t;
-    let camY = player.y + (mouseWorld.y - player.y) * t;
-    
-    // Add screen shake based on speed if enabled
+    // Add screen shake based on speed if enabled (applies for both static and dynamic cameras)
     if (settings.screenShake) {
         const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
         const shakeIntensity = Math.min(speed * 0.05, 3); // Max 3 units of shake
