@@ -1771,6 +1771,7 @@ function checkCommand(command, player) {
   let weapontest_command = /^\/weapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
   let spawnfleet_command = /^\/spawnfleet$/;
+  let fleets_command = /^\/fleets$/;
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let enemytest_command = /^\/enemytest\s+(\d+)$/;
@@ -1924,6 +1925,19 @@ function checkCommand(command, player) {
     
     sendNoticeMessage(player.username, `Fleet spawned at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes.`, 'server');
     console.log(`Fleet boat ${boatUsername} spawned by admin at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes`);
+  }
+
+  // List all known fleet boats and their locations
+  match = command.match(fleets_command);
+  if (match) {
+    const fleetBoats = enemies.filter(e => e.isFleetBoat);
+    if (!fleetBoats || fleetBoats.length === 0) {
+      sendNoticeMessage(player.username, 'No fleets detected.', 'server');
+    } else {
+      const lines = fleetBoats.map(b => `${b.username}: (${Math.round(b.x)}, ${Math.round(b.y)})`);
+      // Send multiple messages if the list is long
+      lines.forEach(line => sendNoticeMessage(player.username, line, 'server'));
+    }
   }
 
   match = command.match(tp_command);
