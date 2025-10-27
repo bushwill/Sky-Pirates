@@ -427,5 +427,5 @@ function getCameraCenter(player, mouseScreenX, mouseScreenY) {
     };
 }
 
-let testing = true;
+let testing = false;
 
