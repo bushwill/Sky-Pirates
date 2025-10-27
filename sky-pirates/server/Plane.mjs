@@ -110,6 +110,10 @@ export class Plane {
   }
 
   attachCrate(crate) {
+    // Prevent attaching crates that have been removed from the world (picked up by boats, opened, etc.)
+    if (crate.removedFromWorld) {
+      return;
+    }
     this.crates.push(crate); // Add the crate to the player's carrying array
     crate.attach(this.username); // Call the attach method of the crate to apply its effect
     this.updatePlane(); // Update player's weight based on current components

@@ -26,11 +26,29 @@ export class Player extends Plane {
     // Navy aggro tracking
     this.navyTargeted = false; // Whether this player is currently targeted by navy
     this.lastNavyActivity = 0; // Timestamp of last navy-related activity (spotted or damaged navy)
+    // Track the last recovery zone the player visited (object or null)
+    this.lastRecoveryZone = null;
   }
 
   respawn() {
-    this.x = this.startX;
-    this.y = this.startY;
+    // If the player has a recorded last recovery zone, respawn at its center.
+    // Otherwise fall back to the original starting position.
+    if (this.lastRecoveryZone) {
+      try {
+        const zone = this.lastRecoveryZone;
+        const centerX = (zone.x1 + zone.x2) / 2;
+        const centerY = (zone.y1 + zone.y2) / 2;
+        this.x = centerX;
+        this.y = centerY;
+      } catch (err) {
+        // Fallback to default start position on any error while reading zone
+        this.x = this.startX;
+        this.y = this.startY;
+      }
+    } else {
+      this.x = this.startX;
+      this.y = this.startY;
+    }
     this.vx = 0;
     this.vy = 0;
     this.t_x = 0;

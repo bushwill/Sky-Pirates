@@ -12,15 +12,22 @@ export class Crate{
         this.vy = 0; // Initial vertical velocity
         this.angle = 0;
         this.carrier = null; // Entity currently carrying the crate, if any (in string form)
+        this.removedFromWorld = false; // Flag set when crate is taken out of the world list
+        this.lastAttachedAt = null;
+        this.lastDetachedAt = null;
     }
     
     // Method to apply the crate's effect to a player
     attach(player) {
         this.carrier = player; // Set the carrier to the player who picked up the crate
+        this.lastAttachedAt = Date.now();
+        // clear lastDetachedAt when attached
+        this.lastDetachedAt = null;
     }
 
     detach() {
         this.carrier = null; // Clear the carrier reference when the crate is dropped
+        this.lastDetachedAt = Date.now();
     }
 
     open(player) {

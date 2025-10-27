@@ -346,10 +346,10 @@ export function createPeaShooterEngine(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Pea Shooter Engine Lvl " + level;
   const weight = randomFactor * 1.0;
-  const maxPower = randomFactor * (150.0 + adjustedLevel * 50.0);
+  const maxPower = randomFactor * (150.0 + adjustedLevel * 150.0);
   const minPower = 0.0;
-  const heatEfficiency = randomFactor * (0.06 - adjustedLevel * 0.002);
-  const maxHeat = randomFactor * (80.0 + adjustedLevel * 10.0);
+  const heatEfficiency = randomFactor * (0.06 - adjustedLevel * 0.06);
+  const maxHeat = randomFactor * (80.0 + adjustedLevel * 20.0);
   const value = randomFactor * (10 + adjustedLevel * 60);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);
 }
@@ -359,8 +359,8 @@ export function createPeaShooterChassis(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Pea Shooter Chassis Lvl " + level;
   const weight = randomFactor * 1.5;
-  const topSpeed = randomFactor * (180.0 + adjustedLevel * 20);
-  const maxHull = randomFactor * (40.0 + adjustedLevel * 5);
+  const topSpeed = randomFactor * (180.0 + adjustedLevel * 100);
+  const maxHull = randomFactor * (40.0 + adjustedLevel * 40);
   const heatDispersion = randomFactor * (12.5 + adjustedLevel * 2.0);
   const buoyancy = randomFactor * 4.0;
   const value = randomFactor * (10 + adjustedLevel * 20);
@@ -372,8 +372,8 @@ export function createPeaShooterWings(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Pea Shooter Wings Lvl " + level;
   const weight = randomFactor * 0.5;
-  const baseTurnSpeed = randomFactor * (1.2 + adjustedLevel * 0.2);
-  const minTurnSpeed = randomFactor * (0.10 + adjustedLevel * 0.05);
+  const baseTurnSpeed = randomFactor * (1.2 + adjustedLevel * 0.6);
+  const minTurnSpeed = randomFactor * (0.10 + adjustedLevel * 0.1);
   const maxSpeed = randomFactor * (150.0 + adjustedLevel * 15);
   const liftEfficiency = randomFactor * 0.5;
   const minLiftSpeed = randomFactor * (40.0 - adjustedLevel * 5);

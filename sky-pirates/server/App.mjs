@@ -55,7 +55,7 @@ const startMillis = Date.now();
 
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
-  
+
   // Initialize 5 fleet boats at valid spots
   console.log('Initializing fleet boats...');
   for (let i = 0; i < 5; i++) {
@@ -103,13 +103,13 @@ function updatePlayers() {
 function updateEnemies() {
   // Early exit if no players
   if (players.length === 0) return;
-  
+
   enemies.forEach((enemy) => {
     checkPlayerBiome(enemy);
-    
+
     // Always update all enemies regardless of distance
     updateEnemy(enemy, players);
-    
+
     updateHull(enemy);
     enemy.messages = enemy.messages.filter((msg) => millis() - msg[0] < 8000);
   });
@@ -117,12 +117,12 @@ function updateEnemies() {
 
 function updateFleets() {
   if (players.length === 0) return;
-  
+
   const now = Date.now();
-  
+
   // Only do expensive checks every 5 seconds
   if (now - lastFleetSpawnTime < 5000) return;
-  
+
   // Spawn new fleet if auto-spawn is enabled
   if (AUTO_SPAWN_FLEETS) {
     const fleetBoats = enemies.filter(e => e.isFleetBoat);
@@ -130,7 +130,7 @@ function updateFleets() {
       if (spawnFleetBoat()) lastFleetSpawnTime = now;
     }
   }
-  
+
   // Clean up orphaned planes (planes whose fleet boat died)
   // Only check planes that have a fleetBoat reference
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -156,14 +156,14 @@ function updateEnemy(enemy) {
   } else {
     enemy.updateAI(players);
   }
-  
+
   // Always do full physics/gun updates for all enemies
   if (enemy instanceof EnemyPlane) {
     updatePlane(enemy);
   } else if (enemy instanceof NavySalvageBoat) {
     updateBoat(enemy);
   }
-  
+
   // Destroy enemy if it enters recovery biome
   if (enemy.biome === 'recovery') {
     handleDeath(enemy); // Remove enemy from the game
@@ -177,21 +177,23 @@ function updatePlayer(player) {
   const deltaTime = 0.01 * timeSpeed;
   if (player.biome === 'recovery') {
     applyRecoveryJello(player, deltaTime);
-    
+
     // Check for recovery zone and twin information
     const currentRecoveryZone = mapData.getRecoveryZoneAtPosition(player.x, player.y);
     const twinZone = currentRecoveryZone ? mapData.getTwinRecoveryZone(currentRecoveryZone) : null;
-    
+
     // Store twin zone info on player for client
     player.currentRecoveryZone = currentRecoveryZone;
     player.twinRecoveryZone = twinZone;
-    
+  // Remember the last recovery zone we've been in so we can respawn there on death
+  if (currentRecoveryZone) player.lastRecoveryZone = currentRecoveryZone;
+
     // Reset navy target status when in recovery zone (safe zone)
     if (player.navyTargeted) {
       player.navyTargeted = false;
       player.navyActivityTime = 0;
     }
-    
+
     if (player.inventory.length > 0) {
       if (player.browsing === false) player.browsing = true; // Set browsing flag if player has items in inventory
     }
@@ -231,7 +233,7 @@ function updatePlane(plane) {
 function updateBoat(boat) {
   // Boats handle their own gun targeting but need gun heat/cooldown updates and shooting
   const deltaTime = 0.01 * timeSpeed;
-  
+
   // Only update guns if the boat has a target (optimization to reduce CPU usage)
   if (boat.target) {
     updateGuns(boat, deltaTime);
@@ -308,7 +310,7 @@ function updateProjectile(projectile) {
     if (enemy.username === projectile.owner) return;
     const ownerIsEnemy = enemies.some(e => e.username === projectile.owner);
     if (ownerIsEnemy) return; // Enemies can't damage other enemies
-    
+
     const dx = Math.abs(enemy.x - projectile.x);
     const dy = Math.abs(enemy.y - projectile.y);
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -335,6 +337,10 @@ function updateCrates() {
 
 function updateCrate(crate) {
   if (!crate.type) crates = crates.filter((c) => c !== crate); // Remove crate if type is undefined
+  if (!crate.type) {
+    crate.removedFromWorld = true;
+    crates = crates.filter((c) => c !== crate); // Remove crate if type is undefined
+  }
   const deltaTime = 0.01 * timeSpeed;
   const ROPE_LENGTH = 5;
   const springStrength = 32;
@@ -346,8 +352,8 @@ function updateCrate(crate) {
   const player = players.find(p => p.username === crate.carrier);
   const enemy = enemies.find(e => e.username === crate.carrier);
   const carrier = player || enemy;
-  
-  if (crate.carrier) {
+
+    if (crate.carrier) {
     if (!carrier) {
       crate.detach();
       return;
@@ -357,6 +363,7 @@ function updateCrate(crate) {
       crate.open(player) // Open crate when in recovery zone
       if (crate.type === 'money') sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
       else if (crate.type === 'component') sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
+      crate.removedFromWorld = true;
       crates = crates.filter((c) => c !== crate);
       return;
     }
@@ -369,18 +376,18 @@ function updateCrate(crate) {
     const deltaX = targetX - crate.x;
     const deltaY = targetY - crate.y;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+
     // For very distant crates, use teleportation approach to avoid physics instability
     const TELEPORT_THRESHOLD = 3000; // If crate is more than 3km away, use teleportation
-    
+
     if (distance > TELEPORT_THRESHOLD) {
       // Halve the distance between crate and target position
       const midX = crate.x + deltaX * 0.5;
       const midY = crate.y + deltaY * 0.5;
-      
+
       crate.x = midX;
       crate.y = midY;
-      
+
       // Reset velocity to prevent physics artifacts
       crate.vx = 0;
       crate.vy = 0;
@@ -398,7 +405,7 @@ function updateCrate(crate) {
 
     // Enhanced damping for distant crates to prevent oscillation
     const distanceToTarget = Math.sqrt((targetX - crate.x) ** 2 + (targetY - crate.y) ** 2);
-    
+
     // Increase damping based on distance to prevent overshooting
     let dampingFactor = 0.8; // Base damping
     if (distanceToTarget > 1000) {
@@ -406,7 +413,7 @@ function updateCrate(crate) {
       const extraDamping = Math.min(0.3, distanceToTarget / 50000); // More damping as distance increases
       dampingFactor -= extraDamping;
     }
-    
+
     crate.vx *= dampingFactor;
     crate.vy *= dampingFactor;
 
@@ -414,7 +421,7 @@ function updateCrate(crate) {
     const BASE_MAX_VELOCITY = 200;
     const DISTANCE_VELOCITY_SCALE = 0.3; // Reduced from 0.5 to prevent excessive speeds
     const maxVelocity = Math.min(5000, BASE_MAX_VELOCITY + (distanceToTarget * DISTANCE_VELOCITY_SCALE)); // Cap at 5000
-    
+
     const speed = Math.sqrt(crate.vx * crate.vx + crate.vy * crate.vy);
     if (speed > maxVelocity) {
       const scale = maxVelocity / speed;
@@ -477,8 +484,8 @@ function updateCrate(crate) {
     if (distance <= attach_radius && new_player.username !== crate.carrier) {
       // If crate is currently carried by someone, detach it from them first
       if (crate.carrier) {
-        const previousCarrier = players.find(p => p.username === crate.carrier) || 
-                               enemies.find(e => e.username === crate.carrier);
+        const previousCarrier = players.find(p => p.username === crate.carrier) ||
+          enemies.find(e => e.username === crate.carrier);
         if (previousCarrier && previousCarrier.detachCrate) {
           previousCarrier.detachCrate(crate);
         }
@@ -487,61 +494,63 @@ function updateCrate(crate) {
       new_player.attachCrate(crate);
     }
   });
-  
-  // Collision: Attach to enemies (planes/boats) - single pass for efficiency
-  enemies.forEach((enemy) => {
-    if (!enemy) return;
 
-    // Plane salvage attach behavior
-    if (enemy.type && enemy.type.includes('Plane') && enemy.faction === 'navy') {
-      const dx = enemy.x - crate.x;
-      const dy = enemy.y - crate.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const attach_radius = 2 * (enemy.size + crate.size + 5); // Double the pickup distance
-      if (distance <= attach_radius && enemy.username !== crate.carrier) {
-        if (enemy.attachCrate) {
-          // If crate is currently carried by someone, detach it from them first
-          if (crate.carrier) {
-            const previousCarrier = players.find(p => p.username === crate.carrier) || 
-                                   enemies.find(e => e.username === crate.carrier);
-            if (previousCarrier && previousCarrier.detachCrate) {
-              previousCarrier.detachCrate(crate);
-            }
+  // --- Enemy interactions: first handle plane attachments deterministically ---
+  const DEFAULT_PLANE_PICKUP = 60;
+  let nearestPlane = null;
+  let nearestPlaneDistSq = Infinity;
+  for (const e of enemies) {
+    if (!e) continue;
+    if (e.type && e.type.includes('Plane') && e.faction === 'navy') {
+      const dx = e.x - crate.x;
+      const dy = e.y - crate.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= DEFAULT_PLANE_PICKUP * DEFAULT_PLANE_PICKUP && d2 < nearestPlaneDistSq) {
+        nearestPlane = e;
+        nearestPlaneDistSq = d2;
+      }
+    }
+  }
+
+  if (nearestPlane) {
+    // Only attempt plane attachments for unattached crates. Planes must not steal crates
+    // that already have a carrier (players or other entities).
+    if (!crate.carrier) {
+      // Attempt attach (Enemy.attachCrate will also defensively refuse if crate.carrier is set)
+      nearestPlane.attachCrate(crate);
+    }
+  }
+
+  // --- Then handle boat pickups (boats only take unattached crates) ---
+  for (const enemy of enemies) {
+    if (!enemy) continue;
+    if (enemy.isFleetBoat && typeof enemy.storeCrate === 'function') {
+      const dxB = enemy.x - crate.x;
+      const dyB = enemy.y - crate.y;
+      const distanceB = Math.sqrt(dxB * dxB + dyB * dyB);
+      const DEFAULT_PICKUP_RADIUS = 100;
+      const pickupRadius = Math.max(DEFAULT_PICKUP_RADIUS, 2 * (enemy.size + crate.size + 10));
+      if (distanceB <= pickupRadius && crate.carrier !== enemy.username) {
+        if (!crate.carrier) {
+          // Prevent immediate pickup of crates that were just detached (race condition)
+          const PICKUP_COOLDOWN_MS = 500; // ignore crates detached within this many ms
+          const nowMs = Date.now();
+          if (crate.lastDetachedAt && (nowMs - crate.lastDetachedAt) < PICKUP_COOLDOWN_MS) {
+            // Skip this crate for now
+            continue;
           }
-          // Now attach to enemy plane
-          enemy.attachCrate(crate);
+          try {
+            enemy.storeCrate(crate);
+          } catch (err) {
+            console.error('Error storing crate in boat inventory', err);
+          }
+          crate.removedFromWorld = true;
+          crates = crates.filter(c => c !== crate);
         }
       }
     }
-
-    // Boat pickup/store behavior: allow boats to capture nearby crates (even if carried)
-    if (enemy.isFleetBoat) {
-      if (typeof enemy.storeCrate === 'function') {
-        const dxB = enemy.x - crate.x;
-        const dyB = enemy.y - crate.y;
-        const distanceB = Math.sqrt(dxB * dxB + dyB * dyB);
-        // Use a larger pickup radius so boats can capture crates from a distance
-        const DEFAULT_PICKUP_RADIUS = 100;
-        const pickupRadius = Math.max(DEFAULT_PICKUP_RADIUS, 2 * (enemy.size + crate.size + 10));
-        // If crate is within pickup radius and not already owned by this boat
-        if (distanceB <= pickupRadius && crate.carrier !== enemy.username) {
-          // Only capture unattached crates
-          if (!crate.carrier) {
-            try {
-              enemy.storeCrate(crate);
-              console.log(`Boat ${enemy.username} stored crate of type ${crate.type} (now ${enemy.storedCrates?.length ?? 0})`);
-            } catch (err) {
-              console.error('Error storing crate in boat inventory', err);
-            }
-            // Remove crate from world list so clients no longer see it and spawn a replacement
-            crates = crates.filter(c => c !== crate);
-          }
-        }
-      }
-    }
-  });
+  }
 }
-
 
 function generateMoneyCrates() {
   const crate_count = max_money_crates - crates.filter(c => c.type === 'money').length;
@@ -568,7 +577,7 @@ function generateMoneyCrates() {
       x = crateSpawnExclusionRadius + Math.random() * validRange;
     }
     const y = seaLevel;
-    
+
     // Calculate level based on distance (same system as components)
     let level = 1;
     if (Math.abs(x) > 140000) level = 10;        // Level 10: Very far (140km+)
@@ -581,12 +590,12 @@ function generateMoneyCrates() {
     else if (Math.abs(x) > 14000) level = 3;     // Level 3: 14-25km
     else if (Math.abs(x) > 5000) level = 2;      // Level 2: 5-14km
     // Level 1: 0-5km (default)
-    
+
     // Money scales as a fraction of average component value for that level
     const baseAmount = 15 + level * 25; // 40 at level 1, 290 at level 10
     const randomFactor = 0.8 + Math.random() * 0.4; // 80-120% variation
     const amount = Math.round(baseAmount * randomFactor);
-    
+
     generateMoneyCrate(x, y, amount);
   }
 }
@@ -631,7 +640,7 @@ function generateRandomBasicComponentCrate(x, y) {
   let type = Math.floor(Math.random() * 3); // 0-2 for different component types
   let manufacturer = Math.floor(Math.random() * 4) + 1; // 1-4 for different manufacturers  
   let component = null;
-  
+
   // Level distribution based on distance from center
   if (value > 140000) level = 10;        // Level 10: Very far (140km+)
   else if (value > 120000) level = 9;    // Level 9: 120-140km
@@ -643,7 +652,7 @@ function generateRandomBasicComponentCrate(x, y) {
   else if (value > 14000) level = 3;     // Level 3: 14-25km
   else if (value > 5000) level = 2;      // Level 2: 5-14km
   // Level 1: 0-5km (default)
-  
+
   if (type < 1) {
     component = createEngine(manufacturer, level); // Create a standard engine component
   } else if (type < 2) {
@@ -661,7 +670,7 @@ function applyRecoveryJello(player, deltaTime) {
 
   const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
   const throttle = player.engine.power;
-  
+
   // Only apply friction if not throttling - this prevents getting stuck
   if (throttle <= player.engine.minPower) {
     const stopThreshold = 0.5; // Much lower threshold when not throttling
@@ -683,7 +692,7 @@ function applyRecoveryJello(player, deltaTime) {
     let lightFriction = 0.98 + Math.min(0.015, speed / 200); // Very light friction (0.98-0.995)
     player.vx *= lightFriction;
     player.vy *= lightFriction;
-    
+
     // Guaranteed minimum propulsion when throttling - ensures movement even from zero
     const minAcceleration = 0.1; // Minimum acceleration to ensure movement
     const acceleration = Math.max(minAcceleration, (throttle / player.weight) * deltaTime * 2); // Boosted in recovery
@@ -958,7 +967,7 @@ function updateGunHeat(entity, gun, deltaTime) {
     gun.heat = 0;
     return;
   }
-  
+
   if (gun.heat > 0) {
     // Use gun's own heatDispersion property
     const heatDispersion = gun.heatDispersion ?? 30; // Fallback to 30 if not set
@@ -1119,7 +1128,16 @@ function handleRevive(player) {
   player.money -= player.value;
   sendNoticeMessageAll(`${player.username} has been downed!`, 'server');
   sendNoticeMessage(player.username, `You have been downed! -$${player.value}.`, 'urgent');
-  player.respawn();
+  // Let the player object handle respawn semantics (including recovery-zone placement).
+  try {
+    player.respawn();
+    if (player && player.lastRecoveryZone) {
+      sendNoticeMessage(player.username, `You were respawned at recovery zone ${player.lastRecoveryZone.id}`, 'game');
+    }
+  } catch (err) {
+    console.error('Error during handleRevive respawn', player && player.username, err);
+    try { player.respawn(); } catch (e) { /* ignore */ }
+  }
 }
 
 function handleDeath(plane) {
@@ -1136,6 +1154,7 @@ function handleDeath(plane) {
       });
     }
     plane.detachAllCrates();
+    // Remove player from players list and clean up socket references (death = removal)
     players.splice(playerIndex, 1);
     playerSockets.delete(plane.username);
     return;
@@ -1155,6 +1174,8 @@ function handleDeath(plane) {
             crate.y = enemy.y + (Math.random() - 0.5) * 20;
             crate.vx = 0;
             crate.vy = 0;
+            crate.removedFromWorld = false;
+            crate.lastDetachedAt = Date.now();
             crates.push(crate);
           });
         }
@@ -1201,16 +1222,16 @@ function checkPlayerBiome(player) {
 function findLargestGapForFleetBoat() {
   const waterBiome = mapData.biomes.find(b => b.type === 'water');
   if (!waterBiome) return null;
-  
+
   const waterY = Math.min(waterBiome.y1, waterBiome.y2);
   const RECOVERY_ZONE_BUFFER = 500; // Stay 500m away from recovery zones
-  
+
   // Get all fleet boats
   const fleetBoats = enemies.filter(e => e.isFleetBoat && e instanceof NavySalvageBoat);
-  
+
   // Get all recovery zones from map
   const recoveryZones = mapData.biomes.filter(b => b.type === 'recovery');
-  
+
   // If no fleet boats exist, spawn anywhere on the map (away from recovery zones)
   if (fleetBoats.length === 0) {
     // Try random positions until we find one far from all recovery zones
@@ -1222,39 +1243,39 @@ function findLargestGapForFleetBoat() {
       } else {
         x = crateSpawnExclusionRadius * 2 + Math.random() * (mapData.sizeX - crateSpawnExclusionRadius * 2);
       }
-      
+
       // Check distance to all recovery zones
       let tooClose = false;
       for (const zone of recoveryZones) {
         const zoneCenterX = (zone.x1 + zone.x2) / 2;
         const zoneHalfWidth = (zone.x2 - zone.x1) / 2;
         const distanceToZone = Math.abs(x - zoneCenterX) - zoneHalfWidth;
-        
+
         if (distanceToZone < RECOVERY_ZONE_BUFFER) {
           tooClose = true;
           break;
         }
       }
-      
+
       if (!tooClose) {
         return { x, y: waterY };
       }
     }
     return null; // Couldn't find suitable location after 20 attempts
   }
-  
+
   // Sort fleet boats by x position
   const sortedBoats = [...fleetBoats].sort((a, b) => a.x - b.x);
-  
+
   // Find largest gap that can fit a new fleet with MIN_FLEET_DISTANCE on both sides
   let largestGap = { size: 0, x1: 0, x2: 0 };
-  
+
   // Check gap before first boat
   const firstGapSize = sortedBoats[0].x - (-mapData.sizeX);
   if (firstGapSize > largestGap.size) {
     largestGap = { size: firstGapSize, x1: -mapData.sizeX, x2: sortedBoats[0].x };
   }
-  
+
   // Check gaps between boats
   for (let i = 0; i < sortedBoats.length - 1; i++) {
     const gapSize = sortedBoats[i + 1].x - sortedBoats[i].x;
@@ -1262,73 +1283,73 @@ function findLargestGapForFleetBoat() {
       largestGap = { size: gapSize, x1: sortedBoats[i].x, x2: sortedBoats[i + 1].x };
     }
   }
-  
+
   // Check gap after last boat
   const lastGapSize = mapData.sizeX - sortedBoats[sortedBoats.length - 1].x;
   if (lastGapSize > largestGap.size) {
     largestGap = { size: lastGapSize, x1: sortedBoats[sortedBoats.length - 1].x, x2: mapData.sizeX };
   }
-  
+
   // A viable gap must be at least 2 * MIN_FLEET_DISTANCE
   const minViableGapSize = MIN_FLEET_DISTANCE * 2;
   if (largestGap.size < minViableGapSize) {
     return null; // No viable gap
   }
-  
+
   // Calculate the viable spawn range
   let viableX1 = largestGap.x1 + MIN_FLEET_DISTANCE;
   let viableX2 = largestGap.x2 - MIN_FLEET_DISTANCE;
-  
+
   // Exclude recovery zones and their 500m buffers, plus center exclusion zone
   const exclusions = [];
-  
+
   // Add center exclusion zone (crates)
   const exclusionMin = -crateSpawnExclusionRadius * 2;
   const exclusionMax = crateSpawnExclusionRadius * 2;
   exclusions.push({ x1: exclusionMin, x2: exclusionMax });
-  
+
   // Add all recovery zones with 500m buffer
   for (const zone of recoveryZones) {
     exclusions.push({ x1: zone.x1 - RECOVERY_ZONE_BUFFER, x2: zone.x2 + RECOVERY_ZONE_BUFFER });
   }
-  
+
   // Sort exclusions by x1
   exclusions.sort((a, b) => a.x1 - b.x1);
-  
+
   // Find segments of viable range not in exclusion zones
   const viableSegments = [];
   let currentStart = viableX1;
-  
+
   for (const exclusion of exclusions) {
     // If exclusion starts after viable range, we're done
     if (exclusion.x1 >= viableX2) break;
-    
+
     // If exclusion ends before viable range starts, skip it
     if (exclusion.x2 <= viableX1) continue;
-    
+
     // If there's a gap before this exclusion, add it as a segment
     if (currentStart < exclusion.x1 && exclusion.x1 <= viableX2) {
       viableSegments.push({ x1: currentStart, x2: Math.min(exclusion.x1, viableX2) });
     }
-    
+
     // Move current start to after this exclusion
     currentStart = Math.max(currentStart, exclusion.x2);
   }
-  
+
   // Add final segment if there's space after all exclusions
   if (currentStart < viableX2) {
     viableSegments.push({ x1: currentStart, x2: viableX2 });
   }
-  
+
   // If no viable segments, can't spawn
   if (viableSegments.length === 0) {
     return null;
   }
-  
+
   // Choose segment weighted by size
   const totalSize = viableSegments.reduce((sum, seg) => sum + (seg.x2 - seg.x1), 0);
   let randomPoint = Math.random() * totalSize;
-  
+
   for (const segment of viableSegments) {
     const segmentSize = segment.x2 - segment.x1;
     if (randomPoint < segmentSize) {
@@ -1337,32 +1358,57 @@ function findLargestGapForFleetBoat() {
     }
     randomPoint -= segmentSize;
   }
-  
+
   return null; // Fallback
 }
 
 function spawnFleetBoat() {
   const location = findLargestGapForFleetBoat();
   if (!location) return null;
-  
-  const boatUsername = `Navy-Boat-${fleetCounter}`;
+
+  const boatUsername = `Navy Ship ${fleetCounter}`;
   fleetCounter++; // Increment counter for next fleet
-  
+
   const boat = new NavySalvageBoat(
     boatUsername,
     50, 50, 200, // navy blue
     location.x,
     location.y,
-    3 // spawn with 3 planes
+    3 // default planeCount (may be overridden by levels array below)
   );
-  
+
   // Add boat to enemies
   enemies.push(boat);
-  
-  // Spawn its planes
-  const planes = boat.spawnPlanes();
+
+  // Determine plane levels based on distance-from-spawn (spawn origin at x=0,y=-400)
+  const spawnOrigin = { x: 0, y: -400 };
+  const dx = location.x - spawnOrigin.x;
+  const dy = location.y - spawnOrigin.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // Determine levels array per rules:
+  // <20k: two lvl1 planes
+  // 20k-50k: three lvl1 planes
+  // 50k-100k: three lvl1 + one lvl2
+  // 100k-150k: three lvl2 + three lvl1 (6 planes)
+  let levels = null;
+  if (distance < 20000) {
+    levels = [1, 1];
+  } else if (distance < 50000) {
+    levels = [1, 1, 1];
+  } else if (distance < 100000) {
+    levels = [1, 1, 1, 2];
+  } else if (distance < 150000) {
+    levels = [2, 2, 2, 1, 1, 1];
+  } else {
+    // Beyond map range, default to a challenging fleet: three lvl2 + three lvl1
+    levels = [2, 2, 2, 1, 1, 1];
+  }
+
+  // Spawn its planes with the computed levels
+  const planes = boat.spawnPlanes(levels);
   enemies.push(...planes);
-  
+
   console.log(`Fleet boat ${boatUsername} spawned at (${Math.round(location.x)}, ${Math.round(location.y)}) with ${planes.length} planes`);
   return boat;
 }
@@ -1693,7 +1739,7 @@ function filterEntitiesInRange(entities, player, cullingDistance = 2000) {
   if (!player) return [];
   return entities.filter(entity => {
     const dist = Math.sqrt(
-      (entity.x - player.x) ** 2 + 
+      (entity.x - player.x) ** 2 +
       (entity.y - player.y) ** 2
     );
     return dist <= cullingDistance;
@@ -1706,7 +1752,7 @@ function filterCratesInRange(entities, player, cullingDistance = 2000) {
   return entities.filter(entity => {
     if (entity.carrier === player.username) return true; // Always include carried crates
     const dist = Math.sqrt(
-      (entity.x - player.x) ** 2 + 
+      (entity.x - player.x) ** 2 +
       (entity.y - player.y) ** 2
     );
     return dist <= cullingDistance;
@@ -1835,7 +1881,7 @@ function checkCommand(command, player) {
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let enemytest_command = /^\/enemytest\s+(\d+)$/;
 
-  
+
   match = command.match(players_command);
   if (match) {
     sendNoticeMessage(player.username, players.map(player => player.username).join(", "), 'server');
@@ -1860,7 +1906,7 @@ function checkCommand(command, player) {
   if (match) {
     // Snap player angle to nearest 90-degree direction
     const currentAngle = normalizeAngle(player.angle);
-    
+
     // Define the four cardinal directions in radians
     const directions = [
       { angle: 0, name: "right" },           // 0° - Right
@@ -1868,11 +1914,11 @@ function checkCommand(command, player) {
       { angle: Math.PI, name: "left" },      // 180° - Left
       { angle: -Math.PI / 2, name: "up" }    // -90° - Up
     ];
-    
+
     // Find the closest direction
     let closestDirection = directions[0];
     let smallestDiff = Math.abs(currentAngle - directions[0].angle);
-    
+
     for (let dir of directions) {
       let diff = Math.abs(currentAngle - dir.angle);
       // Handle wraparound case (e.g., -179° vs 179°)
@@ -1884,10 +1930,10 @@ function checkCommand(command, player) {
         closestDirection = dir;
       }
     }
-    
+
     // Set player angle to the closest cardinal direction
     player.angle = closestDirection.angle;
-    
+
     sendNoticeMessage(player.username, `Aligned to face ${closestDirection.name}`, 'game');
   }
 
@@ -1949,11 +1995,11 @@ function checkCommand(command, player) {
     // Clear all existing crates
     const crateCount = crates.length;
     crates.length = 0; // Clear the crates array
-    
+
     // Respawn all crates
     generateMoneyCrates();
     generateStandardComponentCrates();
-    
+
     sendNoticeMessage(player.username, `Cleared ${crateCount} crates and respawned all crates.`, 'server');
     sendNoticeMessageAll(`${player.username} cleared and respawned all crates.`, 'server');
   }
@@ -1963,25 +2009,43 @@ function checkCommand(command, player) {
     // Spawn fleet at player's X coordinate, Y = 310 (sea level)
     const spawnX = player.x;
     const spawnY = 310;
-    
-    const boatUsername = `Navy-Boat-${fleetCounter}`;
-    fleetCounter++; // Increment counter for next fleet
-    
+
+  const boatUsername = `Navy Ship ${fleetCounter}`;
+  fleetCounter++; // Increment counter for next fleet
+
     const boat = new NavySalvageBoat(
       boatUsername,
       50, 50, 200, // navy blue
       spawnX,
       spawnY,
-      3 // spawn with 3 planes
+      3 // default plane count
     );
-    
+
     // Add boat to enemies
     enemies.push(boat);
-    
-    // Spawn its planes
-    const planes = boat.spawnPlanes();
+
+    // Compute distance from spawn origin and composition rules (same as automatic spawns)
+    const spawnOrigin = { x: 0, y: -400 };
+    const dx = spawnX - spawnOrigin.x;
+    const dy = spawnY - spawnOrigin.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    let levels = null;
+    if (distance < 20000) {
+      levels = [1, 1];
+    } else if (distance < 50000) {
+      levels = [1, 1, 1];
+    } else if (distance < 100000) {
+      levels = [1, 1, 1, 2];
+    } else if (distance < 150000) {
+      levels = [2, 2, 2, 1, 1, 1];
+    } else {
+      levels = [2, 2, 2, 1, 1, 1];
+    }
+
+    // Spawn its planes with selected levels
+    const planes = boat.spawnPlanes(levels);
     enemies.push(...planes);
-    
+
     sendNoticeMessage(player.username, `Fleet spawned at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes.`, 'server');
     console.log(`Fleet boat ${boatUsername} spawned by admin at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes`);
   }
@@ -2002,79 +2066,79 @@ function checkCommand(command, player) {
   match = command.match(tp_command);
   if (match) {
     match = command.match(tp_command);
-  if (match) {
-    const x = parseFloat(match[1]);
-    const y = parseFloat(match[2]);
-    
-    // Store current position for feedback
-    const oldX = Math.round(player.x);
-    const oldY = Math.round(player.y);
-    
-    // Teleport the player
-    player.x = x;
-    player.y = y;
-    
-    // Reset velocity to prevent momentum carrying over
-    player.vx = 0;
-    player.vy = 0;
-    
-    sendNoticeMessage(player.username, `Teleported from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
-  }
+    if (match) {
+      const x = parseFloat(match[1]);
+      const y = parseFloat(match[2]);
 
-  match = command.match(tp_other_command);
-  if (match) {
-    const targetUsername = match[1];
-    const x = parseFloat(match[2]);
-    const y = parseFloat(match[3]);
-    
-    // Find the target player
-    const targetPlayer = players.find(p => p.username === targetUsername);
-    
-    if (!targetPlayer) {
-      sendNoticeMessage(player.username, `Player "${targetUsername}" not found.`, 'server');
-      return;
+      // Store current position for feedback
+      const oldX = Math.round(player.x);
+      const oldY = Math.round(player.y);
+
+      // Teleport the player
+      player.x = x;
+      player.y = y;
+
+      // Reset velocity to prevent momentum carrying over
+      player.vx = 0;
+      player.vy = 0;
+
+      sendNoticeMessage(player.username, `Teleported from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
     }
-    
-    // Store current position for feedback
-    const oldX = Math.round(targetPlayer.x);
-    const oldY = Math.round(targetPlayer.y);
-    
-    // Teleport the target player
-    targetPlayer.x = x;
-    targetPlayer.y = y;
-    
-    // Reset velocity to prevent momentum carrying over
-    targetPlayer.vx = 0;
-    targetPlayer.vy = 0;
-    
-    // Send feedback to both admin and target player
-    sendNoticeMessage(player.username, `Teleported ${targetUsername} from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
-    sendNoticeMessage(targetUsername, `You were teleported to (${Math.round(x)}, ${Math.round(y)}) by ${player.username}`, 'server');
-  }
+
+    match = command.match(tp_other_command);
+    if (match) {
+      const targetUsername = match[1];
+      const x = parseFloat(match[2]);
+      const y = parseFloat(match[3]);
+
+      // Find the target player
+      const targetPlayer = players.find(p => p.username === targetUsername);
+
+      if (!targetPlayer) {
+        sendNoticeMessage(player.username, `Player "${targetUsername}" not found.`, 'server');
+        return;
+      }
+
+      // Store current position for feedback
+      const oldX = Math.round(targetPlayer.x);
+      const oldY = Math.round(targetPlayer.y);
+
+      // Teleport the target player
+      targetPlayer.x = x;
+      targetPlayer.y = y;
+
+      // Reset velocity to prevent momentum carrying over
+      targetPlayer.vx = 0;
+      targetPlayer.vy = 0;
+
+      // Send feedback to both admin and target player
+      sendNoticeMessage(player.username, `Teleported ${targetUsername} from (${oldX}, ${oldY}) to (${Math.round(x)}, ${Math.round(y)})`, 'server');
+      sendNoticeMessage(targetUsername, `You were teleported to (${Math.round(x)}, ${Math.round(y)}) by ${player.username}`, 'server');
+    }
   }
 }
 
 setInterval(() => {
   const now = millis();
   const inactivePlayers = players.filter(player => now - player.lastActivity >= INACTIVITY_THRESHOLD);
-  
+
   // Properly kick each inactive player
   inactivePlayers.forEach(player => {
     console.log(`Kicking inactive player: ${player.username} (inactive for ${Math.round((now - player.lastActivity) / 1000)}s)`);
-    
+
     // Send notification before kicking
     sendNoticeMessage(player.username, "You have been disconnected due to inactivity (10+ minutes)", 'urgent');
-    
+
     // Close their WebSocket connection properly
     const playerSocket = playerSockets.get(player.username);
     if (playerSocket && playerSocket.readyState === WebSocket.OPEN) {
       playerSocket.close(1000, "Inactivity timeout");
     }
-    
+
     // Clean up the socket reference
     playerSockets.delete(player.username);
   });
-  
+
   // Remove inactive players from the array
   players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
 }, 60000);

@@ -85,7 +85,7 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
     push();
     translate(drawX, drawY);
-    
+
     // Draw enemy based on type using dedicated functions
     if (enemyType.includes('Plane')) {
         drawEnemyPlane(enemy);
@@ -94,7 +94,7 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     } else {
         drawEnemyDefault(enemy);
     }
-    
+
     pop();
     // Draw enemy hull/health arc (guard chassis fields)
     const arcRadius = 60;
@@ -132,16 +132,16 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     // Draw a single unified label for the enemy above its position.
     fill(255);
     textSize(12);
-    const showNameGlobal = (enemy.username && !String(enemy.username).startsWith('Navy'));
-    const labelText = showNameGlobal ? enemy.username : (enemy.faction ?? "Enemy");
+    // Prefer an explicit username when available; otherwise fall back to displayName, type, or constructor name
+    const labelText = (enemy && enemy.username) ? enemy.username
+                      : (enemy && enemy.displayName) ? enemy.displayName
+                      : (enemy.type || (enemy && enemy.constructor && enemy.constructor.name) || 'Enemy');
     text(labelText, drawX, drawY - 15);
 
-    // Display AI state when testing is enabled
-    if (testing && enemy.aiState) {
-        fill(0, 255, 0); // Green text for AI state
-        textSize(10);
-        text(`AI: ${enemy.aiState}`, drawX, drawY - 30); // Display above the enemy label
-    }
+    fill(0, 255, 0); // Green text for AI state
+    textSize(10);
+    text(`AI: ${enemy.aiState}`, drawX, drawY - 30); // Display above the enemy label
+
 }
 
 function displayPlayers(centerX = 0, centerY = -400) {
@@ -169,7 +169,7 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
             spawnTrailParticles(player.x, player.y, player.angle, player.engine.power, player.engine, player);
         }
     }
-    
+
     // Spawn foam particles if player is in water
     const playerBiome = getBiomeAtPosition(player.x, player.y);
     if (playerBiome === 'water') {
@@ -178,7 +178,7 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
             spawnWaterFoamParticles(player.x, player.y, { vx: player.vx, vy: player.vy });
         }
     }
-    
+
     textSize(12);
     textAlign(CENTER);
     stroke(0);
@@ -222,7 +222,7 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
             spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
         }
     }
-    
+
     textSize(12);
     textAlign(CENTER);
     strokeWeight(1);
@@ -254,12 +254,12 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
         const currentPlayer = players.find(p => p.username === username);
         if (currentPlayer) {
             const distanceToPlayer = Math.sqrt((crate.x - currentPlayer.x) ** 2 + (crate.y - currentPlayer.y) ** 2);
-            if (distanceToPlayer > 500) { // Log when crate is more than 500 units away
-                console.log(`[CRATE DEBUG] Player: ${username} at (${currentPlayer.x.toFixed(1)}, ${currentPlayer.y.toFixed(1)}) | Carried Crate at (${crate.x.toFixed(1)}, ${crate.y.toFixed(1)}) | Distance: ${distanceToPlayer.toFixed(1)} | Velocity: (${crate.vx.toFixed(2)}, ${crate.vy.toFixed(2)})`);
+            if (distanceToPlayer > 500) {
+                // debug removed
             }
         }
     }
-    
+
     // Spawn foam particles if crate is in water and moving
     const crateBiome = getBiomeAtPosition(crate.x, crate.y);
     if (crateBiome === 'water') {
@@ -268,7 +268,7 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
             spawnWaterFoamParticles(crate.x, crate.y, { vx: crate.vx, vy: crate.vy }, 1.5);
         }
     }
-    
+
     textSize(12);
     textAlign(CENTER);
     if (crate.type === 'money') {
@@ -778,13 +778,13 @@ function displayTeleportButton(controlledPlayer) {
         teleportButtonRegion = null;
         return;
     }
-    
+
     // Button position (bottom center of screen)
     const buttonX = windowWidth / 2;
     const buttonY = windowHeight - 100;
     const buttonWidth = 200;
     const buttonHeight = 40;
-    
+
     // Store button region for click detection
     teleportButtonRegion = {
         x: buttonX,
@@ -792,27 +792,27 @@ function displayTeleportButton(controlledPlayer) {
         width: buttonWidth,
         height: buttonHeight
     };
-    
+
     // Save current drawing state
     push();
-    
+
     // Reset all text properties to default
     textFont('Arial'); // Use a standard font
     textStyle(NORMAL); // Ensure no bold/italic
     rectMode(CENTER);
-    
+
     // Check if mouse is hovering for highlight effect
-    const isHovering = mouseX >= buttonX - buttonWidth/2 && 
-                      mouseX <= buttonX + buttonWidth/2 && 
-                      mouseY >= buttonY - buttonHeight/2 && 
-                      mouseY <= buttonY + buttonHeight/2;
-    
+    const isHovering = mouseX >= buttonX - buttonWidth / 2 &&
+        mouseX <= buttonX + buttonWidth / 2 &&
+        mouseY >= buttonY - buttonHeight / 2 &&
+        mouseY <= buttonY + buttonHeight / 2;
+
     // Button background with hover effect
     fill(isHovering ? 80 : 60, 120, isHovering ? 255 : 200, 200);
     stroke(255, 255, 255, 180);
     strokeWeight(2);
     rect(buttonX, buttonY, buttonWidth, buttonHeight, 8);
-    
+
     // Button text
     fill(255, 255, 255);
     noStroke();
@@ -820,13 +820,13 @@ function displayTeleportButton(controlledPlayer) {
     textSize(16);
     textStyle(NORMAL);
     text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, buttonX, buttonY - 2);
-    
+
     // Instruction text
     textSize(12);
     textStyle(NORMAL);
     fill(200, 200, 200);
     text("Press T or click to teleport", buttonX, buttonY + 15);
-    
+
     // Restore previous drawing state
     pop();
 }
@@ -853,11 +853,11 @@ function updateParticles() {
 
 function drawParticles(centerX = 0, centerY = -400) {
     if (!particles || particles.length === 0) return;
-    
+
     // Calculate camera offset from center position
     const cameraX = centerX - windowWidth / 2;
     const cameraY = centerY - windowHeight / 2;
-    
+
     // Draw all particles
     particles.forEach(particle => {
         particle.draw(cameraX, cameraY);
@@ -876,7 +876,7 @@ function spawnFlameParticles(x, y, count = 5, intensity = 1.0) {
         const vx = (Math.random() - 0.5) * 1 * intensity;
         const vy = (Math.random() - 0.5) * 1 * intensity;
         const vz = (Math.random() - 0.5) * 0.5 * intensity;
-        
+
         // Simple flame colors - random between red, orange, yellow
         const colorChoice = Math.random();
         let r, g, b;
@@ -896,10 +896,10 @@ function spawnFlameParticles(x, y, count = 5, intensity = 1.0) {
             g = 255;
             b = Math.floor(20 + Math.random() * 40); // 20-59 (much darker)
         }
-        
+
         const size = 2 + Math.random() * 3; // Slightly larger particles for visibility
         const lifetime = 15 + Math.random() * 20; // Slightly longer lifetime for visibility
-        
+
         spawnParticle(x, y, 0, vx, vy, vz, r, g, b, size, lifetime, 'flame');
     }
 }
@@ -911,15 +911,15 @@ function spawnSmokeParticles(x, y, count = 3, intensity = 1.0) {
         const vx = (Math.random() - 0.5) * 0.5 * intensity;
         const vy = -0.1 * intensity; // Gentle upward movement
         const vz = (Math.random() - 0.5) * 0.2 * intensity;
-        
+
         // Simple gray smoke
         const r = 100;
-        const g = 100; 
+        const g = 100;
         const b = 100;
-        
+
         const size = 2 + Math.random() * 3;
         const lifetime = 120 + Math.random() * 80; // Slow dissipation (2-3.3 seconds at 60fps)
-        
+
         spawnParticle(x, y, 0, vx, vy, vz, r, g, b, size, lifetime, 'smoke');
     }
 }
@@ -927,17 +927,17 @@ function spawnSmokeParticles(x, y, count = 3, intensity = 1.0) {
 function spawnGunFireParticles(x, y, angle, gunType = 0) {
     // Create muzzle flash particles
     const particleCount = 3 + Math.floor(Math.random() * 3); // 3-5 particles
-    
+
     for (let i = 0; i < particleCount; i++) {
         // Random spread around gun angle
         const spread = (Math.random() - 0.5) * 0.5; // ±0.25 radians
         const particleAngle = angle + spread;
-        
+
         // Forward velocity with randomness
         const speed = 2 + Math.random() * 3;
         const vx = Math.cos(particleAngle) * speed;
         const vy = Math.sin(particleAngle) * speed;
-        
+
         // Particle properties based on gun type
         let r, g, b, size, lifetime;
         switch (gunType) {
@@ -966,14 +966,14 @@ function spawnGunFireParticles(x, y, angle, gunType = 0) {
                 r = 255; g = 255; b = 0;
                 size = 2; lifetime = 15;
         }
-        
+
         spawnParticle(x, y, 0, vx, vy, 0, r, g, b, size, lifetime);
     }
-    
+
     // Add flame particles for enhanced muzzle flash effect
     const flameIntensity = gunType === 1 ? 0.8 : 0.4; // Cannons get more intense flames
     spawnFlameParticles(x, y, 2 + gunType, flameIntensity);
-    
+
     // Add smoke for larger guns
     if (gunType >= 1) { // Cannon and larger
         spawnSmokeParticles(x, y, 1, 0.3);
@@ -983,19 +983,19 @@ function spawnGunFireParticles(x, y, angle, gunType = 0) {
 function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null) {
     // Only spawn trail particles if throttle is above minimum
     if (throttle <= 0.1) return;
-    
+
     // Calculate position behind the plane
     const trailDistance = 15 + Math.random() * 5;
     const trailX = x - Math.cos(angle) * trailDistance;
     const trailY = y - Math.sin(angle) * trailDistance;
-    
+
     // Random spread for trail particles
     const spreadX = (Math.random() - 0.5) * 8;
     const spreadY = (Math.random() - 0.5) * 8;
-    
+
     // Check engine heat status
     const heatRatio = engine ? engine.heat / engine.maxHeat : 0;
-    
+
     // Check speed vs max speed for overspeed flame effects
     let overspeedFlames = false;
     if (player && player.vx !== undefined && player.vy !== undefined) {
@@ -1003,7 +1003,7 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
         const maxSpeed = player.chassis ? player.chassis.topSpeed : 200; // Default to 200 if no chassis data
         overspeedFlames = currentSpeed > maxSpeed;
     }
-    
+
     // Flame particles when heat is at 100% OR when exceeding max speed
     if ((engine && heatRatio >= 1.0) || overspeedFlames) {
         const flameChance = overspeedFlames ? 0.6 : 0.8; // Slightly less frequent for overspeed
@@ -1012,7 +1012,7 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
             spawnFlameParticles(trailX + spreadX, trailY + spreadY, flameCount, 1.0);
         }
     }
-    
+
     // Smoke appears when heat is above 50%
     if (engine && heatRatio > 0.5) {
         const smokeIntensity = Math.min(1.0, (heatRatio - 0.5) / 0.5); // Scales from 50% to 100% heat
@@ -1020,13 +1020,13 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
             spawnSmokeParticles(trailX + spreadX, trailY + spreadY, 1, smokeIntensity);
         }
     }
-    
+
     // Regular exhaust trail (original white particles)
     // Velocity based on throttle (opposite to plane direction)
     const speed = 0.5 + Math.random() * 1;
     const vx = -Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5;
     const vy = -Math.sin(angle) * speed + (Math.random() - 0.5) * 0.5;
-    
+
     // Trail particle properties (transparent white exhaust)
     const intensity = Math.min(throttle, 1);
     const r = 255; // White
@@ -1034,7 +1034,7 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
     const b = 255; // White
     const size = 0.5 + Math.random() * 1; // Much smaller particles
     const lifetime = 15 + Math.random() * 10; // Shorter lifetime
-    
+
     spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
 }
 
@@ -1055,10 +1055,10 @@ function drawEnemyBoat(enemy) {
     fill(120, 120, 120);
     noStroke();
     beginShape();
-    vertex(-length/2, -height/5);     // top left (deck)
-    vertex(length/2, -height/5);      // top right (deck) - flat top
-    vertex(length/3, height/2);       // bottom right (hull point)
-    vertex(-length/3, height/2);      // bottom left (hull point)
+    vertex(-length / 2, -height / 5);     // top left (deck)
+    vertex(length / 2, -height / 5);      // top right (deck) - flat top
+    vertex(length / 3, height / 2);       // bottom right (hull point)
+    vertex(-length / 3, height / 2);      // bottom left (hull point)
     endShape(CLOSE);
 
     // Red gun line - rotates to follow gun angle
@@ -1067,7 +1067,7 @@ function drawEnemyBoat(enemy) {
     // So we need to draw the gun at: gun.angle - boat.angle
     const gunWorldAngle = enemy.gun1?.angle ?? 0;
     const gunLocalAngle = gunWorldAngle;
-    
+
     stroke(255, 0, 0);
     strokeWeight(3);
     const gunLength = length * 0.4;
