@@ -50,6 +50,9 @@ let lastFleetSpawnTime = 0;
 const FLEET_SPAWN_COOLDOWN = 1 * 60 * 1000;
 let AUTO_SPAWN_FLEETS = true; // Set to true to enable automatic fleet spawning
 let fleetCounter = 1; // Simple counter for fleet naming
+// When a fleet ship is destroyed, delay automatic respawns until this many ms have passed
+const FLEET_RESPAWN_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+let lastFleetShipDestroyedAt = 0;
 
 const startMillis = Date.now();
 
@@ -126,8 +129,21 @@ function updateFleets() {
   // Spawn new fleet if auto-spawn is enabled
   if (AUTO_SPAWN_FLEETS) {
     const fleetBoats = enemies.filter(e => e.isFleetBoat);
-    if (fleetBoats.length < MAX_FLEET_BOATS && now - lastFleetSpawnTime > FLEET_SPAWN_COOLDOWN) {
-      if (spawnFleetBoat()) lastFleetSpawnTime = now;
+    // If a fleet ship has been destroyed recently, wait until the respawn delay elapses
+    if (lastFleetShipDestroyedAt && (now - lastFleetShipDestroyedAt) < FLEET_RESPAWN_DELAY_MS) {
+      // still within the 5 minute grace period - skip spawning
+    } else {
+      // If we just exited the pause window, clear the pause marker and make a spawn eligible immediately
+      if (lastFleetShipDestroyedAt && (now - lastFleetShipDestroyedAt) >= FLEET_RESPAWN_DELAY_MS) {
+        // Transition out of pause: clear timestamp and reset lastFleetSpawnTime so a boat spawns immediately
+        lastFleetShipDestroyedAt = 0;
+        // Allow immediate spawn by pretending the last spawn was at least one cooldown ago
+        lastFleetSpawnTime = now - FLEET_SPAWN_COOLDOWN;
+        console.log('Fleet respawn pause ended - beginning staggered refill of missing fleet boats');
+      }
+      if (fleetBoats.length < MAX_FLEET_BOATS && now - lastFleetSpawnTime > FLEET_SPAWN_COOLDOWN) {
+        if (spawnFleetBoat()) lastFleetSpawnTime = now;
+      }
     }
   }
 
@@ -1183,6 +1199,13 @@ function handleDeath(plane) {
         console.error('Error dropping stored crates for enemy', enemy && enemy.username, err);
       }
     }
+    // If this was a fleet boat, record the destruction time so we delay automatic respawns
+    try {
+      if (enemy && enemy.isFleetBoat) {
+        lastFleetShipDestroyedAt = Date.now();
+        console.log(`Fleet ship ${enemy.username} destroyed - delaying fleet respawns for ${FLEET_RESPAWN_DELAY_MS / 1000} seconds`);
+      }
+    } catch (e) { /* ignore */ }
     // Detach any crates held by the enemy in its standard 'crates' array
     plane.detachAllCrates?.(); // Detach all crates from enemy plane
     enemies.splice(enemyIndex, 1);
