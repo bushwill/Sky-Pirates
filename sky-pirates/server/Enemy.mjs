@@ -235,25 +235,15 @@ export class NavySalvagePlane extends EnemyPlane {
 
   // Helper: apply turning logic toward a target angle (includes 180-degree special-case)
   applyTurningToward(targetAngle, deadzone = 0.05) {
-    let angleDiff = targetAngle - this.angle;
-    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    // Normalize angle difference to range (-PI, PI]
+    let diff = targetAngle - this.angle;
+    const TWO_PI = Math.PI * 2;
+    diff = ((diff + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
 
-    const currentIsLeft = Math.abs(this.angle - Math.PI) < Math.PI / 2;
-    const targetIsLeft = Math.abs(targetAngle - Math.PI) < Math.PI / 2;
-
-    if (currentIsLeft !== targetIsLeft) {
-      if (currentIsLeft && !targetIsLeft) {
-        if (angleDiff < 0) angleDiff += 2 * Math.PI;
-      } else if (!currentIsLeft && targetIsLeft) {
-        if (angleDiff > 0) angleDiff -= 2 * Math.PI;
-      }
-    }
-
-    if (angleDiff < -deadzone) {
+    if (diff < -deadzone) {
       this.keys.a = true;
       this.keys.d = false;
-    } else if (angleDiff > deadzone) {
+    } else if (diff > deadzone) {
       this.keys.d = true;
       this.keys.a = false;
     } else {
@@ -261,7 +251,12 @@ export class NavySalvagePlane extends EnemyPlane {
       this.keys.d = false;
     }
 
-    return angleDiff;
+    // Reduce throttle while making large-angle maneuvers
+    if (this.engine) {
+      this.engine.power = Math.abs(diff) > 0.1 ? this.engine.minPower : this.engine.maxPower;
+    }
+
+    return diff;
   }
 
   // Helper: throttle and drop crate behavior
