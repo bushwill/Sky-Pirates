@@ -488,9 +488,11 @@ function updateCrate(crate) {
     }
   });
   
-  // Collision: Attach to enemy planes (for salvage operations)
+  // Collision: Attach to enemies (planes/boats) - single pass for efficiency
   enemies.forEach((enemy) => {
-    // Check if enemy is a plane (has fleetBoat property or is NavySalvagePlane)
+    if (!enemy) return;
+
+    // Plane salvage attach behavior
     if (enemy.type && enemy.type.includes('Plane') && enemy.faction === 'navy') {
       const dx = enemy.x - crate.x;
       const dy = enemy.y - crate.y;
@@ -506,13 +508,40 @@ function updateCrate(crate) {
               previousCarrier.detachCrate(crate);
             }
           }
-          // Now attach to enemy
+          // Now attach to enemy plane
           enemy.attachCrate(crate);
+        }
+      }
+    }
+
+    // Boat pickup/store behavior: allow boats to capture nearby crates (even if carried)
+    if (enemy.isFleetBoat) {
+      if (typeof enemy.storeCrate === 'function') {
+        const dxB = enemy.x - crate.x;
+        const dyB = enemy.y - crate.y;
+        const distanceB = Math.sqrt(dxB * dxB + dyB * dyB);
+        // Use a larger pickup radius so boats can capture crates from a distance
+        const DEFAULT_PICKUP_RADIUS = 100;
+        const pickupRadius = Math.max(DEFAULT_PICKUP_RADIUS, 2 * (enemy.size + crate.size + 10));
+        // If crate is within pickup radius and not already owned by this boat
+        if (distanceB <= pickupRadius && crate.carrier !== enemy.username) {
+          // Only capture unattached crates
+          if (!crate.carrier) {
+            try {
+              enemy.storeCrate(crate);
+              console.log(`Boat ${enemy.username} stored crate of type ${crate.type} (now ${enemy.storedCrates?.length ?? 0})`);
+            } catch (err) {
+              console.error('Error storing crate in boat inventory', err);
+            }
+            // Remove crate from world list so clients no longer see it and spawn a replacement
+            crates = crates.filter(c => c !== crate);
+          }
         }
       }
     }
   });
 }
+
 
 function generateMoneyCrates() {
   const crate_count = max_money_crates - crates.filter(c => c.type === 'money').length;
@@ -1114,6 +1143,26 @@ function handleDeath(plane) {
 
   // Remove enemy plane without messages or websockets
   if (enemyIndex !== -1) {
+    const enemy = enemies[enemyIndex];
+    // If enemy is a fleet boat and has stored crates, drop them into the world
+    if (enemy && typeof enemy.dropAllStoredCrates === 'function') {
+      try {
+        const dropped = enemy.dropAllStoredCrates();
+        if (dropped && dropped.length > 0) {
+          // Place dropped crates at enemy position with small jitter and re-add to world
+          dropped.forEach((crate, idx) => {
+            crate.x = enemy.x + (Math.random() - 0.5) * 20;
+            crate.y = enemy.y + (Math.random() - 0.5) * 20;
+            crate.vx = 0;
+            crate.vy = 0;
+            crates.push(crate);
+          });
+        }
+      } catch (err) {
+        console.error('Error dropping stored crates for enemy', enemy && enemy.username, err);
+      }
+    }
+    // Detach any crates held by the enemy in its standard 'crates' array
     plane.detachAllCrates?.(); // Detach all crates from enemy plane
     enemies.splice(enemyIndex, 1);
     return;

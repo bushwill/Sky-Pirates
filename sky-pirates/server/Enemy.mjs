@@ -487,6 +487,7 @@ export class NavySalvageBoat extends EnemyBoat {
     this.planeCount = planeCount; // How many planes this boat should command
     this.isFleetBoat = true; // Mark as a fleet headquarters
     this.aiState = "idle"; // Track AI state for debugging
+    this.storedCrates = []; // Crates stored in the boat's inventory
   }
 
   updateAI(players) {
@@ -688,6 +689,23 @@ export class NavySalvageBoat extends EnemyBoat {
     return newPlanes;
   }
 
+  // Store a crate in the boat's inventory (remove from world handled by App)
+  storeCrate(crate) {
+    if (!this.storedCrates) this.storedCrates = [];
+    this.storedCrates.push(crate);
+    crate.attach(this.username);
+  }
+
+  // Drop all stored crates back into the world: caller should push crates into global crates array
+  dropAllStoredCrates() {
+    if (!this.storedCrates || this.storedCrates.length === 0) return [];
+    const dropped = this.storedCrates.slice();
+    this.storedCrates = [];
+    // Detach carrier so updateCrates treats them as world crates once re-added
+    dropped.forEach(c => { c.detach(); });
+    return dropped;
+  }
+
   // Override damage handling to mark player as navy target
   onDamaged(projectile, players) {
     // Call parent method to apply damage
@@ -729,6 +747,7 @@ export class NavySalvageBoat extends EnemyBoat {
       isFiring: this.isFiring,
       aimPoint: this.aimPoint,
       aiState: this.aiState
+      ,storedCrateCount: this.storedCrates ? this.storedCrates.length : 0
     };
   }
 }
