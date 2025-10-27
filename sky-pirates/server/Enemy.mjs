@@ -84,7 +84,7 @@ export class NavySalvagePlane extends EnemyPlane {
     this.targetCrate = null;
     this.lastCrateSearchTime = 0;
     this.lastHostileCheckTime = 0;
-    this.crateTargetStartTime = 0; // Track when we started targeting a crate
+    this.crateTargetStartiTime = 0; // Track when we started targeting a crate
   }
 
   updateAI(players, crates, enemies) {
@@ -532,7 +532,52 @@ export class NavySalvageBoat extends EnemyBoat {
       // No valid target, stay idle
       this.aiState = "idle";
       this.resetToPassive();
+      // While idle, allow the boat's gun to track the nearest nearby player (no firing)
+      this.trackNearestPlayerWhileIdle(players);
     }
+  }
+
+  // While idle, track the nearest nearby player with the gun (but don't engage)
+  trackNearestPlayerWhileIdle(players) {
+    if (!players || players.length === 0) return;
+
+    const TRACK_RANGE = 800; // meters to start passively tracking
+    const trackRangeSq = TRACK_RANGE * TRACK_RANGE;
+    let nearest = null;
+    let minDistSq = Infinity;
+
+    // Single pass: find nearest non-recovery player within track range
+    for (const player of players) {
+      if (!player || player.biome === 'recovery') continue;
+      const dx = player.x - this.x;
+      const dy = player.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= trackRangeSq && d2 < minDistSq) {
+        minDistSq = d2;
+        nearest = player;
+      }
+    }
+
+    if (!nearest) {
+      // No one nearby to track; reset aim to boat
+      this.t_x = this.x;
+      this.t_y = this.y;
+      this.aimPoint = { x: null, y: null };
+      return;
+    }
+
+    // Predict where the player will be shortly for smoother tracking.
+    // Use sqrt only once to compute a time-to-lead heuristic.
+    const projectileSpeed = this.gun1?.projectileSpeed ?? 20;
+    const dist = Math.sqrt(minDistSq);
+    const timeToLead = Math.min(2, Math.max(0.2, dist / (projectileSpeed + 1)));
+    const predictedX = nearest.x + (nearest.vx ?? 0) * timeToLead;
+    const predictedY = nearest.y + (nearest.vy ?? 0) * timeToLead;
+
+    this.t_x = predictedX;
+    this.t_y = predictedY;
+    this.aimPoint = { x: predictedX, y: predictedY };
+    // Passive only: don't set firing flags here
   }
 
   resetToPassive() {
@@ -549,61 +594,53 @@ export class NavySalvageBoat extends EnemyBoat {
       this.target = null;
       return null;
     }
+    const AGGRO_RANGE = 500;
+    const aggroRangeSq = AGGRO_RANGE * AGGRO_RANGE;
 
-    const AGGRO_RANGE = 500; // 500m
+    // Single pass: prefer players carrying crates within aggro range; otherwise
+    // prefer the nearest player with navyTargeted flag.
+    let nearestTargeted = null;
+    let nearestTargetedDistSq = Infinity;
 
-    // First priority: players with crates within 500m
     for (const player of players) {
-      // Skip players in recovery zones (safe zones)
-      if (player.biome === 'recovery') continue;
-
+      if (!player || player.biome === 'recovery') continue;
       const dx = player.x - this.x;
       const dy = player.y - this.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const d2 = dx * dx + dy * dy;
 
-      // Attack if player has crates AND is within 500m
-      if (dist < AGGRO_RANGE && player.crates && player.crates.length > 0) {
-        player.markNavyActivity(); // Mark them as navy target
+      // Immediate priority: player with crates within AGGRO_RANGE
+      if (player.crates && player.crates.length > 0 && d2 <= aggroRangeSq) {
+        player.markNavyActivity();
         this.target = player;
         return player;
       }
-    }
 
-    // Second priority: players with navyTargeted flag (shot us or other navy)
-    const targetedPlayers = players.filter(p => p.navyTargeted && p.biome !== 'recovery');
-
-    if (targetedPlayers.length === 0) {
-      this.target = null;
-      return null;
-    }
-
-    // Target the nearest player with navyTargeted = true
-    let minDist = Infinity;
-    let nearest = null;
-    for (const player of targetedPlayers) {
-      const dx = player.x - this.x;
-      const dy = player.y - this.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = player;
+      // Otherwise, track nearest navyTargeted player as fallback
+      if (player.navyTargeted && d2 < nearestTargetedDistSq) {
+        nearestTargetedDistSq = d2;
+        nearestTargeted = player;
       }
     }
-    this.target = nearest;
-    return nearest;
+
+    this.target = nearestTargeted;
+    return nearestTargeted;
   }
 
   combatTargets() {
     if (!this.target) return;
+
     const targetX = this.target.x;
     const targetY = this.target.y;
     const targetVX = this.target.vx ?? 0;
     const targetVY = this.target.vy ?? 0;
+
     const dx = targetX - this.x;
     const dy = targetY - this.y;
-    const distToTarget = Math.sqrt(dx * dx + dy * dy);
+    const distSq = dx * dx + dy * dy;
+    const dist = Math.sqrt(distSq); // computed once for time/thresholds
+
     const projectileSpeed = this.gun1?.projectileSpeed ?? 20;
-    const timeToHit = distToTarget / projectileSpeed;
+    const timeToHit = dist / projectileSpeed;
     const predictedX = targetX + targetVX * timeToHit;
     const predictedY = targetY + targetVY * timeToHit;
 
@@ -612,13 +649,13 @@ export class NavySalvageBoat extends EnemyBoat {
     const aimX = targetX + (predictedX - targetX) * t;
     const aimY = targetY + (predictedY - targetY) * t;
 
-    // Set t_x and t_y for updateGuns to use (don't set gun angle directly)
+    // Set t_x and t_y for updateGuns to use
     this.t_x = aimX;
     this.t_y = aimY;
     this.aimPoint = { x: aimX, y: aimY };
 
     const shootDistance = 1000;
-    if (distToTarget < shootDistance && this.gun1) {
+    if (dist < shootDistance && this.gun1) {
       this.selectedGun = 1;
       this.keys.mouse = true;
       this.isFiring = true;

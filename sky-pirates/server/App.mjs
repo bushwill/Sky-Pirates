@@ -237,14 +237,24 @@ function updateBoat(boat) {
     updateGuns(boat, deltaTime);
     checkPlayerShooting(boat);
   } else {
-    // Just update gun cooldowns/heat when idle, skip angle calculations
-    if (boat.gun1) {
-      updateGunCooldown(boat.gun1, deltaTime);
-      updateGunHeat(boat, boat.gun1, deltaTime);
-    }
-    if (boat.gun2) {
-      updateGunCooldown(boat.gun2, deltaTime);
-      updateGunHeat(boat, boat.gun2, deltaTime);
+    // If the boat is passively aiming at a player (t_x/t_y not equal to its own pos),
+    // run the gun angle update so the gun visually tracks that player. Otherwise
+    // keep the cheap idle path that only updates cooldown/heat.
+    const hasPassiveAim = typeof boat.t_x === 'number' && typeof boat.t_y === 'number' &&
+      (boat.t_x !== boat.x || boat.t_y !== boat.y);
+    if (hasPassiveAim) {
+      // Update gun angles toward the passive aim point but do not trigger shooting
+      updateGuns(boat, deltaTime);
+    } else {
+      // Just update gun cooldowns/heat when idle, skip angle calculations
+      if (boat.gun1) {
+        updateGunCooldown(boat.gun1, deltaTime);
+        updateGunHeat(boat, boat.gun1, deltaTime);
+      }
+      if (boat.gun2) {
+        updateGunCooldown(boat.gun2, deltaTime);
+        updateGunHeat(boat, boat.gun2, deltaTime);
+      }
     }
   }
 }
@@ -2022,7 +2032,7 @@ setInterval(() => {
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
 setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
-setInterval(() => { updateFleets() }, 5000); // Update fleets every 5 seconds for cleanup/spawning
+setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
