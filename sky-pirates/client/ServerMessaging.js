@@ -101,6 +101,14 @@ function connectWebSocket() {
             }
             const compressedData = buffer.slice(4, 4 + length);
             const decodedMessage = msgpack.decode(compressedData);
+            
+            // Reject messages older than 100ms
+            const now = Date.now();
+            if (decodedMessage.timestamp && (now - decodedMessage.timestamp) > 100) {
+                console.warn(`Rejected stale message (age: ${now - decodedMessage.timestamp}ms):`, decodedMessage.type);
+                return;
+            }
+            
             handleDecodedMessage(decodedMessage);
         } catch (error) {
             console.error('Error processing message:', error);
