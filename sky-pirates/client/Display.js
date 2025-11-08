@@ -11,8 +11,8 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
     if (!controlledPlayer) return;
     for (let i in enemies) {
         const enemy = enemies[i];
-        // Check if enemy has the controlled player targeted
-        if (enemy.target && enemy.target.username === controlledPlayer.username) {
+        // Check if enemy has the controlled player targeted (using targetUsername from server)
+        if (enemy.targetUsername && enemy.targetUsername === controlledPlayer.username) {
             const drawX = windowWidth / 2 + (enemy.x - centerX);
             const drawY = windowHeight / 2 + (enemy.y - centerY);
             if (drawX < 0 || drawX > windowWidth || drawY < 0 || drawY > windowHeight) {
@@ -23,13 +23,27 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
                 else if (drawX > windowWidth) indicatorX = windowWidth - 40;
                 if (drawY < 0) indicatorY = 40;
                 else if (drawY > windowHeight) indicatorY = windowHeight - 40;
-                // Draw enemy indicator triangle (same style as party)
+
+                // Draw enemy indicator using appropriate helper function
                 push();
                 translate(indicatorX, indicatorY);
-                rotate(enemy.angle);
                 fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
                 stroke(100, 0, 0);
-                triangle(-5, -3, -5, 3, 7, 0);
+
+                // Normalize type to a string to avoid .includes on undefined
+                const enemyType = (typeof enemy.type === 'string') ? enemy.type : '';
+
+                // Use appropriate drawing function based on enemy type
+                if (enemyType.includes('Plane')) {
+                    drawEnemyPlane(enemy);
+                } else if (enemyType.includes('Boat')) {
+                    drawEnemyBoat(enemy);
+                } else {
+                    // Fallback: draw simple triangle for unknown types
+                    rotate(enemy.angle);
+                    triangle(-5, -3, -5, 3, 7, 0);
+                }
+
                 pop();
                 // Draw enemy name or faction
                 fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
@@ -134,9 +148,18 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     textSize(12);
     // Prefer an explicit username when available; otherwise fall back to displayName, type, or constructor name
     const labelText = (enemy && enemy.username) ? enemy.username
-                      : (enemy && enemy.displayName) ? enemy.displayName
-                      : (enemy.type || (enemy && enemy.constructor && enemy.constructor.name) || 'Enemy');
+        : (enemy && enemy.displayName) ? enemy.displayName
+            : (enemy.type || (enemy && enemy.constructor && enemy.constructor.name) || 'Enemy');
     text(labelText, drawX, drawY - 15);
+
+    // Display DPS for dummy enemies
+    if (enemy.isDummy && typeof enemy.dps === 'number') {
+        fill(255, 100, 0); // Orange text for DPS
+        textSize(14);
+        textStyle(BOLD);
+        text(`${Math.round(enemy.dps)} DPS`, drawX, drawY - 45); // Display above AI state
+        textStyle(NORMAL);
+    }
 
     fill(0, 255, 0); // Green text for AI state
     textSize(10);
@@ -217,10 +240,8 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
     // Spawn foam particles if projectile is in water
     if (projectile.biome === 'water') {
         // More frequent spawning for consistent foam trails
-        if (Math.random() < 0.4) { // 40% chance when displaying (increased from 15%)
-            const projectileSizeMultiplier = Math.max(0.2, (projectile.size || 1) * 0.3);
-            spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
-        }
+        const projectileSizeMultiplier = Math.max(0.2, (projectile.size || 1) * 0.3);
+        spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
     }
 
     textSize(12);
@@ -239,6 +260,162 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
     triangle(-5 / 3 * s, -1 * s, -5 / 3 * s, 1 * s, 7 / 3 * s, 0);
 
     pop();
+}
+
+function displayEvents(centerX = 0, centerY = -400) {
+    for (let i in events) {
+        const event = events[i];
+        displayEvent(event, centerX, centerY);
+    }
+}
+
+function displayEvent(event, centerX = 0, centerY = -400) {
+    // Create a unique ID for this event based on its properties
+    const eventId = `${event.type}_${event.x}_${event.y}_${event.timestamp}`;
+
+    // Only display each event once
+    if (displayedEventIds.has(eventId)) {
+        return;
+    }
+
+    // Mark this event as displayed
+    displayedEventIds.add(eventId);
+
+    // Handle different event types
+    if (event.type === 'hit') {
+        const particleCount = 20;
+
+        for (let i = 0; i < particleCount; i++) {
+            let particleAngle, speed;
+
+            // 1/3 of sparks ricochet back (opposite direction with wide spread)
+            if (i < particleCount / 3) {
+                // Ricochet: fly backwards with wide random spread
+                const wideSpread = (Math.random() - 0.5) * Math.PI * 1.5; // ±135 degrees (very wide)
+                particleAngle = event.angle + Math.PI + wideSpread; // Add PI to reverse direction
+                speed = Math.min(event.velocity * 0.2, 4) + Math.random() * 1.5; // Slower ricochets
+            }
+            // 2/3 of sparks continue forward (through target)
+            else {
+                // Bell curve distribution for forward sparks
+                const random1 = Math.random() - 0.5;
+                const random2 = Math.random() - 0.5;
+                const bellCurveRandom = (random1 + random2) / 2; // Concentrated in center
+
+                const spread = bellCurveRandom * (Math.PI / 4); // ±45 degrees, concentrated
+                particleAngle = event.angle + spread;
+                speed = Math.min(event.velocity * 0.3, 5) + Math.random() * 2; // Normal speed
+            }
+
+            const vx = Math.cos(particleAngle) * speed;
+            const vy = Math.sin(particleAngle) * speed;
+            const vz = (Math.random() - 0.5) * 0.5;
+
+            // Primarily yellow sparks with slight variation
+            const colorChoice = Math.random();
+            let r, g, b;
+            if (colorChoice < 0.8) {
+                // Bright yellow (80% of sparks)
+                r = 255;
+                g = 255;
+                b = 50 + Math.random() * 100; // 50-150 (darker yellow)
+            } else {
+                // Orange accent (20% of sparks)
+                r = 255;
+                g = 200 + Math.random() * 55; // 200-255
+                b = 0;
+            }
+
+            const size = 0.8 + Math.random() * 0.8;
+            const lifetime = 5 + Math.random() * 5;
+
+            spawnParticle(event.x, event.y, 0, vx, vy, vz, r, g, b, size, lifetime, 'spark');
+        }
+        
+        // Add flame particles (5-8 particles radiating outward)
+        const flameCount = 5 + Math.floor(Math.random() * 4); // 5-8 flames
+        for (let i = 0; i < flameCount; i++) {
+            // Random angle in all directions (360 degrees)
+            const flameAngle = Math.random() * Math.PI * 2;
+            
+            // Slower, expanding outward
+            const flameSpeed = 0.5 + Math.random() * 1.5;
+            const fvx = Math.cos(flameAngle) * flameSpeed;
+            const fvy = Math.sin(flameAngle) * flameSpeed;
+            const fvz = (Math.random() - 0.5) * 0.5;
+            
+            // Flame colors - red/orange/yellow
+            const flameColorChoice = Math.random();
+            let fr, fg, fb;
+            if (flameColorChoice < 0.33) {
+                fr = 255; fg = 30 + Math.random() * 70; fb = 0; // Red
+            } else if (flameColorChoice < 0.66) {
+                fr = 255; fg = 100 + Math.random() * 100; fb = 0; // Orange
+            } else {
+                fr = 255; fg = 255; fb = 20 + Math.random() * 40; // Yellow
+            }
+            
+            const flameSize = 2 + Math.random() * 3;
+            const flameLifetime = 15 + Math.random() * 20;
+            
+            spawnParticle(event.x, event.y, 0, fvx, fvy, fvz, fr, fg, fb, flameSize, flameLifetime, 'flame');
+        }
+    } else if (event.type === 'explosion') {
+        // Large explosion - lots of fire and smoke
+        const explosionScale = 0.5;
+        
+        // Spawn flame particles (30-50 particles for large explosion)
+        var explosionFlameCount = Math.floor(30 + Math.random() * 20);
+        for (let i = 0; i < explosionFlameCount; i++) {
+            // Random angle in all directions
+            const angle = Math.random() * Math.PI * 2;
+            
+            // Expanding outward with varying speeds
+            const speed = (1 + Math.random() * 3) * explosionScale;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            const vz = (Math.random() - 0.5) * 1;
+            
+            // Flame colors - red/orange/yellow
+            const colorChoice = Math.random();
+            let r, g, b;
+            if (colorChoice < 0.4) {
+                r = 255; g = 30 + Math.random() * 70; b = 0; // Red (40%)
+            } else if (colorChoice < 0.7) {
+                r = 255; g = 100 + Math.random() * 100; b = 0; // Orange (30%)
+            } else {
+                r = 255; g = 255; b = 20 + Math.random() * 40; // Yellow (30%)
+            }
+            
+            const size = (6 + Math.random()) * explosionScale; // Larger flames
+            const lifetime = 60 + Math.random() * 120; // 2-3 seconds (60-180 frames)
+            
+            spawnParticle(event.x, event.y, 0, vx, vy, vz, r, g, b, size, lifetime, 'flame');
+        }
+        
+        // Spawn smoke particles (20-30 particles)
+        const explosionSmokeCount = Math.floor(20 + Math.random() * 10) * explosionScale;
+        for (let i = 0; i < explosionSmokeCount; i++) {
+            // Random angle in all directions
+            const angle = Math.random() * Math.PI * 2;
+            
+            // Slower expansion than flames
+            const speed = (0.5 + Math.random() * 1.5) * explosionScale;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed - 0.2; // Slight upward drift
+            const vz = (Math.random() - 0.5) * 0.5;
+            
+            // Dark gray/black smoke
+            const r = 80 + Math.random() * 40; // 80-120 (darker)
+            const g = 80 + Math.random() * 40;
+            const b = 80 + Math.random() * 40;
+            
+            const size = (4 + Math.random() * 6) * explosionScale; // Large smoke clouds
+            const lifetime = 300 + Math.random() * 120; // 5-7 seconds (300-420 frames)
+            
+            spawnParticle(event.x, event.y, 0, vx, vy, vz, r, g, b, size, lifetime, 'smoke');
+        }
+    }
 }
 
 function displayCrates(centerX = 0, centerY = -400) {
@@ -1036,6 +1213,41 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
     const lifetime = 15 + Math.random() * 10; // Shorter lifetime
 
     spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
+}
+
+function spawnWaterFoamParticles(x, y, velocity = 0, sizeMultiplier = 1) {
+    // Scale foam based on velocity (speed of impact)
+    const speed = Math.sqrt(velocity.vx * velocity.vx + velocity.vy * velocity.vy) || 10;
+    const speedFactor = Math.min(speed / 50, 3); // Cap at 3x for very fast speeds
+
+    // Adjust particle count based on size multiplier - smaller objects = fewer particles
+    const baseParticleCount = 1;
+    const particleCount = Math.floor(baseParticleCount * speedFactor); // Scale with speed
+
+    for (let i = 0; i < particleCount; i++) {
+        // Small spread pattern around the impact point
+        const offsetX = (Math.random() - 0.5) * 8 * speedFactor * sizeMultiplier; // Scale spread with size
+        const offsetY = (Math.random() - 0.5) * 4 * speedFactor * sizeMultiplier; // Scale spread with size
+
+        // Very slow, gentle movement like foam floating
+        const vx = (Math.random() - 0.5) * 1 * speedFactor; // More movement for faster impacts
+        const vy = -Math.random() * 0.5 * speedFactor; // More upward float
+        const vz = (Math.random() - 0.5) * 0.5; // Minimal 3D movement
+
+        // Foamy white/light blue colors
+        const r = 200 + Math.random() * 55; // 200-255 (bright white foam)
+        const g = 240 + Math.random() * 15; // 240-255 (very light)
+        const b = 255; // Pure white foam
+
+        // Scale foam bubble size with multiplier, but keep generally smaller
+        const size = (0.8 + Math.random() * 0.8) * sizeMultiplier; // 0.8-1.6 size * multiplier (smaller base)
+        const lifetime = 3000 + Math.random() * 2000; // 3-5 seconds to dissipate
+
+        // Spawn at water surface level with slight random offset
+        const spawnX = x + offsetX;
+        const spawnY = y + offsetY;
+        spawnParticle(spawnX, spawnY, 0, vx, vy, vz, r, g, b, size, lifetime, 'foam');
+    }
 }
 
 // Enemy drawing functions - abstracted for better organization

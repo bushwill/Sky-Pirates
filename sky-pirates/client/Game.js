@@ -16,11 +16,16 @@ let mapData;
 let recovery = null;
 let lastMapRequest = -2000;
 
+// Track previous biome to detect when player enters recovery zone
+let previousBiome = null;
+
 let players = [];
 let enemies = [];
 let projectiles = [];
 let crates = [];
 let particles = [];
+let events = [];
+let displayedEventIds = new Set(); // Track which events we've already displayed
 
 // Global array to store clickable regions for inventory items.
 // Each element will be an object: { item, x, y, size }
@@ -123,6 +128,18 @@ function draw() {
         } else {
             background(255, 155, 0)
             const controlledPlayer = players.find(player => player.username === username);
+            
+            // Check if player entered recovery zone and sort inventory
+            if (controlledPlayer && controlledPlayer.biome === 'recovery' && previousBiome !== 'recovery') {
+                if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
+                    sortInventory(controlledPlayer.inventory);
+                }
+            }
+            // Update previous biome for next frame
+            if (controlledPlayer) {
+                previousBiome = controlledPlayer.biome;
+            }
+            
             serverSync(controlledPlayer);
             if (clientEstimating) {
                 estimatePlayerPositions();
@@ -157,6 +174,7 @@ function serverSync(player = null) {
         getEnemyData();
         getProjectileData();
         getCrateData();
+        getEventData();
         lastPlayerUpdate = millis();
     }
     if (millis() - lastPing > pingUpdateTime) {
@@ -191,6 +209,7 @@ function handleGameDisplay(controlledPlayer) {
 
         // Draw particles behind all game objects
         updateParticles();
+        displayEvents(centerX, centerY);
         drawParticles(centerX, centerY);
 
         displayCrates(centerX, centerY);
@@ -207,6 +226,7 @@ function handleGameDisplay(controlledPlayer) {
 
         // Draw particles behind all game objects
         updateParticles();
+        displayEvents();
         drawParticles();
 
         displayCrates();
@@ -239,41 +259,6 @@ function getBiomeAtPosition(x, y) {
 
     // If no matching biome is found, default to 'air'
     return 'air';
-}
-
-function spawnWaterFoamParticles(x, y, velocity = 0, sizeMultiplier = 1) {
-    // Scale foam based on velocity (speed of impact)
-    const speed = Math.sqrt(velocity.vx * velocity.vx + velocity.vy * velocity.vy) || 10;
-    const speedFactor = Math.min(speed / 50, 3); // Cap at 3x for very fast speeds
-
-    // Adjust particle count based on size multiplier - smaller objects = fewer particles
-    const baseParticleCount = Math.max(1, Math.floor(1 + Math.random() * 2 * sizeMultiplier)); // 1-3 base, scaled by size
-    const particleCount = Math.floor(baseParticleCount * speedFactor); // Scale with speed
-
-    for (let i = 0; i < particleCount; i++) {
-        // Small spread pattern around the impact point
-        const offsetX = (Math.random() - 0.5) * 8 * speedFactor * sizeMultiplier; // Scale spread with size
-        const offsetY = (Math.random() - 0.5) * 4 * speedFactor * sizeMultiplier; // Scale spread with size
-
-        // Very slow, gentle movement like foam floating
-        const vx = (Math.random() - 0.5) * 1 * speedFactor; // More movement for faster impacts
-        const vy = -Math.random() * 0.5 * speedFactor; // More upward float
-        const vz = (Math.random() - 0.5) * 0.5; // Minimal 3D movement
-
-        // Foamy white/light blue colors
-        const r = 200 + Math.random() * 55; // 200-255 (bright white foam)
-        const g = 240 + Math.random() * 15; // 240-255 (very light)
-        const b = 255; // Pure white foam
-
-        // Scale foam bubble size with multiplier, but keep generally smaller
-        const size = (0.8 + Math.random() * 0.8) * sizeMultiplier; // 0.8-1.6 size * multiplier (smaller base)
-        const lifetime = 3000 + Math.random() * 2000; // 3-5 seconds to dissipate
-
-        // Spawn at water surface level with slight random offset
-        const spawnX = x + offsetX;
-        const spawnY = y + offsetY;
-        spawnParticle(spawnX, spawnY, 0, vx, vy, vz, r, g, b, size, lifetime, 'foam');
-    }
 }
 
 function handleDisconnectPage() {

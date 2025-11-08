@@ -1,4 +1,29 @@
 /**
+ * Sorts the player's inventory by type of part -> manufacturer -> level.
+ * This ensures consistent ordering when opening crates in recovery zones.
+ * 
+ * @param {Array} inventory - The player's inventory array to sort in-place.
+ */
+function sortInventory(inventory) {
+    if (!inventory || !Array.isArray(inventory)) return;
+    
+    inventory.sort((a, b) => {
+        // First sort by type (e.g., "engine", "gun", "hull")
+        if (a.type !== b.type) {
+            return a.type.localeCompare(b.type);
+        }
+        
+        // Then by manufacturer
+        if (a.manufacturer !== b.manufacturer) {
+            return a.manufacturer.localeCompare(b.manufacturer);
+        }
+        
+        // Finally by level (numeric)
+        return (a.level || 0) - (b.level || 0);
+    });
+}
+
+/**
  * Checks if the given mouse coordinates (mx, my) are within any inventory item region.
  * If a region is hit, call handleItemEquip(item) for that item.
  *
@@ -31,15 +56,15 @@ function handleInventoryClick(mx, my) {
 
 /**
  * Calculates the inventory regions based on the controlled player's inventory.
- * Arranges items in a perfect circle around the controlled player's center position,
- * which is assumed to be at (windowWidth/2, windowHeight/2).
+ * Arranges items in multiple concentric circles around the controlled player's center position
+ * when inventory has many items to prevent overlap.
  *
  * Note:
  * Removing the recovery zone clamping ensures that the items form a true circle on-screen.
  * If clamping to the recovery zone is necessary, it may distort the circular layout.
  *
  * @param {Object} controlledPlayer - The controlled player object.
- * @param {number} radius - The radius in pixels at which items are displayed around the center.
+ * @param {number} radius - The base radius in pixels at which items are displayed around the center.
  * @param {number} slotSize - The size for each inventory item display.
  * @returns {Array} Array of region objects with properties: item, x, y, size, and angle.
  */
@@ -47,24 +72,43 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize) {
     const itemCount = controlledPlayer.inventory.length;
     const regions = [];
     
-    // Calculate each item's position in a perfect circle centered at (windowWidth/2, windowHeight/2)
-    for (let i = 0; i < itemCount; i++) {
-      const item = controlledPlayer.inventory[i];
+    // Maximum items per ring before creating a new ring (based on avoiding overlap)
+    // Calculate based on circumference and slot size with some spacing
+    const maxItemsPerRing = Math.max(8, Math.floor((2 * Math.PI * radius) / (slotSize * 1.2)));
+    
+    let itemIndex = 0;
+    let ringIndex = 0;
+    
+    // Distribute items across multiple rings if needed
+    while (itemIndex < itemCount) {
+      const itemsInThisRing = Math.min(maxItemsPerRing, itemCount - itemIndex);
+      const currentRadius = radius + (ringIndex * slotSize * 1.5); // Space rings apart
       
-      // Calculate the angle for even distribution in a circle.
-      const angle = (2 * Math.PI * i) / itemCount;
+      // Place items in current ring
+      for (let i = 0; i < itemsInThisRing; i++) {
+        const item = controlledPlayer.inventory[itemIndex];
+        
+        // Calculate the angle for even distribution in this ring
+        const angle = (2 * Math.PI * i) / itemsInThisRing;
+        
+        // Compute the screen coordinates directly relative to the center of the window
+        const drawX = windowWidth / 2 + currentRadius * Math.cos(angle);
+        const drawY = windowHeight / 2 + currentRadius * Math.sin(angle);
+        
+        regions.push({
+          item: item,
+          x: drawX,
+          y: drawY,
+          size: slotSize,
+          angle: angle,
+          ring: ringIndex  // Track which ring this item is in
+        });
+        
+        itemIndex++;
+      }
       
-      // Compute the screen coordinates directly relative to the center of the window.
-      const drawX = windowWidth / 2 + radius * Math.cos(angle);
-      const drawY = windowHeight / 2 + radius * Math.sin(angle);
-      
-      regions.push({
-        item: item,
-        x: drawX,
-        y: drawY,
-        size: slotSize,
-        angle: angle  // Optional, for logging/debug convenience.
-      });
+      ringIndex++;
     }
+    
     return regions;
   }

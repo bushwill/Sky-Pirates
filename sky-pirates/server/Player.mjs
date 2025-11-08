@@ -169,7 +169,7 @@ export class Player extends Plane {
   sellAll() {
     let totalValue = 0;
     this.inventory.forEach(item => {
-      totalValue += parseInt(item.value, 10); // Assuming each crate has a value property
+      totalValue += parseInt(item.value, 10)/2; // Assuming each crate has a value property
     });
     this.inventory = []; // Clear the inventory after selling
     this.money += parseInt(totalValue, 10); // Add the total value to the player's money

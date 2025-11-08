@@ -179,6 +179,15 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
+        case 'event_data':
+            if (!decodedMessage.events || !Array.isArray(decodedMessage.events)) {
+                console.warn('Invalid events data:', decodedMessage.events);
+                events = [];
+            } else {
+                events = decodedMessage.events;
+            }
+            break;
+
         case 'pong':
             const rtt = Date.now() - decodedMessage.clientTime;
             pingTimes.push(rtt / 2);
@@ -284,6 +293,12 @@ function getProjectileData() {
 
 function getCrateData() {
     const message = { type: 'get_crates' };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+}
+
+function getEventData() {
+    const message = { type: 'get_events' };
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
 }

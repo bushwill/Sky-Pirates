@@ -280,41 +280,48 @@ export class NavySalvagePlane extends EnemyPlane {
       this.seekTargetBoat = null;
       return false;
     }
-    this.navigateTo({ x: this.seekTargetBoat.x, y: this.seekTargetBoat.y }, true, 0.6);
-    const JOIN_DISTANCE_SQ = 60 * 60;
+    
+    // Fly horizontally toward the boat at patrol altitude
     const dx = this.seekTargetBoat.x - this.x;
-    const dy = this.seekTargetBoat.y - this.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 <= JOIN_DISTANCE_SQ) {
-      this.fleetBoat = this.seekTargetBoat;
-      if (!this.fleetBoat.planes) this.fleetBoat.planes = [];
-      if (!this.fleetBoat.planes.includes(this)) {
-        this.fleetBoat.planes.push(this);
-        // Renumber the plane's username to reflect the fleet it joined.
-        try {
-          // Determine fleet id from boat username (trailing digits if present)
-          const match = (this.fleetBoat.username || '').match(/(\d+)$/);
-          const fleetId = match ? match[1] : String(Date.now()).slice(-4);
-          // Compute index within the fleet (1-based)
-          const index = this.fleetBoat.planes.indexOf(this) + 1;
-          const baseLabel = this.displayName || planeLabelForLevel(this.level) || 'Navy Craft';
-          const newUsername = `${baseLabel} ${fleetId}-${index}`;
-          // Update username and ensure any attached crates reflect the new carrier string
-          this.username = newUsername;
-          if (this.crates && Array.isArray(this.crates)) {
-            for (const c of this.crates) {
-              try { c.carrier = this.username; } catch (er) { /* ignore */ }
-            }
-          }
-        } catch (e) {
-          // If anything goes wrong, leave username unchanged
-        }
-      }
+    const distanceFromBoat = Math.abs(dx);
+    this.searchDirection = dx >= 0 ? 1 : -1;
+    this.flyHorizontallyAtAltitude(this.patrolAltitude);
+    
+    // Join fleet when close enough (horizontal distance only)
+    const JOIN_DISTANCE = 100;
+    if (distanceFromBoat <= JOIN_DISTANCE) {
+      this._joinFleet(this.seekTargetBoat);
       this.seekingFleet = false;
       this.seekTargetBoat = null;
       this.aiState = 'searching';
     }
     return true;
+  }
+
+  _joinFleet(boat) {
+    this.fleetBoat = boat;
+    if (!this.fleetBoat.planes) this.fleetBoat.planes = [];
+    if (!this.fleetBoat.planes.includes(this)) {
+      this.fleetBoat.planes.push(this);
+      this._renameForFleet();
+    }
+  }
+
+  _renameForFleet() {
+    try {
+      const match = (this.fleetBoat.username || '').match(/(\d+)$/);
+      const fleetId = match ? match[1] : String(Date.now()).slice(-4);
+      const index = this.fleetBoat.planes.indexOf(this) + 1;
+      const baseLabel = this.displayName || planeLabelForLevel(this.level) || 'Navy Craft';
+      this.username = `${baseLabel} ${fleetId}-${index}`;
+      
+      // Update crates to reflect new carrier
+      if (this.crates && Array.isArray(this.crates)) {
+        for (const c of this.crates) {
+          try { c.carrier = this.username; } catch (er) { /* ignore */ }
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   _scanForFleetAndLock(enemies) {
@@ -348,8 +355,12 @@ export class NavySalvagePlane extends EnemyPlane {
   }
 
   _continueHorizontalSearch() {
-    const searchTargetAngle = this.searchDirection > 0 ? 0 : Math.PI;
-    this.applyTurningToward(searchTargetAngle);
+    this.flyHorizontallyAtAltitude(this.patrolAltitude);
+  }
+
+  flyHorizontallyAtAltitude(targetAltitude) {
+    const targetAngle = this.computePatrolTargetAngle(targetAltitude);
+    this.applyTurningToward(targetAngle, 0.05);
     this.keys.w = true;
     this.keys.s = false;
   }
@@ -451,6 +462,8 @@ export class NavySalvagePlane extends EnemyPlane {
 
   attachCrate(crate) {
     if (!this.crates) this.crates = [];
+    // Limit enemy planes to 10 crates maximum
+    if (this.crates.length >= 10) return;
     // Do not attach crates that have already been claimed by another carrier
     if (crate.removedFromWorld) return;
     if (crate.carrier) return; // prevent stealing from players or other entities
@@ -599,7 +612,8 @@ export class NavySalvagePlane extends EnemyPlane {
       engine: this.engine ? { power: this.engine.power } : null,
       isFiring: this.isFiring,
       aimPoint: this.aimPoint,
-      aiState: this.aiState
+      aiState: this.aiState,
+      targetUsername: this.target ? this.target.username : null // Include target username for client indicators
     };
   }
 
@@ -909,8 +923,98 @@ export class NavySalvageBoat extends EnemyBoat {
       gun1: this.gun1 ? { angle: this.gun1.angle } : null,
       isFiring: this.isFiring,
       aimPoint: this.aimPoint,
+      aiState: this.aiState,
+      storedCrateCount: this.storedCrates ? this.storedCrates.length : 0,
+      targetUsername: this.target ? this.target.username : null // Include target username for client indicators
+    };
+  }
+}
+
+// Dummy plane for testing - no AI, no physics, 500 HP
+export class DummyPlane extends EnemyPlane {
+  constructor(username, x, y) {
+    super(username, 255, 165, 0, x, y, 'dummy'); // Orange color
+    
+    // Create basic components
+    this.gun1 = createEnemyGun(0, 1);
+    this.gun2 = null;
+    this.engine = createEnemyEngine(0, 1);
+    this.chassis = createEnemyChassis(0, 1);
+    this.wings = createEnemyWings(0, 1);
+    
+    // Dummy-specific properties
+    this.isDummy = true;
+    this.aiState = "dummy";
+    this.t_x = x;
+    this.t_y = y;
+    
+    // DPS tracking
+    this.damageHistory = []; // Array of {timestamp, damage} objects
+    this.currentDPS = 0;
+    
+    // Set health to 500
+    this.chassis.hull = 500;
+    this.chassis.maxHull = 500;
+  }
+  
+  // Override updateAI to do nothing but update DPS
+  updateAI() {
+    // Dummies don't have AI - maintain "dummy" state
+    this.aiState = "dummy";
+  }
+  
+  updateDPS() {
+    const now = Date.now();
+    const oneSecondAgo = now - 1000;
+    
+    // Remove damage records older than 1 second
+    this.damageHistory = this.damageHistory.filter(record => record.timestamp > oneSecondAgo);
+    
+    // Calculate total damage in the last second
+    this.currentDPS = this.damageHistory.reduce((total, record) => total + record.damage, 0);
+  }
+  
+  // Override onDamaged to track damage for DPS
+  onDamaged(projectile, players) {
+    // Track hull before damage
+    const hullBefore = this.chassis?.hull ?? 0;
+    
+    // Call parent method to apply normal damage
+    super.onDamaged(projectile, players);
+    
+    // Track hull after damage
+    const hullAfter = this.chassis?.hull ?? 0;
+    const damageDealt = hullBefore - hullAfter;
+    
+    // Record the damage with timestamp
+    if (damageDealt > 0) {
+      this.damageHistory.push({
+        timestamp: Date.now(),
+        damage: damageDealt
+      });
+    }
+    this.updateDPS();
+  }
+  
+  toClientData() {
+    return {
+      type: this.type,
+      username: this.username,
+      faction: this.faction,
+      isDummy: true,
+      dps: this.currentDPS, // Include DPS for display
+      x: this.x,
+      y: this.y,
+      angle: this.angle,
+      vx: 0, // Always stationary
+      vy: 0, // Always stationary
+      r: this.r,
+      g: this.g,
+      b: this.b,
+      size: this.size,
+      hull: this.chassis?.hull ?? 0,
+      maxHull: this.chassis?.maxHull ?? 1,
       aiState: this.aiState
-      ,storedCrateCount: this.storedCrates ? this.storedCrates.length : 0
     };
   }
 }

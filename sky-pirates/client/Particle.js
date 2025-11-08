@@ -86,19 +86,36 @@ class Particle {
                 this.vz *= Math.pow(airDragFactor, deltaTime);
             }
         } else if (this.type === 'flame') {
+            // Check if flame hits water - convert to foam
+            const currentBiome = getBiomeAtPosition(this.x, this.y);
+            if (currentBiome === 'water') {
+                // Convert flame to foam particle
+                this.type = 'foam';
+                this.r = 255;
+                this.g = 255;
+                this.b = 255;
+                this.lifetime = 60 + Math.random() * 60; // 2-4 seconds
+                this.maxLifetime = this.lifetime;
+                // Scale down to foam size (flames are 2-5px, foam should be 0.8-1.6px)
+                this.size = 0.8 + Math.random() * 0.8;
+                this.originalSize = this.size;
+                // Reset death animation state
+                this.isDying = false;
+                this.isDead = false;
+                this.deathTimer = 0;
+                // Keep velocity but reduce it
+                this.vx *= 0.5;
+                this.vy *= 0.5;
+                this.vz *= 0.5;
+                return; // Skip rest of flame physics
+            }
+            
             // Flame particles - no upward movement
             // Light air resistance
             const flameDragFactor = 0.98;
             this.vx *= Math.pow(flameDragFactor, deltaTime);
             this.vy *= Math.pow(flameDragFactor, deltaTime);
             this.vz *= Math.pow(flameDragFactor, deltaTime);
-            
-            // Check if flame hits water - extinguish quickly
-            const currentBiome = getBiomeAtPosition(this.x, this.y);
-            if (currentBiome === 'water' && !this.isDying) {
-                this.isDying = true;
-                this.deathTimer = 5; // Very fast extinguish in water
-            }
             
         } else if (this.type === 'smoke') {
             // Smoke rises very gently (50% of original)
@@ -116,6 +133,19 @@ class Particle {
             // Smoke fades as it ages (alpha decreases)
             const ageRatio = 1 - (this.lifetime / this.maxLifetime);
             this.alpha = Math.max(20, 150 * (1 - ageRatio)); // Fade from 150 to 20
+            
+        } else if (this.type === 'spark') {
+            // Spark particles - erratic, fast-dissipating
+            // Add random jittery movement (increased jitter for more erratic motion)
+            this.vx += (Math.random() - 0.5) * 1.2 * deltaTime; // More jitter
+            this.vy += (Math.random() - 0.5) * 1.2 * deltaTime; // More jitter
+            this.vz += (Math.random() - 0.5) * 0.5 * deltaTime;
+            
+            // Medium drag - sparks lose energy but not instantly
+            const sparkDragFactor = 0.95; // Less drag than before (was 0.88)
+            this.vx *= Math.pow(sparkDragFactor, deltaTime);
+            this.vy *= Math.pow(sparkDragFactor, deltaTime);
+            this.vz *= Math.pow(sparkDragFactor, deltaTime);
         }
         
         // Update position based on velocity
@@ -177,6 +207,12 @@ class Particle {
         } else if (this.type === 'smoke') {
             // Smoke particles - gray circle with fading alpha
             fill(100, 100, 100, this.alpha);
+            noStroke();
+            circle(screenX, screenY, this.size);
+            
+        } else if (this.type === 'spark') {
+            // Spark particles - bright, small, fading quickly
+            fill(this.r, this.g, this.b, this.alpha);
             noStroke();
             circle(screenX, screenY, this.size);
             

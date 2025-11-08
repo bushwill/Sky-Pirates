@@ -8,9 +8,10 @@ import fs from 'fs';
 
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
-import { NavySalvagePlane, NavySalvageBoat, EnemyPlane } from './Enemy.mjs';
+import { NavySalvagePlane, NavySalvageBoat, EnemyPlane, DummyPlane } from './Enemy.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
+import { GameEvent } from './GameEvent.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
 import { createEnemyGun } from './WeaponList.mjs';
@@ -38,6 +39,7 @@ let lastEnemySpawnTime = 0;
 let enemySpawnRate = 500;
 let projectiles = [];
 let crates = [];
+let events = []; // Event queue for transient visual effects
 let crateScale = 10;
 let max_money_crates = crateScale * 40; // Maximum number of crates allowed
 let max_component_crates = crateScale * 10; // Maximum number of component crates allowed
@@ -162,9 +164,12 @@ function updateFleets() {
   }
 }
 
-// ===== END FLEET SYSTEM =====
-
 function updateEnemy(enemy) {
+  // Skip updates for dummy planes - they are stationary and invincible
+  if (enemy.isDummy) {
+    return;
+  }
+  
   // Update AI first to determine if enemy has a target
   // Pass crates and enemies to planes for salvage operations
   if (enemy instanceof NavySalvagePlane) {
@@ -297,6 +302,10 @@ function updateProjectile(projectile) {
     projectile.lifespan -= 1000 * deltaTime; // Decrease lifespan
   }
 
+  // Store previous position for swept collision detection
+  const prevX = projectile.x;
+  const prevY = projectile.y;
+
   // Update position based on velocity
   projectile.x += projectile.vx * deltaTime;
   projectile.y += projectile.vy * deltaTime;
@@ -304,43 +313,68 @@ function updateProjectile(projectile) {
   // Update projectile biome
   projectile.biome = mapData.getBiomeAtPosition(projectile.x, projectile.y);
 
-  // Check for collisions with players
-  players.forEach((player) => {
-    if (player.username === projectile.owner) return; // Skip collision with self
-    const dx = Math.abs(player.x - projectile.x);
-    const dy = Math.abs(player.y - projectile.y);
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < player.size + projectile.size) {
+  // Check for collisions with players using swept collision detection
+  for (const player of players) {
+    if (player.username === projectile.owner) continue; // Skip collision with self
+    
+    // Use swept sphere collision detection
+    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, 
+                           player.x, player.y, player.size)) {
+      // Create hit event for visual feedback
+      createHitEvent(player.x, player.y, projectile);
+      
       // Call entity's damage handler
       if (player.onDamaged) {
         player.onDamaged(projectile);
       }
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
+      return; // Exit early since projectile is destroyed
     }
-  });
+  }
 
-  // Check for collisions with enemies
-  enemies.forEach((enemy) => {
+  // Check for collisions with enemies using swept collision detection
+  for (const enemy of enemies) {
     // Skip if projectile owner is self or another enemy
-    if (enemy.username === projectile.owner) return;
+    if (enemy.username === projectile.owner) continue;
     const ownerIsEnemy = enemies.some(e => e.username === projectile.owner);
-    if (ownerIsEnemy) return; // Enemies can't damage other enemies
+    if (ownerIsEnemy) continue; // Enemies can't damage other enemies
 
-    const dx = Math.abs(enemy.x - projectile.x);
-    const dy = Math.abs(enemy.y - projectile.y);
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < enemy.size + projectile.size) {
+    // Use swept sphere collision detection
+    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
+                           enemy.x, enemy.y, enemy.size)) {
+      // Create hit event for visual feedback
+      createHitEvent(enemy.x, enemy.y, projectile);
+      
       // Call entity's damage handler
       if (enemy.onDamaged) {
         enemy.onDamaged(projectile, players);
       }
       projectiles = projectiles.filter((p) => p !== projectile); // Remove projectile
+      return; // Exit early since projectile is destroyed
     }
-  });
+  }
+}
 
+// Create a hit event when a projectile hits an entity
+function createHitEvent(x, y, projectile) {
+  // Calculate velocity magnitude from vx and vy
+  const velocity = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
+  
+  const event = new GameEvent('hit', x, y, projectile.angle, velocity);
+  events.push(event);
+}
 
+// Create an explosion event when an entity dies
+function createExplosionEvent(x, y, size = 1) {
+  const event = new GameEvent('explosion', x, y, 0, size);
+  events.push(event);
+}
+
+// Clean up old events (remove events older than 5 seconds)
+function updateEvents() {
+  const now = Date.now();
+  const EVENT_LIFETIME = 5000; // 5 seconds
+  events = events.filter(event => now - event.timestamp < EVENT_LIFETIME);
 }
 
 function updateCrates() {
@@ -971,6 +1005,73 @@ function shortestAngleDiff(target, source) {
   return Math.atan2(Math.sin(a), Math.cos(a));
 }
 
+// Swept collision detection for fast-moving projectiles
+// Checks if a moving sphere (projectile) hits a stationary sphere (target) along its path
+function checkSweptCollision(startX, startY, endX, endY, projectileRadius, targetX, targetY, targetRadius) {
+  // Calculate the movement vector
+  const dx = endX - startX;
+  const dy = endY - startY;
+  
+  // Vector from start position to target
+  const fx = startX - targetX;
+  const fy = startY - targetY;
+  
+  // Combined radius for collision
+  const combinedRadius = projectileRadius + targetRadius;
+  
+  // Solve quadratic equation for ray-sphere intersection
+  // (dx, dy) is the ray direction
+  // (fx, fy) is from ray origin to sphere center
+  const a = dx * dx + dy * dy;
+  
+  // If projectile didn't move, use simple distance check
+  if (a < 0.0001) {
+    const dist = Math.sqrt(fx * fx + fy * fy);
+    return dist <= combinedRadius;
+  }
+  
+  const b = 2 * (fx * dx + fy * dy);
+  const c = (fx * fx + fy * fy) - combinedRadius * combinedRadius;
+  
+  const discriminant = b * b - 4 * a * c;
+  
+  // No intersection if discriminant is negative
+  if (discriminant < 0) {
+    return false;
+  }
+  
+  // Calculate the intersection point(s)
+  const sqrtDisc = Math.sqrt(discriminant);
+  const t1 = (-b - sqrtDisc) / (2 * a);
+  const t2 = (-b + sqrtDisc) / (2 * a);
+  
+  // Check if collision occurred within the movement segment (t between 0 and 1)
+  // We want the first intersection point
+  if (t1 >= 0 && t1 <= 1) {
+    return true;
+  }
+  if (t2 >= 0 && t2 <= 1) {
+    return true;
+  }
+  
+  // Also check endpoints explicitly for edge cases
+  // Check start position
+  const startDist = Math.sqrt(fx * fx + fy * fy);
+  if (startDist <= combinedRadius) {
+    return true;
+  }
+  
+  // Check end position
+  const ex = endX - targetX;
+  const ey = endY - targetY;
+  const endDist = Math.sqrt(ex * ex + ey * ey);
+  if (endDist <= combinedRadius) {
+    return true;
+  }
+  
+  return false;
+}
+
 function updateGunCooldown(gun, deltaTime) {
   if (gun.cooldown > 0) {
     gun.cooldown = Math.max(0, gun.cooldown - deltaTime * 1000);
@@ -1156,29 +1257,45 @@ function handleRevive(player) {
   }
 }
 
-function handleDeath(plane) {
-  // Check if plane is a player or enemy
-  const playerIndex = players.findIndex((p) => p.username === plane.username);
-  const enemyIndex = typeof enemies !== 'undefined' ? enemies.findIndex((e) => e.username === plane.username) : -1;
-  const socket = playerSockets.get(plane.username);
+function handleDeath(entity) {
+  // Create explosion event at death location
+  const explosionSize = Math.max(entity.size/10 || 1, 1); // Use entity size if available
+
+  // Check if entity is a player or enemy
+  const playerIndex = players.findIndex((p) => p.username === entity.username);
+  const enemyIndex = typeof enemies !== 'undefined' ? enemies.findIndex((e) => e.username === entity.username) : -1;
+  const socket = playerSockets.get(entity.username);
 
   if (playerIndex !== -1) {
-    sendNoticeMessageAll(`${plane.username} has been killed!`, 'server');
+    sendNoticeMessageAll(`${entity.username} has been killed!`, 'server');
     if (socket) {
       sendMessage(socket, {
         type: 'player_destroyed'
       });
     }
-    plane.detachAllCrates();
+    createExplosionEvent(entity.x, entity.y, explosionSize);
+    entity.detachAllCrates();
     // Remove player from players list and clean up socket references (death = removal)
     players.splice(playerIndex, 1);
-    playerSockets.delete(plane.username);
+    playerSockets.delete(entity.username);
     return;
   }
 
   // Remove enemy plane without messages or websockets
   if (enemyIndex !== -1) {
     const enemy = enemies[enemyIndex];
+    
+    // Create explosion event for enemy
+    // For boats, spawn explosion above water surface
+    let explosionY = enemy.y;
+    if (enemy && enemy.isFleetBoat) {
+      const waterSurface = getWaterSurfaceAt(enemy.x);
+      if (waterSurface !== null) {
+        explosionY = waterSurface - 1;
+      }
+    }
+    createExplosionEvent(enemy.x, explosionY, explosionSize);
+    
     // If enemy is a fleet boat and has stored crates, drop them into the world
     if (enemy && typeof enemy.dropAllStoredCrates === 'function') {
       try {
@@ -1207,7 +1324,7 @@ function handleDeath(plane) {
       }
     } catch (e) { /* ignore */ }
     // Detach any crates held by the enemy in its standard 'crates' array
-    plane.detachAllCrates?.(); // Detach all crates from enemy plane
+    entity.detachAllCrates?.(); // Detach all crates from enemy entity
     enemies.splice(enemyIndex, 1);
     return;
   }
@@ -1543,6 +1660,11 @@ function handleIncomingMessage(ws, message) {
       const filteredCrates = filterCratesInRange(crates, playerForCrates);
       sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
       break;
+    case 'get_events':
+      const playerForEvents = players.find(p => p.username === ws.currentUsername);
+      const filteredEvents = filterEventsInRange(events, playerForEvents);
+      sendMessage(ws, { type: 'event_data', events: filteredEvents });
+      break;
     case 'equip_item':
       handleEquipItem(ws, message);
       break;
@@ -1782,6 +1904,18 @@ function filterCratesInRange(entities, player, cullingDistance = 2000) {
   });
 }
 
+// Helper function to filter events for a player
+function filterEventsInRange(events, player, cullingDistance = 2000) {
+  if (!player) return [];
+  return events.filter(event => {
+    const dist = Math.sqrt(
+      (event.x - player.x) ** 2 +
+      (event.y - player.y) ** 2
+    );
+    return dist <= cullingDistance;
+  });
+}
+
 function sendMessage(ws, data) {
   try {
     data.timeSent = Date.now();
@@ -1903,6 +2037,8 @@ function checkCommand(command, player) {
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let enemytest_command = /^\/enemytest\s+(\d+)$/;
+  let dummy_set_command = /^\/dummy set$/;
+  let dummy_remove_command = /^\/dummy remove$/;
 
 
   match = command.match(players_command);
@@ -2139,6 +2275,25 @@ function checkCommand(command, player) {
       sendNoticeMessage(targetUsername, `You were teleported to (${Math.round(x)}, ${Math.round(y)}) by ${player.username}`, 'server');
     }
   }
+  
+  match = command.match(dummy_set_command);
+  if (match) {
+    // Spawn a dummy plane at the player's current position
+    const dummyUsername = `Dummy_${Date.now()}`;
+    const dummy = new DummyPlane(dummyUsername, player.x, player.y);
+    enemies.push(dummy);
+    sendNoticeMessage(player.username, `Spawned dummy at (${Math.round(player.x)}, ${Math.round(player.y)})`, 'server');
+    console.log(`Dummy ${dummyUsername} spawned by ${player.username} at (${player.x}, ${player.y})`);
+  }
+  
+  match = command.match(dummy_remove_command);
+  if (match) {
+    // Remove all dummy planes
+    const dummyCount = enemies.filter(e => e.isDummy).length;
+    enemies = enemies.filter(e => !e.isDummy);
+    sendNoticeMessage(player.username, `Removed ${dummyCount} dummy plane(s)`, 'server');
+    console.log(`${player.username} removed ${dummyCount} dummy planes`);
+  }
 }
 
 setInterval(() => {
@@ -2171,4 +2326,5 @@ setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
 setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
+setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
