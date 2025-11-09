@@ -379,7 +379,7 @@ export class NavySalvagePlane extends EnemyPlane {
 
   findHostilePlayer(players) {
     if (!players || players.length === 0) return null;
-    const AGGRO_RANGE = 500;
+    const AGGRO_RANGE = 1500;
     for (const player of players) {
       if (player.biome === 'recovery') continue;
       const dx = player.x - this.x;
@@ -652,6 +652,10 @@ export class NavySalvageBoat extends EnemyBoat {
     this.storedCrates = []; // Crates stored in the boat's inventory
     // Friendly display name for clients
     this.displayName = 'Navy Ship';
+    // Plane respawn tracking
+    this.lastPlaneDestroyedAt = 0; // Timestamp of last plane destruction
+    this.planeRespawnDelay = 3 * 60 * 1000; // 3 minutes in milliseconds
+    this.planeLevels = []; // Store the levels of planes that should be spawned
   }
 
   updateAI(players) {
@@ -759,7 +763,7 @@ export class NavySalvageBoat extends EnemyBoat {
       this.target = null;
       return null;
     }
-    const AGGRO_RANGE = 500;
+    const AGGRO_RANGE = 1500;
     const aggroRangeSq = AGGRO_RANGE * AGGRO_RANGE;
 
     // Single pass: prefer players carrying crates within aggro range; otherwise
@@ -835,6 +839,15 @@ export class NavySalvageBoat extends EnemyBoat {
     const newPlanes = [];
     // If levels array provided, use its length; otherwise fall back to planeCount
     const count = Array.isArray(levels) ? levels.length : this.planeCount;
+    
+    // Store the plane levels for respawning later
+    if (Array.isArray(levels) && levels.length > 0) {
+      this.planeLevels = [...levels];
+    } else if (this.planeLevels.length === 0) {
+      // Default to level 1 planes if no levels specified
+      this.planeLevels = Array(count).fill(1);
+    }
+    
     for (let i = 0; i < count; i++) {
       const planeX = this.x;
       const planeY = this.y - 310;

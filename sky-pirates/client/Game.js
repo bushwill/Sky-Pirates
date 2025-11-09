@@ -61,11 +61,21 @@ let current_chat = "";
 let chatting = false;
 let clientEstimating = true;
 
+// Respawn delay state
+let respawnDelay = false; // Whether we're in the respawn delay period
+let respawnDelayEnd = 0; // Timestamp when respawn delay ends
+let deathCameraX = 0; // Camera X position at death
+let deathCameraY = 0; // Camera Y position at death
+
 // Settings dictionary - contains all user-configurable settings
 let settings = {
     dynamicCamera: true,
     screenShake: true
 };
+
+// Water bobbing smoothing
+let currentBobX = 0;
+let currentBobY = 0;
 
 // Menu and color picker setup
 let menuManager;
@@ -197,12 +207,28 @@ function handleGameDisplay(controlledPlayer) {
     else drawMapBackground(mapData);
     textSize(12);
     textAlign(CENTER);
+    rectMode(CENTER);
     stroke(0)
     displayChat();
+    
+    // Check if respawn delay has ended
+    if (respawnDelay && millis() >= respawnDelayEnd) {
+        respawnDelay = false;
+        // Only show login menu if player was truly destroyed (signedIn = false)
+        // If player was just downed, they'll respawn automatically (signedIn stays true)
+        if (!signedIn) {
+            if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                menuManager.show('login');
+                menuManager.screens['login'].loginMsg = "You were destroyed! Please log in again.";
+            }
+        }
+    }
+    
     if (controlledPlayer && signedIn) {
         // Display help menu prompt for first 10 seconds
         if (millis() - signedInTime < 10000 && !helpWindow) {
             textSize(16);
+            textAlign(CENTER, CENTER);
             text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
             textSize(12);
         }
@@ -228,6 +254,34 @@ function handleGameDisplay(controlledPlayer) {
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
         if (helpWindow && !chatting) handleHelpWindow();
+    } else if (respawnDelay) {
+        // During respawn delay, keep camera at death location
+        const centerX = deathCameraX;
+        const centerY = deathCameraY;
+        
+        const mapPolygonsMap = getMapPolygonsMap(mapData);
+        preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
+        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
+
+        // Draw particles behind all game objects
+        updateParticles();
+        displayEvents(centerX, centerY);
+        drawParticles(centerX, centerY);
+
+        displayCrates(centerX, centerY);
+        drawMapPolygonsFronts(mapPolygonsMap, centerX, centerY);
+        displayProjectiles(centerX, centerY);
+        displayPlayers(centerX, centerY);
+        displayEnemies(centerX, centerY);
+        
+        // Show respawn message
+        textSize(32);
+        fill(255);
+        stroke(0);
+        strokeWeight(3);
+        textAlign(CENTER, CENTER);
+        text("Respawning...", windowWidth / 2, windowHeight / 2);
+        strokeWeight(1);
     } else {
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap);
@@ -468,6 +522,38 @@ function getCameraCenter(player, mouseScreenX, mouseScreenY) {
         
         camX += shakeX;
         camY += shakeY;
+        
+        // Add noticeable bobbing effect when floating in water
+        if (player.biome === 'water') {
+            const bobIntensity = 6.0; // Stronger, more noticeable bob
+            const bobSpeed = 0.6; // Slow, wave-like motion
+            
+            // Primary wave motion (vertical)
+            const primaryBobY = Math.sin(time * bobSpeed) * bobIntensity;
+            
+            // Secondary wave (slightly offset for more natural feel) - increased strength
+            const secondaryBobY = Math.sin(time * bobSpeed * 1.4 + 0.5) * bobIntensity * 0.6;
+            
+            // Horizontal sway
+            const targetBobX = Math.sin(time * bobSpeed * 0.7) * bobIntensity * 0.4;
+            const targetBobY = primaryBobY + secondaryBobY;
+            
+            // Smooth interpolation to prevent snapping
+            const smoothFactor = 0.1;
+            currentBobX += (targetBobX - currentBobX) * smoothFactor;
+            currentBobY += (targetBobY - currentBobY) * smoothFactor;
+            
+            camX += currentBobX;
+            camY += currentBobY;
+        } else {
+            // When not in water, smoothly fade out the bobbing
+            const smoothFactor = 0.15;
+            currentBobX *= (1 - smoothFactor);
+            currentBobY *= (1 - smoothFactor);
+            
+            camX += currentBobX;
+            camY += currentBobY;
+        }
     }
     
     // Interpolate between player position and mouse position

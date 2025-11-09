@@ -126,6 +126,13 @@ function handleDecodedMessage(decodedMessage) {
         case 'login_success':
             signedIn = true;
             signedInTime = millis();
+            
+            // Store player ID in cookie for session persistence (expires in 30 days)
+            if (decodedMessage.playerId) {
+                setCookie('skyPiratesPlayerId', decodedMessage.playerId, 30);
+                console.log('Player ID saved to cookie:', decodedMessage.playerId);
+            }
+            
             // If server sent an 'updated' message it's a party/info update while already logged in
             if (decodedMessage.message === 'updated') {
                 // Close any overlay menu and show a brief confirmation in the login screen area
@@ -142,6 +149,14 @@ function handleDecodedMessage(decodedMessage) {
             } else {
                 menuManager.show("main"); // or whatever is your game screen
                 console.log("Successfully logged in!");
+            }
+            break;
+        
+        case 'player_id_update':
+            // Update the player ID cookie when progress is reset
+            if (decodedMessage.playerId) {
+                setCookie('skyPiratesPlayerId', decodedMessage.playerId, 30);
+                console.log('New player ID saved to cookie after reset:', decodedMessage.playerId);
             }
             break;
             
@@ -222,6 +237,21 @@ function handleDecodedMessage(decodedMessage) {
             break;
 
         case 'player_destroyed':
+            // Store current camera position before clearing player
+            const dyingPlayer = players.find(player => player.username === username);
+            if (dyingPlayer) {
+                const cameraCenter = getCameraCenter(dyingPlayer, mouseX, mouseY);
+                deathCameraX = cameraCenter.x;
+                deathCameraY = cameraCenter.y;
+            } else {
+                deathCameraX = 0;
+                deathCameraY = 0;
+            }
+            
+            // Set respawn delay (2 seconds)
+            respawnDelay = true;
+            respawnDelayEnd = millis() + 2000;
+            
             signedIn = false;
             helpWindow = false;
             players = [];
@@ -233,10 +263,50 @@ function handleDecodedMessage(decodedMessage) {
             keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
             // Clear cached credentials since player was destroyed
             clearLoginCache();
-            // Show login menu with death message
+            // Login menu will be shown after respawn delay ends
+            break;
+
+        case 'player_downed':
+            // Player is downed but will respawn (has money)
+            // Store current camera position before clearing player
+            const downedPlayer = players.find(player => player.username === username);
+            if (downedPlayer) {
+                const cameraCenter = getCameraCenter(downedPlayer, mouseX, mouseY);
+                deathCameraX = cameraCenter.x;
+                deathCameraY = cameraCenter.y;
+            } else {
+                deathCameraX = 0;
+                deathCameraY = 0;
+            }
+            
+            // Set respawn delay
+            respawnDelay = true;
+            respawnDelayEnd = millis() + (decodedMessage.respawnTime || 2000);
+            
+            // Clear players array temporarily (player will be re-added after respawn)
+            players = [];
+            
+            // Reset all keys to prevent stuck inputs
+            keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
+            
+            // Note: Don't set signedIn = false or clear username, as player will respawn
+            break;
+
+        case 'logout_success':
+            signedIn = false;
+            helpWindow = false;
+            menuVisible = true;
+            players = [];
+            username = "";
+            r = 0; g = 0; b = 0;
+            chatting = false;
+            current_chat = "";
+            // Reset all keys to prevent stuck inputs
+            keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
+            // Show login menu with reset message
             if (menuManager && menuManager.screens && menuManager.screens['login']) {
                 menuManager.show('login');
-                menuManager.screens['login'].loginMsg = "You were destroyed! Please log in again.";
+                menuManager.screens['login'].loginMsg = decodedMessage.message || "Logged out successfully.";
             }
             break;
 
@@ -288,6 +358,15 @@ function sendEquipMessage(index) {
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
     console.log(`Sent equip message for item index: ${index}`);
+}
+
+function sendSuicide() {
+    const message = {
+        type: 'suicide'
+    };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+    console.log('Sent suicide message to reset progress');
 }
 
 function getPlayerData() {
@@ -380,6 +459,9 @@ function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clear
     x = 0;
     y = 0;
 
+    // Get player ID from cookie if it exists
+    const playerId = getCookie('skyPiratesPlayerId');
+
     const message = {
         type: 'login',
         username,
@@ -390,10 +472,33 @@ function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clear
         selectedGun2,
         partyName: partyName.trim(),
         clearParty: !!clearParty,
+        playerId: playerId || null, // Send player ID if available
     };
 
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
+}
+
+// Cookie helper functions
+function setCookie(name, value, days) {
+    let expires = "";
+    if (days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toUTCString();
+    }
+    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Strict";
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
 }
 
 // Function to manually retry connection (can be called from UI)

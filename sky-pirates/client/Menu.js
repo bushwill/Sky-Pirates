@@ -597,6 +597,9 @@ class SettingsMenuScreen extends MenuScreen {
             () => this.toggleShake()
         );
         
+        // Reset progress button
+        this.resetProgressButton = new MenuOption("Reset Progress", () => this.resetProgress());
+        
         // Back button
         this.backButton = new MenuOption("Back", () => menuManager.show('login'));
         
@@ -620,6 +623,15 @@ class SettingsMenuScreen extends MenuScreen {
         // Save settings to cookies
         if (typeof saveSettings === 'function') {
             saveSettings(settings);
+        }
+    }
+
+    resetProgress() {
+        // This should only be called when not signed in
+        if (confirm("Are you sure you want to reset your progress? This will delete your saved game state and you'll start fresh.")) {
+            // Delete the player ID cookie
+            document.cookie = 'skyPiratesPlayerId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict';
+            alert("Progress reset! You'll start a new game on your next login.");
         }
     }
 
@@ -663,16 +675,39 @@ class SettingsMenuScreen extends MenuScreen {
         textAlign(CENTER, TOP);
         text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60);
 
+        // Only show reset progress button when not signed in
+        let resetButtonIndex = 2;
+        let backButtonIndex = 3;
+        if (!signedIn) {
+            // Draw reset progress button
+            optionY += optionSpacing;
+            this.resetProgressButton.setPosition(x + w / 2 - 150, optionY);
+            this.resetProgressButton.setSize(300, 50);
+            this.resetProgressButton.selected = (this.selected === 2);
+            this.resetProgressButton.draw();
+            
+            // Draw reset description
+            textSize(14);
+            fill(100);
+            textAlign(CENTER, TOP);
+            text("Delete saved game and start fresh", x + w / 2, optionY + 60);
+        } else {
+            // If signed in, skip the reset button
+            backButtonIndex = 2;
+        }
+
         // Draw back button
         optionY += optionSpacing;
         this.backButton.setPosition(x + w / 2 - 100, optionY);
         this.backButton.setSize(200, 50);
-        this.backButton.selected = (this.selected === 2);
+        this.backButton.selected = (this.selected === backButtonIndex);
         this.backButton.draw();
     }
 
     navigate(dir) {
-        this.selected = (this.selected + dir + 3) % 3;
+        // Determine max options based on signedIn state
+        const maxOptions = signedIn ? 3 : 4; // Camera, Shake, [Reset if !signedIn], Back
+        this.selected = (this.selected + dir + maxOptions) % maxOptions;
     }
 
     choose() {
@@ -681,6 +716,12 @@ class SettingsMenuScreen extends MenuScreen {
         } else if (this.selected === 1) {
             this.shakeToggle.callback();
         } else if (this.selected === 2) {
+            if (!signedIn) {
+                this.resetProgressButton.callback();
+            } else {
+                this.backButton.callback();
+            }
+        } else if (this.selected === 3) {
             this.backButton.callback();
         }
     }
@@ -698,8 +739,15 @@ class SettingsMenuScreen extends MenuScreen {
             return;
         }
         
-        if (this.backButton.mousePressed(mx, my)) {
+        // Only handle reset button click if not signed in
+        if (!signedIn && this.resetProgressButton.mousePressed(mx, my)) {
             this.selected = 2;
+            this.resetProgressButton.callback();
+            return;
+        }
+        
+        if (this.backButton.mousePressed(mx, my)) {
+            this.selected = signedIn ? 2 : 3;
             this.backButton.callback();
             return;
         }

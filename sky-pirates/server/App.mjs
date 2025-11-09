@@ -16,6 +16,7 @@ import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
 import { createEnemyGun, createGun } from './WeaponList.mjs';
 import { Shop } from './Shop.mjs';
+import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState } from './PlayerStateManager.mjs';
 
 const admin_name = 'Shluck'
 
@@ -47,6 +48,7 @@ let crateScale = 10;
 let max_money_crates = crateScale * 40;
 let max_component_crates = crateScale * 10;
 let crateSpawnExclusionRadius = 1000;
+let pendingRespawns = []; // Track players waiting to respawn with { player, respawnTime }
 let lastFleetSpawnTime = 0;
 let AUTO_SPAWN_FLEETS = true;
 let fleetCounter = 1;
@@ -127,6 +129,11 @@ function updateFleets() {
         if (spawnFleetBoat()) lastFleetSpawnTime = now;
       }
     }
+    
+    // Check if any fleet boats need to respawn missing planes
+    fleetBoats.forEach(boat => {
+      checkAndRespawnFleetPlanes(boat, now);
+    });
   }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -136,6 +143,46 @@ function updateFleets() {
       if (!boatStillExists) {
         console.log(`Plane ${enemy.username} lost its fleet boat, becoming independent`);
         enemy.fleetBoat = null;
+      }
+    }
+  }
+}
+
+function checkAndRespawnFleetPlanes(boat, now) {
+  if (!boat || !boat.isFleetBoat || !boat.planeLevels || boat.planeLevels.length === 0) return;
+  
+  // Count current planes (filter out any that might have been destroyed but still in array)
+  boat.planes = boat.planes.filter(p => enemies.includes(p));
+  const currentPlaneCount = boat.planes.length;
+  const expectedPlaneCount = boat.planeLevels.length;
+  
+  // If missing planes and enough time has passed since last destruction
+  if (currentPlaneCount < expectedPlaneCount) {
+    if (boat.lastPlaneDestroyedAt && (now - boat.lastPlaneDestroyedAt) >= boat.planeRespawnDelay) {
+      const missingCount = expectedPlaneCount - currentPlaneCount;
+      
+      // Determine which plane levels to respawn (the ones that are missing)
+      const existingLevels = boat.planes.map(p => p.level);
+      const levelsToSpawn = [];
+      
+      for (let i = 0; i < boat.planeLevels.length && levelsToSpawn.length < missingCount; i++) {
+        const level = boat.planeLevels[i];
+        const indexInExisting = existingLevels.indexOf(level);
+        if (indexInExisting === -1) {
+          levelsToSpawn.push(level);
+        } else {
+          // Remove from existing so we don't match the same plane twice
+          existingLevels.splice(indexInExisting, 1);
+        }
+      }
+      
+      // Spawn the missing planes
+      if (levelsToSpawn.length > 0) {
+        const newPlanes = boat.spawnPlanes(levelsToSpawn);
+        enemies.push(...newPlanes);
+        console.log(`Fleet boat ${boat.username} respawned ${newPlanes.length} missing planes (levels: ${levelsToSpawn.join(', ')})`);
+        // Reset the timer
+        boat.lastPlaneDestroyedAt = 0;
       }
     }
   }
@@ -1060,10 +1107,35 @@ function applyPlayerGravity(player) {
   const gravityForce = 0.5; // normal gravity
 
   if (player.biome === 'water') {
-    // Enhanced buoyancy for easier water lift-off
-    const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
-    // Buoyancy opposes gravity
-    player.vy += gravityForce - buoyancyForce;
+    const isStationary = player.engine.power <= player.engine.minPower;
+    
+    if (isStationary) {
+      // When throttle is 0, make the boat float at equilibrium on the surface
+      const waterSurfaceY = 0;
+      const targetFloatDepth = 3; // Float slightly submerged (y=3 is below surface)
+      const targetY = waterSurfaceY + targetFloatDepth;
+      
+      // Calculate distance from target
+      const distanceFromTarget = player.y - targetY;
+      
+      if (distanceFromTarget > 0) {
+        // Below target (deeper in water) - apply gentle upward buoyancy
+        const buoyancyForce = Math.min(distanceFromTarget * 0.06, 0.5);
+        player.vy += gravityForce - buoyancyForce;
+      } else {
+        // At or above target - just gravity, no upward force
+        player.vy += gravityForce;
+      }
+      
+      // Very strong damping to prevent oscillation
+      player.vy *= 0.75;
+      
+    } else {
+      // Enhanced buoyancy for easier water lift-off when moving
+      const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
+      // Buoyancy opposes gravity
+      player.vy += gravityForce - buoyancyForce;
+    }
   } else if (player.biome === 'recovery') {
     return;
   } else {
@@ -1157,8 +1229,13 @@ function updateHull(entity) {
     // Determine if this entity is a player (has money/value) or an enemy
     const isPlayer = players.some(p => p.username === entity.username);
     if (isPlayer) {
-      if (entity.money >= entity.value) handleRevive(entity);
-      else handleDeath(entity);
+      // Check if player is already pending respawn to prevent multiple triggers
+      const alreadyPendingRespawn = pendingRespawns.some(pr => pr.player.username === entity.username);
+      
+      if (!alreadyPendingRespawn) {
+        if (entity.money >= entity.value) handleRevive(entity);
+        else handleDeath(entity);
+      }
     } else {
       // For enemies, just remove them
       handleDeath(entity);
@@ -1169,18 +1246,88 @@ function updateHull(entity) {
 }
 
 function handleRevive(player) {
-  player.money -= player.value;
+  // Create explosion immediately at death location
+  const explosionSize = Math.max(player.size / 10 || 1, 1);
+  createExplosionEvent(player.x, player.y, explosionSize);
+  
+  // Store player info for respawn
+  const username = player.username;
+  const respawnCost = player.value;
+  const socket = playerSockets.get(username);
+  const deathX = player.x;
+  const deathY = player.y;
+  
+  // Detach crates
+  player.detachAllCrates();
+  
+  // Remove player from the game temporarily
+  const playerIndex = players.findIndex(p => p.username === username);
+  if (playerIndex !== -1) {
+    players.splice(playerIndex, 1);
+  }
+  
   sendNoticeMessageAll(`${player.username} has been downed!`, 'server');
-  sendNoticeMessage(player.username, `You have been downed! -$${player.value}.`, 'urgent');
-  // Let the player object handle respawn semantics (including recovery-zone placement).
-  try {
-    player.respawn();
-    if (player && player.lastRecoveryZone) {
-      sendNoticeMessage(player.username, `You were respawned at recovery zone ${player.lastRecoveryZone.id}`, 'game');
+  
+  if (socket) {
+    sendMessage(socket, {
+      type: 'player_downed',
+      respawnTime: 2000,
+      cost: respawnCost
+    });
+  }
+  
+  // Schedule respawn after 2 seconds (will deduct money and re-add player then)
+  const respawnTime = Date.now() + 2000;
+  pendingRespawns.push({ player, respawnTime, respawnCost, socket, username, deathX, deathY });
+  
+  console.log(`${username} scheduled for respawn in 2 seconds (cost: $${respawnCost})`);
+}
+
+function processPendingRespawns() {
+  const now = Date.now();
+  
+  // Process all respawns that are ready
+  for (let i = pendingRespawns.length - 1; i >= 0; i--) {
+    const pending = pendingRespawns[i];
+    
+    if (now >= pending.respawnTime) {
+      const player = pending.player;
+      const cost = pending.respawnCost;
+      const socket = pending.socket;
+      const username = pending.username;
+      
+      // Check if player's socket is still connected
+      if (socket && playerSockets.has(username)) {
+        // Deduct repair cost at respawn time
+        player.money -= cost;
+        
+        try {
+          // Respawn the player
+          player.respawn();
+          
+          // Re-add player to the game
+          players.push(player);
+          
+          if (player && player.lastRecoveryZone) {
+            sendNoticeMessage(username, `You were respawned at recovery zone ${player.lastRecoveryZone.id}. -$${cost}`, 'game');
+          } else {
+            sendNoticeMessage(username, `You respawned. -$${cost}`, 'game');
+          }
+          console.log(`${username} respawned after delay (cost: $${cost})`);
+        } catch (err) {
+          console.error('Error during delayed respawn', username, err);
+          try { 
+            player.respawn();
+            players.push(player);
+          } catch (e) { /* ignore */ }
+        }
+      } else {
+        console.log(`${username} disconnected before respawn could complete`);
+      }
+      
+      // Remove this respawn from the queue
+      pendingRespawns.splice(i, 1);
     }
-  } catch (err) {
-    console.error('Error during handleRevive respawn', player && player.username, err);
-    try { player.respawn(); } catch (e) { /* ignore */ }
   }
 }
 
@@ -1195,6 +1342,13 @@ function handleDeath(entity) {
 
   if (playerIndex !== -1) {
     sendNoticeMessageAll(`${entity.username} has been killed!`, 'server');
+    
+    // Delete the player's saved state so they start fresh on next login
+    if (entity.playerId) {
+      deletePlayerState(entity.playerId);
+      console.log(`Deleted player state for ${entity.username} (ID: ${entity.playerId}) after death`);
+    }
+    
     if (socket) {
       sendMessage(socket, {
         type: 'player_destroyed'
@@ -1223,6 +1377,16 @@ function handleDeath(entity) {
     }
     createExplosionEvent(enemy.x, explosionY, explosionSize);
 
+    // If this is a fleet plane, notify its boat and track destruction time
+    if (enemy.fleetBoat && enemy.fleetBoat.isFleetBoat) {
+      const boat = enemy.fleetBoat;
+      // Remove plane from boat's planes array
+      boat.planes = boat.planes.filter(p => p.username !== enemy.username);
+      // Update last plane destroyed time
+      boat.lastPlaneDestroyedAt = Date.now();
+      console.log(`Fleet plane ${enemy.username} destroyed. Boat ${boat.username} now has ${boat.planes.length}/${boat.planeLevels.length} planes`);
+    }
+
     // If enemy is a fleet boat and has stored crates, drop them into the world
     if (enemy && typeof enemy.dropAllStoredCrates === 'function') {
       try {
@@ -1248,8 +1412,30 @@ function handleDeath(entity) {
       if (enemy && enemy.isFleetBoat) {
         lastFleetShipDestroyedAt = Date.now();
         console.log(`Fleet ship ${enemy.username} destroyed - delaying fleet respawns for ${FLEET_RESPAWN_DELAY_MS / 1000} seconds`);
+        
+        // Immediately notify all planes that belonged to this fleet boat
+        if (enemy.planes && Array.isArray(enemy.planes)) {
+          enemy.planes.forEach(plane => {
+            if (plane && plane.fleetBoat === enemy) {
+              plane.fleetBoat = null;
+              plane.aiState = 'seekFleet';
+              console.log(`Plane ${plane.username} notified of fleet boat destruction, switching to seekFleet`);
+            }
+          });
+        }
+        
+        // Also check all enemy planes in case they reference this boat but aren't in the boat's array
+        enemies.forEach(e => {
+          if (e.fleetBoat === enemy) {
+            e.fleetBoat = null;
+            e.aiState = 'seekFleet';
+            console.log(`Plane ${e.username} found referencing destroyed boat, switching to seekFleet`);
+          }
+        });
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { 
+      console.error('Error handling fleet boat destruction cleanup:', e);
+    }
     // Detach any crates held by the enemy in its standard 'crates' array
     entity.detachAllCrates?.(); // Detach all crates from enemy entity
     enemies.splice(enemyIndex, 1);
@@ -1264,14 +1450,21 @@ function updatePosition(player, deltaTime = 0.01 * timeSpeed) {
 
 function checkPlayerBiome(player) {
   let foundBiome = null;
+  const BIOME_HYSTERESIS = 5; // Add buffer to prevent flickering at boundaries
+  
   // Iterate all biomes to check if the player's position is within any biome.
   for (let i = 0; i < mapData.biomes.length; i++) {
     const biome = mapData.biomes[i];
+    
+    // Apply hysteresis: if player is already in this biome, extend the boundaries slightly
+    const isCurrentBiome = player.biome === biome.type;
+    const buffer = isCurrentBiome ? BIOME_HYSTERESIS : 0;
+    
     if (
-      biome.x1 <= player.x &&
-      player.x <= biome.x2 &&
-      biome.y1 <= player.y &&
-      player.y <= biome.y2
+      biome.x1 - buffer <= player.x &&
+      player.x <= biome.x2 + buffer &&
+      biome.y1 - buffer <= player.y &&
+      player.y <= biome.y2 + buffer
     ) {
       foundBiome = biome.type;
       break; // exit loop on first matching biome
@@ -1547,6 +1740,27 @@ function getWaterSurfaceAt(x) {
   return surfaceY;
 }
 
+// Helper function to get player position for entity filtering
+// Returns either the active player or a ghost position for respawning players
+function getPlayerOrRespawningPlayer(username) {
+  // First check if player is active
+  const activePlayer = players.find(p => p.username === username);
+  if (activePlayer) return activePlayer;
+  
+  // Check if player is pending respawn
+  const respawning = pendingRespawns.find(pr => pr.username === username);
+  if (respawning) {
+    // Return a ghost object with the death location for entity filtering
+    return {
+      username: respawning.username,
+      x: respawning.deathX,
+      y: respawning.deathY
+    };
+  }
+  
+  return null;
+}
+
 // ========================================
 // WEBSOCKET CONNECTION HANDLING
 // ========================================
@@ -1564,6 +1778,11 @@ wss.on('connection', (ws, request) => {
     if (ws.currentUsername) {
       let player = players.find((p) => p.username === ws.currentUsername);
       if (player) {
+        // Save player state before disconnect if they have a player ID
+        if (player.playerId) {
+          savePlayerState(player.playerId, player);
+        }
+        
         // Defensive: only call methods if the player object still exists
         if (typeof player.detachAllCrates === 'function') {
           try {
@@ -1597,7 +1816,7 @@ function handleIncomingMessage(ws, message) {
       sendMessage(ws, { type: 'player_data', players: players });
       break;
     case 'get_enemies':
-      const playerForEnemies = players.find(p => p.username === ws.currentUsername);
+      const playerForEnemies = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredEnemies = filterEntitiesInRange(enemies, playerForEnemies);
       // Serialize enemies with minimal data for client
       const serializedEnemies = filteredEnemies.map(enemy => {
@@ -1631,17 +1850,17 @@ function handleIncomingMessage(ws, message) {
       sendMessage(ws, { type: 'map_data', map: mapData })
       break;
     case 'get_projectiles':
-      const playerForProjectiles = players.find(p => p.username === ws.currentUsername);
+      const playerForProjectiles = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredProjectiles = filterEntitiesInRange(projectiles, playerForProjectiles);
       sendMessage(ws, { type: 'projectile_data', projectiles: filteredProjectiles });
       break;
     case 'get_crates':
-      const playerForCrates = players.find(p => p.username === ws.currentUsername);
+      const playerForCrates = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredCrates = filterEntitiesInRange(crates, playerForCrates, 2000, true);
       sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
       break;
     case 'get_events':
-      const playerForEvents = players.find(p => p.username === ws.currentUsername);
+      const playerForEvents = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredEvents = filterEntitiesInRange(events, playerForEvents);
       sendMessage(ws, { type: 'event_data', events: filteredEvents });
       break;
@@ -1667,6 +1886,9 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'ping':
       handlePing(ws, message);
+      break;
+    case 'suicide':
+      handleSuicide(ws, message);
       break;
   }
 }
@@ -1804,12 +2026,30 @@ function handleTeleportToTwin(ws, message) {
   sendNoticeMessage(ws.currentUsername, `Teleported from ${currentRecoveryZone.id} to ${twinZone.id}!`, 'game');
 };
 
-function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty }) {
+function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty, playerId }) {
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
-    // New player logging in
-    sendNoticeMessageAll(username + " joined!", "server");
-    const player = new Player('air', username, r, g, b, 0, -400, startMillis, selectedGun1, selectedGun2);
+    let player;
+    
+    // Try to load saved state if playerId is provided
+    if (playerId) {
+      const savedState = loadPlayerState(playerId);
+      if (savedState) {
+        // Restore player from saved state (username-independent)
+        player = Player.fromSavedState(savedState, startMillis);
+        // Update username to the current login username
+        player.username = username;
+        sendNoticeMessageAll(username + " rejoined!", "server");
+      }
+    }
+    
+    // Create new player if no saved state found
+    if (!player) {
+      player = new Player('air', username, r, g, b, 0, -400, startMillis, selectedGun1, selectedGun2);
+      player.playerId = generatePlayerId(); // Generate new ID for new players
+      sendNoticeMessageAll(username + " joined!", "server");
+    }
+    
     players.push(player);
     playerSockets.set(username, ws);
     ws.currentUsername = username; // Set username in socket context
@@ -1827,8 +2067,16 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       party.addPlayer(player);
     }
 
-    sendMessage(ws, { type: 'login_success', username, map: mapData });
-    sendNoticeMessage(username, "Hi!", 'game');
+    // Send player ID to client so it can be stored in cookie
+    sendMessage(ws, { type: 'login_success', username, playerId: player.playerId, map: mapData });
+    
+    // Send welcome message AFTER login_success so client is ready to receive it
+    if (playerId && loadPlayerState(playerId)) {
+      sendNoticeMessage(username, `Loaded game state: ${playerId.substring(0, 8)}...`, 'game');
+    } else {
+      sendNoticeMessage(username, "Hi!", 'game');
+    }
+    
     sendNoticeMessage(username, "Current players: " + players.length, 'server');
     logPlayerJoin(username);
     if (player.username === admin_name) {
@@ -1944,6 +2192,58 @@ function handlePing(ws, message) {
   };
 
   sendMessage(ws, response); // Encode and send the pong message
+}
+
+function handleSuicide(ws, message) {
+  const player = players.find(p => p.username === ws.currentUsername);
+  if (!player) return;
+  
+  // Store player info
+  const username = player.username;
+  
+  // Create explosion at player location
+  const explosionSize = Math.max(player.size / 10 || 1, 1);
+  createExplosionEvent(player.x, player.y, explosionSize);
+  
+  // Detach all crates
+  if (typeof player.detachAllCrates === 'function') {
+    player.detachAllCrates();
+  }
+  
+  // Remove the player from the game
+  players = players.filter(p => p.username !== username);
+  
+  // Clean up the socket mapping
+  playerSockets.delete(username);
+  ws.currentUsername = null;
+  
+  // Send logout confirmation to client
+  const logoutMessage = msgpack.encode({
+    type: 'logout_success',
+    message: 'Progress reset complete. Please sign in again.'
+  });
+  ws.send(logoutMessage);
+  
+  console.log(`${username} reset their progress via suicide`);
+}
+
+
+function handleDeletePlayerState(ws, message) {
+  const player = players.find(p => p.username === ws.currentUsername);
+  if (player && player.playerId) {
+    // Delete the player's saved state file
+    deletePlayerState(player.playerId);
+    console.log(`Deleted player state for ${player.username} (ID: ${player.playerId})`);
+    
+    // Remove the player from the active players list
+    players = players.filter((p) => p.username !== ws.currentUsername);
+    
+    // Clean up the socket mapping
+    playerSockets.delete(ws.currentUsername);
+    
+    // Notify other players
+    sendNoticeMessageAll(ws.currentUsername + ' has reset their progress', 'server');
+  }
 }
 
 // Helper function to filter entities within culling range of a player
@@ -2410,3 +2710,4 @@ setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
 setInterval(() => { updateShops() }, 1000); // Check shop refresh every second
+setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently

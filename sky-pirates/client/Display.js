@@ -548,11 +548,11 @@ function drawOverSpeedFireIcon(player, drawX, drawY) {
 function drawPlaneInfo(player) {
     push();
     
-    const startX = windowWidth - 20;
+    const startX = 20;
     let currentY = 20;
     
     noStroke();
-    textAlign(RIGHT, TOP);
+    textAlign(LEFT, TOP);
     
     // Money display
     fill(100, 255, 100);
@@ -571,7 +571,7 @@ function drawPlaneInfo(player) {
     // Component icons
     const iconSize = 40;
     const iconSpacing = 60;
-    const iconsStartX = startX - iconSize - iconSpacing * 2;
+    const iconsStartX = startX + iconSize / 2; // Offset by half icon size since drawItem draws from center
     
     // Store regions for hover detection
     if (!window.topRightComponentRegions) window.topRightComponentRegions = [];
@@ -579,48 +579,50 @@ function drawPlaneInfo(player) {
     
     // Draw engine icon
     push();
-    translate(iconsStartX, currentY);
+    translate(iconsStartX, currentY + iconSize / 2);
     drawItem(player.engine, 0, 0, iconSize);
     pop();
     window.topRightComponentRegions.push({
         component: player.engine,
         x: iconsStartX,
-        y: currentY,
+        y: currentY + iconSize / 2,
         size: iconSize
     });
     
     // Draw chassis icon
     push();
-    translate(iconsStartX + iconSpacing, currentY);
+    translate(iconsStartX + iconSpacing, currentY + iconSize / 2);
     drawItem(player.chassis, 0, 0, iconSize);
     pop();
     window.topRightComponentRegions.push({
         component: player.chassis,
         x: iconsStartX + iconSpacing,
-        y: currentY,
+        y: currentY + iconSize / 2,
         size: iconSize
     });
     
     // Draw wings icon
     push();
-    translate(iconsStartX + iconSpacing * 2, currentY);
+    translate(iconsStartX + iconSpacing * 2, currentY + iconSize / 2);
     drawItem(player.wings, 0, 0, iconSize);
     pop();
     window.topRightComponentRegions.push({
         component: player.wings,
         x: iconsStartX + iconSpacing * 2,
-        y: currentY,
+        y: currentY + iconSize / 2,
         size: iconSize
     });
     
     currentY += iconSize + 20;
     
-    // Draw weapon icons
-    const weaponsStartX = startX - iconSize - iconSpacing;
+    // Draw weapon icons centered under the 3 components
+    // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
+    // Center 2 weapons under 3 components by offsetting by half spacing
+    const weaponsStartX = startX + iconSize / 2 + iconSpacing / 2;
     
     // Draw gun1 icon
     push();
-    translate(weaponsStartX, currentY);
+    translate(weaponsStartX, currentY + iconSize / 2);
     drawItem(player.gun1, 0, 0, iconSize);
     // Draw equipped indicator if this gun is selected
     if (player.selectedGun === 1) {
@@ -632,13 +634,13 @@ function drawPlaneInfo(player) {
     window.topRightComponentRegions.push({
         component: player.gun1,
         x: weaponsStartX,
-        y: currentY,
+        y: currentY + iconSize / 2,
         size: iconSize
     });
     
     // Draw gun2 icon
     push();
-    translate(weaponsStartX + iconSpacing, currentY);
+    translate(weaponsStartX + iconSpacing, currentY + iconSize / 2);
     drawItem(player.gun2, 0, 0, iconSize);
     // Draw equipped indicator if this gun is selected
     if (player.selectedGun === 2) {
@@ -650,7 +652,7 @@ function drawPlaneInfo(player) {
     window.topRightComponentRegions.push({
         component: player.gun2,
         x: weaponsStartX + iconSpacing,
-        y: currentY,
+        y: currentY + iconSize / 2,
         size: iconSize
     });
     
@@ -689,9 +691,10 @@ function getComponentStats(component, equippedComponent = null) {
         return [
             { label: 'Max Speed', value: round1(component.maxSpeed), equipped: equippedComponent ? round1(equippedComponent.maxSpeed) : null },
             { label: 'Base Turn Speed', value: round1(component.baseTurnSpeed * 100), equipped: equippedComponent ? round1(equippedComponent.baseTurnSpeed * 100) : null },
+            { label: 'Min Turn Speed', value: round1(component.minTurnSpeed * 100), equipped: equippedComponent ? round1(equippedComponent.minTurnSpeed * 100) : null },
             { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null },
             { label: 'Lift Efficiency', value: round1(component.liftEfficiency * 100), equipped: equippedComponent ? round1(equippedComponent.liftEfficiency * 100) : null },
-            { label: 'Min Lift Speed', value: round1(component.minLiftSpeed), equipped: equippedComponent ? round1(equippedComponent.minLiftSpeed) : null },
+            { label: 'Min Lift Speed', value: round1(component.minLiftSpeed), equipped: equippedComponent ? round1(equippedComponent.minLiftSpeed) : null, lowerIsBetter: true },
             { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
         ];
     } else if (component.type === 'gun') {
@@ -699,8 +702,13 @@ function getComponentStats(component, equippedComponent = null) {
         const dps = round1((1000 / component.cooldownTime) * component.damage);
         const equippedDps = equippedComponent ? round1((1000 / equippedComponent.cooldownTime) * equippedComponent.damage) : null;
         
+        // Convert maxAngle from radians to degrees for display
+        const angleDegrees = Math.round(component.maxAngle * (180 / Math.PI));
+        const equippedAngleDegrees = equippedComponent ? Math.round(equippedComponent.maxAngle * (180 / Math.PI)) : null;
+        
         return [
             { label: 'DPS', value: round1(dps), equipped: equippedDps },
+            { label: 'Max Angle', value: angleDegrees + '°', numericValue: angleDegrees, equipped: equippedAngleDegrees },
             { label: 'Damage', value: round1(component.damage), equipped: equippedComponent ? round1(equippedComponent.damage) : null },
             { label: 'Range', value: round1(component.projectileRange), equipped: equippedComponent ? round1(equippedComponent.projectileRange) : null },
             { label: 'Cooldown', value: round1(component.cooldownTime) + 'ms', numericValue: round1(component.cooldownTime), equipped: equippedComponent ? round1(equippedComponent.cooldownTime) : null, lowerIsBetter: true },

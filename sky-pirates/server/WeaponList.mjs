@@ -22,15 +22,15 @@ export function createMachineGun(level, random = true) {
     const name = "Machine Gun Lvl " + level;
     const weight = randomFactor * 0.5;
     const maxHeat = randomFactor * (100.0 + level * 15.0);
-    const heatEfficiency = randomFactor * (5.0 - level * 0.3);
+    const heatEfficiency = randomFactor * (5.0 - level * 0.1);
     const damage = randomFactor * (20.0 + level * 1.0);
     const cooldownTime = randomFactor * (150 - level * 5);
     const projectileSpeed = randomFactor * (1500.0 + level * 30.0);
     const projectileSize = randomFactor * (1 + level * 0.15);
     const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 60);
     const value = randomFactor * (50 + adjustedLevel * 150);
-    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0);
-    const projectileRange = 1000;
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel);
+    const projectileRange = 1500;
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
 }
@@ -41,15 +41,15 @@ export function createCannon(level, random = true) {
     const name = "Cannon Lvl " + level;
     const weight = randomFactor * 2.2;
     const maxHeat = randomFactor * (150.0 + level * 8.0);
-    const heatEfficiency = randomFactor * (25 - level * 2);
+    const heatEfficiency = randomFactor * (25 - level * 0.5);
     const damage = randomFactor * (50.0 + level * 2.0);
     const cooldownTime = randomFactor * (600 - level * 40);
     const projectileSpeed = randomFactor * (3000.0 + level * 300.0);
     const projectileSize = randomFactor * (2.0 + level * 0.3);
     const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 80);
     const value = randomFactor * (150 + adjustedLevel * 400);
-    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0);
-    const projectileRange = 1000;
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel);
+    const projectileRange = 1500;
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
 }
@@ -60,14 +60,14 @@ export function createScorpion(level, random = true) {
     const name = "Scorpion Lvl " + level;
     const weight = randomFactor * 1.5;
     const maxHeat = randomFactor * (100.0 + level * 15.0);
-    const heatEfficiency = randomFactor * (4.0 - level * 0.3);
+    const heatEfficiency = randomFactor * (4.0 - level * 0.1);
     const damage = randomFactor * (10.0 + level * 0.5);
     const cooldownTime = randomFactor * (70 - level * 4);
     const projectileSpeed = randomFactor * (1000.0 + level * 50.0);
     const projectileSize = randomFactor * 0.5;
     const maxAngle = randomFactor * (Math.PI / 48 + level * Math.PI / 120);
     const value = randomFactor * (80 + adjustedLevel * 200);
-    const heatDispersion = randomFactor * (17.5 + adjustedLevel * 3.5 + Math.max(0, adjustedLevel - 4) * 2.0);
+    const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1000;
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);

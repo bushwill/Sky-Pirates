@@ -47,15 +47,18 @@ function mousePressed() {
 }
 
 function keyPressed() {
-    // First: handle Escape toggle (always, before forwarding to menu)
+    // First: handle Escape toggle (only when signed in)
     if (keyCode === ESCAPE) {
         if (chatting) {
             chatting = false;
             return;
         }
-        menuVisible = !menuVisible;
-        if (menuVisible) menuManager.show('login');
-        else if (menuManager && menuManager.colorPicker) menuManager.colorPicker.hide();
+        // Only allow ESC to toggle menu when signed in (in-game)
+        if (signedIn) {
+            menuVisible = !menuVisible;
+            if (menuVisible) menuManager.show('login');
+            else if (menuManager && menuManager.colorPicker) menuManager.colorPicker.hide();
+        }
         return;
     }
 
