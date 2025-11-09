@@ -28,6 +28,9 @@ export class Player extends Plane {
     this.lastNavyActivity = 0; // Timestamp of last navy-related activity (spotted or damaged navy)
     // Track the last recovery zone the player visited (object or null)
     this.lastRecoveryZone = null;
+    
+    // Update plane value and weight after setting selected guns
+    this.updatePlane();
   }
 
   respawn() {
@@ -113,6 +116,15 @@ export class Player extends Plane {
     } else if (new_component instanceof Wings) {
       oldComponent = this.wings; // Store the old wings
       this.wings = new_component;
+    } else if (new_component instanceof Gun) {
+      // Equip gun to currently selected slot
+      if (this.selectedGun === 1) {
+        oldComponent = this.gun1;
+        this.gun1 = new_component;
+      } else {
+        oldComponent = this.gun2;
+        this.gun2 = new_component;
+      }
     }
     // Remove the installed item from inventory
     const index = this.inventory.indexOf(new_component);
@@ -174,5 +186,16 @@ export class Player extends Plane {
     this.inventory = []; // Clear the inventory after selling
     this.money += parseInt(totalValue, 10); // Add the total value to the player's money
     return totalValue; // Return the total value of sold crates
+  }
+
+  sellItem(itemIndex) {
+    if (itemIndex < 0 || itemIndex >= this.inventory.length) {
+      return 0; // Invalid index
+    }
+    const item = this.inventory[itemIndex];
+    const value = parseInt(item.value, 10) / 2;
+    this.inventory.splice(itemIndex, 1); // Remove the item from inventory
+    this.money += parseInt(value, 10);
+    return value;
   }
 }

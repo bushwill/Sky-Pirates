@@ -502,15 +502,17 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawGunCursor(player, drawX, drawY);
     drawGunHeat(player, drawX, drawY);
     drawGunArc(player, drawX, drawY);
-    drawPlaneData(player, drawX, drawY);
+    drawPlaneInfo(player);
     drawCompass(player);
-    drawEnemyTargetIndicators(player, player.x, player.y); // Show enemy indicators on edge
+    drawEnemyTargetIndicators(player, player.x, player.y);
     if (player.browsing) {
         displayInventory(player, drawX, drawY);
     }
-    // Always check for teleport button when in recovery zone
+    // Display shop when in recovery zone
     if (player.biome === 'recovery') {
+        displayShop(player);
         displayTeleportButton(player);
+        displaySellAllButton(player);
     }
 }
 
@@ -543,24 +545,243 @@ function drawOverSpeedFireIcon(player, drawX, drawY) {
     pop();
 }
 
-
-function drawPlaneData(player) {
-    // Ensure no stroke is applied to these HUD text elements so they don't inherit
-    // stroke from other UI panels (prevents white outline artifact).
+function drawPlaneInfo(player) {
+    push();
+    
+    const startX = windowWidth - 20;
+    let currentY = 20;
+    
     noStroke();
-    fill(255);
-    textAlign(LEFT);
-    textSize(12);
-    const x = player.x.toFixed(0);
-    const y = player.y.toFixed(0);
-    // Components
-    text(`Engine: ${player.engine.name}`, 10, 45);
-    text(`Chassis: ${player.chassis.name}`, 10, 60);
-    text(`Wings: ${player.wings.name}`, 10, 75);
-    // Money/value/crates
-    text('Plane value: ' + player.value, 10, 105);
-    text('Money: ' + player.money, 10, 120);
-    if (player.crates.length > 0) text('Crates: ' + player.crates.length, 10, 135);
+    textAlign(RIGHT, TOP);
+    
+    // Money display
+    fill(100, 255, 100);
+    textSize(32);
+    textStyle(BOLD);
+    text('$' + player.money.toLocaleString(), startX, currentY);
+    currentY += 45;
+    
+    // Plane value display
+    fill(200, 200, 100);
+    textSize(18);
+    textStyle(NORMAL);
+    text('Plane Value: $' + player.value.toLocaleString(), startX, currentY);
+    currentY += 35;
+    
+    // Component icons
+    const iconSize = 40;
+    const iconSpacing = 60;
+    const iconsStartX = startX - iconSize - iconSpacing * 2;
+    
+    // Store regions for hover detection
+    if (!window.topRightComponentRegions) window.topRightComponentRegions = [];
+    window.topRightComponentRegions = [];
+    
+    // Draw engine icon
+    push();
+    translate(iconsStartX, currentY);
+    drawItem(player.engine, 0, 0, iconSize);
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.engine,
+        x: iconsStartX,
+        y: currentY,
+        size: iconSize
+    });
+    
+    // Draw chassis icon
+    push();
+    translate(iconsStartX + iconSpacing, currentY);
+    drawItem(player.chassis, 0, 0, iconSize);
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.chassis,
+        x: iconsStartX + iconSpacing,
+        y: currentY,
+        size: iconSize
+    });
+    
+    // Draw wings icon
+    push();
+    translate(iconsStartX + iconSpacing * 2, currentY);
+    drawItem(player.wings, 0, 0, iconSize);
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.wings,
+        x: iconsStartX + iconSpacing * 2,
+        y: currentY,
+        size: iconSize
+    });
+    
+    currentY += iconSize + 20;
+    
+    // Draw weapon icons
+    const weaponsStartX = startX - iconSize - iconSpacing;
+    
+    // Draw gun1 icon
+    push();
+    translate(weaponsStartX, currentY);
+    drawItem(player.gun1, 0, 0, iconSize);
+    // Draw equipped indicator if this gun is selected
+    if (player.selectedGun === 1) {
+        fill(100, 255, 100);
+        noStroke();
+        circle(iconSize / 2, -5, 8);
+    }
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.gun1,
+        x: weaponsStartX,
+        y: currentY,
+        size: iconSize
+    });
+    
+    // Draw gun2 icon
+    push();
+    translate(weaponsStartX + iconSpacing, currentY);
+    drawItem(player.gun2, 0, 0, iconSize);
+    // Draw equipped indicator if this gun is selected
+    if (player.selectedGun === 2) {
+        fill(100, 255, 100);
+        noStroke();
+        circle(iconSize / 2, -5, 8);
+    }
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.gun2,
+        x: weaponsStartX + iconSpacing,
+        y: currentY,
+        size: iconSize
+    });
+    
+    pop();
+    
+    // Draw component stats popup on hover
+    drawTopRightComponentStats(player);
+}
+
+// Helper function to generate component stats array
+function getComponentStats(component, equippedComponent = null) {
+    // Helper to round to 1 decimal place
+    const round1 = (val) => Math.round(val * 10) / 10;
+    
+    const roundedValue = Math.round(component.value);
+    const formattedValue = '$' + roundedValue.toLocaleString();
+    
+    if (component.type === 'engine') {
+        return [
+            { label: 'Max Power', value: round1(component.maxPower), equipped: equippedComponent ? round1(equippedComponent.maxPower) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null },
+            { label: 'Heat Use', value: round1(component.heatEfficiency * 100), equipped: equippedComponent ? round1(equippedComponent.heatEfficiency * 100) : null, lowerIsBetter: true },
+            { label: 'Max Heat', value: round1(component.maxHeat), equipped: equippedComponent ? round1(equippedComponent.maxHeat) : null },
+            { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
+        ];
+    } else if (component.type === 'chassis') {
+        return [
+            { label: 'Max Hull', value: round1(component.maxHull), equipped: equippedComponent ? round1(equippedComponent.maxHull) : null },
+            { label: 'Top Speed', value: round1(component.topSpeed), equipped: equippedComponent ? round1(equippedComponent.topSpeed) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null },
+            { label: 'Heat Dispersion', value: round1(component.heatDispersion), equipped: equippedComponent ? round1(equippedComponent.heatDispersion) : null },
+            { label: 'Buoyancy', value: round1(component.buoyancy), equipped: equippedComponent ? round1(equippedComponent.buoyancy) : null },
+            { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
+        ];
+    } else if (component.type === 'wings') {
+        return [
+            { label: 'Max Speed', value: round1(component.maxSpeed), equipped: equippedComponent ? round1(equippedComponent.maxSpeed) : null },
+            { label: 'Base Turn Speed', value: round1(component.baseTurnSpeed * 100), equipped: equippedComponent ? round1(equippedComponent.baseTurnSpeed * 100) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null },
+            { label: 'Lift Efficiency', value: round1(component.liftEfficiency * 100), equipped: equippedComponent ? round1(equippedComponent.liftEfficiency * 100) : null },
+            { label: 'Min Lift Speed', value: round1(component.minLiftSpeed), equipped: equippedComponent ? round1(equippedComponent.minLiftSpeed) : null },
+            { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
+        ];
+    } else if (component.type === 'gun') {
+        // Calculate DPS: shots per second * damage per shot
+        const dps = round1((1000 / component.cooldownTime) * component.damage);
+        const equippedDps = equippedComponent ? round1((1000 / equippedComponent.cooldownTime) * equippedComponent.damage) : null;
+        
+        return [
+            { label: 'DPS', value: round1(dps), equipped: equippedDps },
+            { label: 'Damage', value: round1(component.damage), equipped: equippedComponent ? round1(equippedComponent.damage) : null },
+            { label: 'Range', value: round1(component.projectileRange), equipped: equippedComponent ? round1(equippedComponent.projectileRange) : null },
+            { label: 'Cooldown', value: round1(component.cooldownTime) + 'ms', numericValue: round1(component.cooldownTime), equipped: equippedComponent ? round1(equippedComponent.cooldownTime) : null, lowerIsBetter: true },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null },
+            { label: 'Max Heat', value: round1(component.maxHeat), equipped: equippedComponent ? round1(equippedComponent.maxHeat) : null },
+            { label: 'Heat Use', value: round1(component.heatEfficiency), equipped: equippedComponent ? round1(equippedComponent.heatEfficiency) : null, lowerIsBetter: true },
+            { label: 'Heat Dispersion', value: round1(component.heatDispersion), equipped: equippedComponent ? round1(equippedComponent.heatDispersion) : null },
+            { label: 'Projectile Speed', value: round1(component.projectileSpeed), equipped: equippedComponent ? round1(equippedComponent.projectileSpeed) : null },
+            { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
+        ];
+    }
+    return [];
+}
+
+// Helper function to draw component popup background and header
+function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, padding) {
+    const popupHeight = padding * 2 + lineHeight * (stats.length + 1);
+    
+    // Position popup near mouse, but keep it on screen
+    let popupX = mouseX + 20;
+    let popupY = mouseY + 20;
+    
+    if (popupX + popupWidth > windowWidth) popupX = mouseX - popupWidth - 20;
+    if (popupY + popupHeight > windowHeight) popupY = mouseY - popupHeight - 20;
+    
+    push();
+    rectMode(CORNER);
+    
+    // Background
+    fill(20, 20, 30, 240);
+    stroke(200, 200, 220);
+    strokeWeight(2);
+    rect(popupX, popupY, popupWidth, popupHeight, 8);
+    
+    // Header
+    fill(255, 255, 255);
+    noStroke();
+    textAlign(LEFT, TOP);
+    textStyle(BOLD);
+    
+    return { popupX, popupY, popupHeight };
+}
+
+function drawTopRightComponentStats(player) {
+    if (!window.topRightComponentRegions || window.topRightComponentRegions.length === 0) return;
+    
+    // Find which component is being hovered
+    let hoveredComponent = null;
+    for (let region of window.topRightComponentRegions) {
+        if (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2) {
+            hoveredComponent = region.component;
+            break;
+        }
+    }
+    
+    if (!hoveredComponent) return;
+    
+    const stats = getComponentStats(hoveredComponent);
+    const popupWidth = 250;
+    const lineHeight = 20;
+    const padding = 10;
+    
+    const { popupX, popupY } = drawComponentPopupBase(hoveredComponent.name, stats, popupWidth, lineHeight, padding);
+    
+    textSize(16);
+    text(hoveredComponent.name, popupX + padding, popupY + padding);
+    
+    // Stats
+    textSize(14);
+    textStyle(NORMAL);
+    let y = popupY + padding + lineHeight;
+    
+    for (let stat of stats) {
+        fill(200, 200, 200);
+        text(stat.label + ':', popupX + padding, y);
+        fill(255, 255, 255);
+        text(stat.value, popupX + padding + 150, y);
+        y += lineHeight;
+    }
+    
+    pop();
 }
 
 function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
@@ -676,7 +897,6 @@ function drawGunCursor(player, drawX, drawY) {
 }
 
 function drawGunHeat(player, drawX, drawY) {
-    if (player.biome === 'recovery') return;
     const heatRatio1 = Math.max(0, Math.min(1, player.gun1.heat / player.gun1.maxHeat));
     const heatRatio2 = Math.max(0, Math.min(1, player.gun2.heat / player.gun2.maxHeat));
     stroke(255);
@@ -917,7 +1137,7 @@ function displayNoticeMessages() {
     }
 }
 
-function displayInventory(controlledPlayer) {
+function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
     if (!controlledPlayer) return;
 
     // Check browsing state; if not browsing, clear regions and return.
@@ -928,85 +1148,468 @@ function displayInventory(controlledPlayer) {
         }
         return;
     } else {
+        // Create a map of items to their original indices BEFORE sorting
+        const originalIndices = new Map();
+        if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
+            controlledPlayer.inventory.forEach((item, index) => {
+                originalIndices.set(item, index);
+            });
+        }
+        
+        // Sort inventory before displaying to ensure consistent ordering
+        if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
+            sortInventory(controlledPlayer.inventory);
+        }
+        
         // Set constants for inventory display.
         const radius = 100; // World unit radius for inventory items.
         const slotSize = 40; // Display size for each item.
         rectMode(CENTER);
-        inventoryRegions = computeInventoryRegions(controlledPlayer, radius, slotSize);
+        inventoryRegions = computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, originalIndices);
         // Loop through computed regions and draw each inventory item.
         for (let region of inventoryRegions) {
+            // Skip null or undefined items
+            if (!region.item) continue;
+            
             // Draw the inventory item using a helper function (assumes drawItem is defined).
             drawItem(region.item, region.x, region.y, region.size);
-
-            // Only display the item name if the mouse is hovering over the item.
-            if (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2) {
-                fill(0);
-                textAlign(CENTER, CENTER);
-                textSize(14);
-                text(region.item.name, region.x, region.y + region.size / 2 + 10);
-            }
         }
+        
+        // Draw comparison popup if hovering over an item
+        drawComponentComparisonPopup(controlledPlayer, inventoryRegions, false);
     }
 }
 
-function displayTeleportButton(controlledPlayer) {
-    if (!controlledPlayer || !controlledPlayer.twinRecoveryZone) {
-        // Clear button region when not showing
-        teleportButtonRegion = null;
+/**
+ * Display shop interface when player is in a recovery zone
+ * Shows available items with prices and handles click regions
+ */
+function displayShop(controlledPlayer) {
+    // Only show shop if shopOpen is true
+    if (!shopOpen || !controlledPlayer || controlledPlayer.biome !== 'recovery') {
+        // Clear shop regions when not in recovery zone or shop is closed
+        if (shopRegions.length > 0) {
+            shopRegions = [];
+        }
         return;
     }
 
-    // Button position (bottom center of screen)
-    const buttonX = windowWidth / 2;
+    // Find the shop for the current recovery zone
+    const currentZone = mapData.biomes.find(b => 
+        b.type === 'recovery' && 
+        b.x1 <= controlledPlayer.x && controlledPlayer.x <= b.x2 &&
+        b.y1 <= controlledPlayer.y && controlledPlayer.y <= b.y2
+    );
+
+    if (!currentZone) {
+        shopRegions = [];
+        return;
+    }
+
+    const currentShop = shops.find(shop => shop.recoveryZoneId === currentZone.id);
+    if (!currentShop || !currentShop.inventory || currentShop.inventory.length === 0) {
+        shopRegions = [];
+        return;
+    }
+
+    // Shop display settings - made twice as wide, positioned on left side
+    const shopX = 20; // Left side of screen
+    const shopY = 100; // Top of screen
+    const itemWidth = 400; // Doubled from 200
+    const itemHeight = 80;
+    const itemSpacing = 10;
+    const headerHeight = 60;
+
+    push();
+    rectMode(CORNER);
+
+    // Shop background panel
+    fill(40, 40, 50, 230);
+    stroke(200, 200, 220);
+    strokeWeight(2);
+    rect(shopX - 10, shopY - 10, itemWidth + 20, headerHeight + (itemHeight + itemSpacing) * currentShop.inventory.length + 20, 10);
+
+    // Shop header
+    fill(255, 255, 255);
+    noStroke();
+    textAlign(CENTER, TOP);
+    textSize(20);
+    textStyle(BOLD);
+    text("SHOP", shopX + itemWidth / 2, shopY);
+
+    // Shop zone level indicator
+    textSize(14);
+    textStyle(NORMAL);
+    fill(150, 200, 255);
+    const shopLevel = Math.abs(currentZone.x1 + currentZone.x2) / 2; // Center X position
+    let levelText = "";
+    if (shopLevel < 5000) levelText = "Level 1";
+    else if (shopLevel < 14000) levelText = "Level 2";
+    else if (shopLevel < 25000) levelText = "Level 3";
+    else if (shopLevel < 40000) levelText = "Level 4";
+    else if (shopLevel < 60000) levelText = "Level 5";
+    else if (shopLevel < 80000) levelText = "Level 6";
+    else if (shopLevel < 100000) levelText = "Level 7";
+    else if (shopLevel < 120000) levelText = "Level 8";
+    else if (shopLevel < 140000) levelText = "Level 9";
+    else levelText = "Level 10";
+    text(levelText, shopX + itemWidth / 2, shopY + 25);
+
+    // Refresh timer
+    const timeUntilRefresh = Math.max(0, currentShop.nextRefreshTime - Date.now());
+    const minutesLeft = Math.floor(timeUntilRefresh / 60000);
+    const secondsLeft = Math.floor((timeUntilRefresh % 60000) / 1000);
+    textSize(12);
+    fill(200, 200, 200);
+    if (timeUntilRefresh < 20000) fill(255, 100, 100);
+    text(`Refresh in ${minutesLeft}:${secondsLeft.toString().padStart(2, '0')}`, shopX + itemWidth / 2, shopY + 42);
+
+    // Clear previous shop regions
+    shopRegions = [];
+
+    // Display each shop item
+    for (let i = 0; i < currentShop.inventory.length; i++) {
+        const shopItem = currentShop.inventory[i];
+        const itemY = shopY + headerHeight + i * (itemHeight + itemSpacing);
+
+        // Check if mouse is hovering
+        const isHovering = mouseX >= shopX && mouseX <= shopX + itemWidth &&
+                          mouseY >= itemY && mouseY <= itemY + itemHeight;
+
+        // Item background
+        fill(isHovering ? 70 : 50, isHovering ? 70 : 50, isHovering ? 80 : 60, 220);
+        stroke(isHovering ? 255 : 180, isHovering ? 255 : 180, isHovering ? 100 : 200);
+        strokeWeight(1);
+        rect(shopX, itemY, itemWidth, itemHeight, 5);
+
+        // Draw component icon on the left
+        const iconX = shopX + 40;
+        const iconY = itemY + itemHeight / 2;
+        drawItem(shopItem.component, iconX, iconY, 35);
+
+        // Component name on the right
+        fill(255, 255, 255);
+        noStroke();
+        textAlign(LEFT, CENTER);
+        textSize(16);
+        textStyle(NORMAL);
+        text(shopItem.component.name, shopX + 80, itemY + itemHeight / 2 - 10);
+
+        // Price display
+        const canAfford = controlledPlayer.money >= shopItem.price;
+        fill(canAfford ? 100 : 255, canAfford ? 255 : 100, canAfford ? 100 : 100);
+        textSize(18);
+        textStyle(BOLD);
+        text(`$${shopItem.price}`, shopX + 80, itemY + itemHeight / 2 + 15);
+
+        // Store clickable region
+        shopRegions.push({
+            component: shopItem.component,
+            price: shopItem.price,
+            itemIndex: i,
+            x: shopX,
+            y: itemY,
+            width: itemWidth,
+            height: itemHeight
+        });
+    }
+
+    pop();
+    
+    // Draw comparison popup if hovering over an item
+    drawComponentComparisonPopup(controlledPlayer, shopRegions, true);
+}
+
+/**
+ * Draw a comparison popup when hovering over a component
+ * Shows all stats of the hovered component and compares to equipped component
+ */
+function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false) {
+    if (!controlledPlayer || !regions || regions.length === 0) return;
+    
+    // Find which region is being hovered
+    let hoveredRegion = null;
+    for (let region of regions) {
+        const inRegion = isShop ? 
+            (mouseX >= region.x && mouseX <= region.x + region.width &&
+             mouseY >= region.y && mouseY <= region.y + region.height) :
+            (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2);
+        
+        if (inRegion) {
+            hoveredRegion = region;
+            break;
+        }
+    }
+    
+    if (!hoveredRegion) return;
+    
+    const component = hoveredRegion.component || hoveredRegion.item;
+    if (!component) return;
+    
+    // Get equipped component of the same type
+    let equippedComponent = null;
+    if (component.type === 'engine') equippedComponent = controlledPlayer.engine;
+    else if (component.type === 'chassis') equippedComponent = controlledPlayer.chassis;
+    else if (component.type === 'wings') equippedComponent = controlledPlayer.wings;
+    
+    const stats = getComponentStats(component, equippedComponent);
+    const popupWidth = 300;
+    const lineHeight = 20;
+    const padding = 10;
+    
+    // Add extra height for hint text if showing inventory in recovery zone
+    const extraLines = (!isShop && controlledPlayer.biome === 'recovery') ? 1 : 0;
+    const statsWithExtra = [...stats];
+    if (extraLines > 0) {
+        // Add dummy stat entries for height calculation
+        for (let i = 0; i < extraLines; i++) {
+            statsWithExtra.push({ label: '', value: '' });
+        }
+    }
+    
+    const { popupX, popupY } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding);
+    
+    textSize(14);
+    text(component.name, popupX + padding, popupY + padding);
+    
+    // Stats with comparison
+    textSize(12);
+    textStyle(NORMAL);
+    
+    for (let i = 0; i < stats.length; i++) {
+        const stat = stats[i];
+        const y = popupY + padding + (i + 1) * lineHeight;
+        
+        // Stat label
+        fill(180, 180, 180);
+        text(stat.label + ':', popupX + padding, y);
+        
+        // Hovered value
+        fill(255, 255, 255);
+        text(stat.value, popupX + padding + 120, y);
+        
+        // Comparison arrow and equipped value
+        if (stat.equipped !== null) {
+            const hoveredVal = stat.numericValue !== undefined ? stat.numericValue : stat.value;
+            const equippedVal = stat.equipped;
+            const diff = hoveredVal - equippedVal;
+            const roundedDiff = Math.round(diff * 10) / 10;
+            
+            const isImprovement = stat.lowerIsBetter ? (diff < 0) : (diff > 0);
+            const isWorse = stat.lowerIsBetter ? (diff > 0) : (diff < 0);
+            
+            if (isImprovement) {
+                fill(100, 255, 100);
+                const sign = roundedDiff > 0 ? '+' : '';
+                text('▲ ' + sign + roundedDiff, popupX + padding + 170, y);
+            } else if (isWorse) {
+                fill(255, 100, 100);
+                const sign = roundedDiff > 0 ? '+' : '';
+                text('▼ ' + sign + roundedDiff, popupX + padding + 170, y);
+            } else {
+                fill(200, 200, 200);
+                text('=', popupX + padding + 170, y);
+            }
+        }
+    }
+    
+    // Add hint text for selling items in recovery zone (only for inventory, not shop)
+    if (!isShop && controlledPlayer.biome === 'recovery') {
+        const hintY = popupY + padding + (stats.length + 1) * lineHeight + 5;
+        fill(160, 160, 160);
+        textStyle(ITALIC);
+        textSize(11);
+        textAlign(LEFT, TOP);
+        text('shift+click to sell item', popupX + padding, hintY);
+    }
+    
+    pop();
+}
+
+function displayTeleportButton(controlledPlayer) {
+    const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
+    const hasTwin = controlledPlayer && controlledPlayer.twinRecoveryZone;
+    
+    // Check if we should show any buttons
+    if (!inRecoveryZone) {
+        teleportButtonRegion = null;
+        shopButtonRegion = null;
+        return;
+    }
+    
+    // Determine how many buttons to show
+    const showTeleport = hasTwin;
+    const showShop = true; // Always show shop button in recovery zones
+    const buttonCount = (showTeleport ? 1 : 0) + (showShop ? 1 : 0);
+    
+    if (buttonCount === 0) {
+        teleportButtonRegion = null;
+        shopButtonRegion = null;
+        return;
+    }
+    
+    // Button dimensions
+    const buttonWidth = 200;
+    const buttonHeight = 50;
+    const buttonSpacing = 20;
+    
+    // Calculate center position for button area
+    const centerX = windowWidth / 2;
     const buttonY = windowHeight - 100;
+    
+    // Calculate button positions based on count
+    let teleportX, shopX;
+    
+    if (buttonCount === 1) {
+        // Single button - center it directly
+        if (showTeleport) {
+            teleportX = centerX;
+            shopButtonRegion = null;
+        } else {
+            shopX = centerX;
+            teleportButtonRegion = null;
+        }
+    } else {
+        // Two buttons - center the button area, teleport on left, shop on right
+        const totalWidth = buttonWidth * 2 + buttonSpacing;
+        teleportX = centerX - totalWidth / 2 + buttonWidth / 2;
+        shopX = centerX + totalWidth / 2 - buttonWidth / 2;
+    }
+    
+    // Save current drawing state
+    push();
+    
+    // Reset all text properties to default
+    textFont('Arial');
+    textStyle(NORMAL);
+    rectMode(CENTER);
+    
+    // Draw Teleport Button
+    if (showTeleport) {
+        teleportButtonRegion = {
+            x: teleportX,
+            y: buttonY,
+            width: buttonWidth,
+            height: buttonHeight
+        };
+        
+        const isTeleportHovering = mouseX >= teleportX - buttonWidth / 2 &&
+            mouseX <= teleportX + buttonWidth / 2 &&
+            mouseY >= buttonY - buttonHeight / 2 &&
+            mouseY <= buttonY + buttonHeight / 2;
+        
+        fill(isTeleportHovering ? 80 : 60, 120, isTeleportHovering ? 255 : 200, 200);
+        stroke(255, 255, 255, 180);
+        strokeWeight(2);
+        rect(teleportX, buttonY, buttonWidth, buttonHeight, 8);
+        
+        fill(255, 255, 255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        textSize(16);
+        text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, teleportX, buttonY - 5);
+        
+        textSize(12);
+        fill(200, 200, 200);
+        text("Press T or click", teleportX, buttonY + 15);
+    } else {
+        teleportButtonRegion = null;
+    }
+    
+    // Draw Shop Button
+    if (showShop) {
+        shopButtonRegion = {
+            x: shopX,
+            y: buttonY,
+            width: buttonWidth,
+            height: buttonHeight
+        };
+        
+        const isShopHovering = mouseX >= shopX - buttonWidth / 2 &&
+            mouseX <= shopX + buttonWidth / 2 &&
+            mouseY >= buttonY - buttonHeight / 2 &&
+            mouseY <= buttonY + buttonHeight / 2;
+        
+        fill(isShopHovering ? 80 : 60, isShopHovering ? 180 : 140, 60, 200);
+        stroke(255, 255, 255, 180);
+        strokeWeight(2);
+        rect(shopX, buttonY, buttonWidth, buttonHeight, 8);
+        
+        fill(255, 255, 255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        textSize(16);
+        text(shopOpen ? "Close Shop" : "Open Shop", shopX, buttonY - 5);
+        
+        textSize(12);
+        fill(200, 200, 200);
+        text("Click to toggle", shopX, buttonY + 15);
+    } else {
+        shopButtonRegion = null;
+    }
+    
+    // Restore previous drawing state
+    pop();
+}
+
+function displaySellAllButton(controlledPlayer) {
+    const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
+    const hasInventory = controlledPlayer && controlledPlayer.inventory && controlledPlayer.inventory.length > 0;
+    
+    // Only show button if in recovery zone and has items in inventory
+    if (!inRecoveryZone || !hasInventory) {
+        sellAllButtonRegion = null;
+        return;
+    }
+    
+    // Button dimensions
     const buttonWidth = 200;
     const buttonHeight = 40;
-
-    // Store button region for click detection
-    teleportButtonRegion = {
-        x: buttonX,
+    
+    // Position at bottom center, below shop/teleport buttons
+    const centerX = windowWidth / 2;
+    const buttonY = windowHeight - 50;
+    
+    sellAllButtonRegion = {
+        x: centerX,
         y: buttonY,
         width: buttonWidth,
         height: buttonHeight
     };
-
-    // Save current drawing state
-    push();
-
-    // Reset all text properties to default
-    textFont('Arial'); // Use a standard font
-    textStyle(NORMAL); // Ensure no bold/italic
-    rectMode(CENTER);
-
-    // Check if mouse is hovering for highlight effect
-    const isHovering = mouseX >= buttonX - buttonWidth / 2 &&
-        mouseX <= buttonX + buttonWidth / 2 &&
+    
+    const isHovering = mouseX >= centerX - buttonWidth / 2 &&
+        mouseX <= centerX + buttonWidth / 2 &&
         mouseY >= buttonY - buttonHeight / 2 &&
         mouseY <= buttonY + buttonHeight / 2;
-
-    // Button background with hover effect
-    fill(isHovering ? 80 : 60, 120, isHovering ? 255 : 200, 200);
+    
+    // Save current drawing state
+    push();
+    
+    // Reset all text properties to default
+    textFont('Arial');
+    textStyle(NORMAL);
+    rectMode(CENTER);
+    
+    // Draw button (green/gold color for selling)
+    fill(isHovering ? 200 : 150, isHovering ? 160 : 120, 40, 200);
     stroke(255, 255, 255, 180);
     strokeWeight(2);
-    rect(buttonX, buttonY, buttonWidth, buttonHeight, 8);
-
-    // Button text
+    rect(centerX, buttonY, buttonWidth, buttonHeight, 8);
+    
     fill(255, 255, 255);
     noStroke();
     textAlign(CENTER, CENTER);
     textSize(16);
-    textStyle(NORMAL);
-    text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, buttonX, buttonY - 2);
-
-    // Instruction text
+    text(`Sell All (${controlledPlayer.inventory.length} items)`, centerX, buttonY - 5);
+    
     textSize(12);
-    textStyle(NORMAL);
     fill(200, 200, 200);
-    text("Press T or click to teleport", buttonX, buttonY + 15);
-
+    text("Click to sell", centerX, buttonY + 15);
+    
     // Restore previous drawing state
     pop();
 }
+
 
 function displayAppInfo() {
     fill(255, 255, 255);

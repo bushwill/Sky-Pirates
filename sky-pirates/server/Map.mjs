@@ -88,10 +88,6 @@ export class MapObject {
       return Math.hypot(px - projX, py - projY);
     }
 
-    getRecovery() {
-      return this.biomes.find(p => p.type === 'recovery');
-    }
-
     // Get the recovery zone at a given position
     getRecoveryZoneAtPosition(x, y) {
       for (let i = 0; i < this.biomes.length; i++) {

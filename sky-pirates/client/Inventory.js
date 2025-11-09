@@ -1,5 +1,5 @@
 /**
- * Sorts the player's inventory by type of part -> manufacturer -> level.
+ * Sorts the player's inventory by type of part -> name -> level.
  * This ensures consistent ordering when opening crates in recovery zones.
  * 
  * @param {Array} inventory - The player's inventory array to sort in-place.
@@ -7,19 +7,26 @@
 function sortInventory(inventory) {
     if (!inventory || !Array.isArray(inventory)) return;
     
+    // Define type ordering priority
+    const typeOrder = { 'engine': 1, 'chassis': 2, 'wings': 3, 'gun': 4 };
+    
     inventory.sort((a, b) => {
-        // First sort by type (e.g., "engine", "gun", "hull")
-        if (a.type !== b.type) {
-            return a.type.localeCompare(b.type);
+        // First sort by type (engine, chassis, wings, gun)
+        const typeA = typeOrder[a.type] || 999;
+        const typeB = typeOrder[b.type] || 999;
+        if (typeA !== typeB) {
+            return typeA - typeB;
         }
         
-        // Then by manufacturer
-        if (a.manufacturer !== b.manufacturer) {
-            return a.manufacturer.localeCompare(b.manufacturer);
+        // Then by name (which contains manufacturer info like "Pirate", "Core", etc.)
+        if (a.name !== b.name) {
+            return a.name.localeCompare(b.name);
         }
         
-        // Finally by level (numeric)
-        return (a.level || 0) - (b.level || 0);
+        // Finally by level (numeric) - extract from name if level property doesn't exist
+        const levelA = a.level || parseInt(a.name.match(/Lvl\s*(\d+)/)?.[1]) || 0;
+        const levelB = b.level || parseInt(b.name.match(/Lvl\s*(\d+)/)?.[1]) || 0;
+        return levelA - levelB;
     });
 }
 
@@ -30,7 +37,35 @@ function sortInventory(inventory) {
  * @param {number} mx - The mouse x-coordinate.
  * @param {number} my - The mouse y-coordinate.
  */
+/**
+ * Handle shop item clicks
+ * When a shop item is clicked, purchase it from the server
+ * @param {number} mx - Mouse X coordinate
+ * @param {number} my - Mouse Y coordinate
+ * @returns {boolean} True if a shop item was clicked, false otherwise
+ */
+function handleShopClick(mx, my) {
+    // Iterate over each recorded shop item region
+    for (let region of shopRegions) {
+        // Check if click is within the shop item's bounding box
+        if (mx >= region.x && mx <= region.x + region.width &&
+            my >= region.y && my <= region.y + region.height) {
+            console.log(`Shop item '${region.component.name}' clicked. Purchasing for $${region.price}...`);
+            
+            // Send purchase request to server
+            purchaseShopItem(region.itemIndex);
+            return true;
+        }
+    }
+    return false;
+}
+
 function handleInventoryClick(mx, my) {
+    // Check if player is in recovery zone and holding shift key for selling
+    const controlledPlayer = players.find(p => p.username === username);
+    const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
+    const shiftHeld = keyIsDown(SHIFT);
+    
     // Iterate over each recorded inventory item region.
     for (let region of inventoryRegions) {
         // Since inventory items are drawn in CENTER mode, determine the bounding box.
@@ -41,12 +76,20 @@ function handleInventoryClick(mx, my) {
         const bottom = region.y + halfSize;
 
         if (mx >= left && mx <= right && my >= top && my <= bottom) {
-            console.log(`Inventory item '${region.item.name}' clicked at (${mx}, ${my}). Equipping item...`);
-            itemIndex = inventoryRegions.indexOf(region)
-            if (itemIndex === -1) {
-                console.warn("Item index not found in inventory regions.");
+            // Use the stored inventory index from the region
+            itemIndex = region.inventoryIndex;
+            if (itemIndex === undefined || itemIndex === -1) {
+                console.warn("Item index not found in inventory region.");
                 return;
+            }
+            
+            // If in recovery zone and holding shift, sell the item
+            if (inRecoveryZone && shiftHeld) {
+                console.log(`Selling inventory item '${region.item.name}' at index ${itemIndex}`);
+                sendSellItemMessage(itemIndex);
             } else {
+                // Otherwise, equip the item
+                console.log(`Inventory item '${region.item.name}' clicked at (${mx}, ${my}). Equipping item...`);
                 sendEquipMessage(itemIndex);
             }
             break;
@@ -56,19 +99,18 @@ function handleInventoryClick(mx, my) {
 
 /**
  * Calculates the inventory regions based on the controlled player's inventory.
- * Arranges items in multiple concentric circles around the controlled player's center position
+ * Arranges items in multiple concentric circles around the player's screen position
  * when inventory has many items to prevent overlap.
- *
- * Note:
- * Removing the recovery zone clamping ensures that the items form a true circle on-screen.
- * If clamping to the recovery zone is necessary, it may distort the circular layout.
  *
  * @param {Object} controlledPlayer - The controlled player object.
  * @param {number} radius - The base radius in pixels at which items are displayed around the center.
  * @param {number} slotSize - The size for each inventory item display.
+ * @param {number} playerScreenX - The player's current X position on screen.
+ * @param {number} playerScreenY - The player's current Y position on screen.
+ * @param {Map} originalIndices - Map of items to their original indices before sorting.
  * @returns {Array} Array of region objects with properties: item, x, y, size, and angle.
  */
-function computeInventoryRegions(controlledPlayer, radius, slotSize) {
+function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, originalIndices) {
     const itemCount = controlledPlayer.inventory.length;
     const regions = [];
     
@@ -88,15 +130,19 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize) {
       for (let i = 0; i < itemsInThisRing; i++) {
         const item = controlledPlayer.inventory[itemIndex];
         
+        // Get the original index before sorting (if map provided)
+        const originalIndex = originalIndices ? originalIndices.get(item) : itemIndex;
+        
         // Calculate the angle for even distribution in this ring
         const angle = (2 * Math.PI * i) / itemsInThisRing;
         
-        // Compute the screen coordinates directly relative to the center of the window
-        const drawX = windowWidth / 2 + currentRadius * Math.cos(angle);
-        const drawY = windowHeight / 2 + currentRadius * Math.sin(angle);
+        // Compute the screen coordinates relative to the player's screen position
+        const drawX = playerScreenX + currentRadius * Math.cos(angle);
+        const drawY = playerScreenY + currentRadius * Math.sin(angle);
         
         regions.push({
           item: item,
+          inventoryIndex: originalIndex !== undefined ? originalIndex : itemIndex,  // Store the original inventory index
           x: drawX,
           y: drawY,
           size: slotSize,

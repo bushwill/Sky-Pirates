@@ -1,5 +1,5 @@
 export class Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, lifespan, r, g, b) {
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b) {
         this.x = x;          // X position of the projectile
         this.y = y;          // Y position of the projectile
         this.vx = vx;        // X velocity of the projectile
@@ -8,7 +8,8 @@ export class Projectile {
         this.damage = damage; // Damage dealt by the projectile
         this.size = size;    // Size of the projectile
         this.owner = owner;   // Owner of the projectile (Player instance)
-        this.lifespan = lifespan; // Lifespan of the projectile in milliseconds
+        this.maxDistance = maxDistance; // Maximum distance the projectile can travel in meters
+        this.distanceTraveled = 0; // Distance traveled so far in meters
         this.r = r;          // Red color component
         this.g = g;          // Green color component
         this.b = b;          // Blue color component

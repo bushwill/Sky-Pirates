@@ -1,9 +1,12 @@
+// ========================================
+// GLOBAL VARIABLES
+// ========================================
+
+// Connection and network
 let ws;
 let pingTimes = [];
-
 let connected = false;
 let reconnecting = false;
-
 let avgPing = 100;
 let playerUpdateTime = 100;
 let lastPlayerUpdate = 0;
@@ -12,31 +15,35 @@ let lastPing = 0;
 let gameUpdateTime = 10;
 let lastGameUpdate = 0;
 
+// Map and biome tracking
 let mapData;
 let recovery = null;
 let lastMapRequest = -2000;
+let previousBiome = null; // Track previous biome to detect when player enters recovery zone
 
-// Track previous biome to detect when player enters recovery zone
-let previousBiome = null;
-
+// Game entities
 let players = [];
 let enemies = [];
 let projectiles = [];
 let crates = [];
 let particles = [];
 let events = [];
+let shops = [];
 let displayedEventIds = new Set(); // Track which events we've already displayed
 
-// Global array to store clickable regions for inventory items.
-// Each element will be an object: { item, x, y, size }
-let inventoryRegions = [];
-
-// Global variable to store teleport button region
+// UI regions for click detection
+let inventoryRegions = []; // { item, x, y, size }
+let shopRegions = []; // { component, price, shopIndex, itemIndex, x, y, size }
 let teleportButtonRegion = null;
+let shopButtonRegion = null;
+let sellAllButtonRegion = null;
+let shopOpen = false; // Track if shop is open or closed
 
+// Chat and messaging
 let chat_messages = [];
 let notice_messages = [];
 
+// Player state
 let username;
 let r, g, b;
 let usedKeys = ['w', 'a', 's', 'd', 'c', 'r', 'f', 'p', 'mouse'];
@@ -45,14 +52,13 @@ let lastKeyPressTimes = { w: 0, a: 0, s: 0, d: 0 };
 let selectedGun1 = 0;
 let selectedGun2 = 1;
 
+// UI state
 let helpWindow = false;
 let signedIn = false;
 let signedInTime = 0;
-
 let chat_message;
 let current_chat = "";
 let chatting = false;
-
 let clientEstimating = true;
 
 // Settings dictionary - contains all user-configurable settings
@@ -61,11 +67,14 @@ let settings = {
     screenShake: true
 };
 
-// --- Menu and color picker setup ---
+// Menu and color picker setup
 let menuManager;
 let colorPicker;
-// Whether the menu overlay is visible during gameplay (toggle with ESC)
-let menuVisible = false;
+let menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
+
+// ========================================
+// P5.JS LIFECYCLE FUNCTIONS
+// ========================================
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
@@ -129,12 +138,6 @@ function draw() {
             background(255, 155, 0)
             const controlledPlayer = players.find(player => player.username === username);
             
-            // Check if player entered recovery zone and sort inventory
-            if (controlledPlayer && controlledPlayer.biome === 'recovery' && previousBiome !== 'recovery') {
-                if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
-                    sortInventory(controlledPlayer.inventory);
-                }
-            }
             // Update previous biome for next frame
             if (controlledPlayer) {
                 previousBiome = controlledPlayer.biome;
@@ -166,6 +169,10 @@ function draw() {
     }
 }
 
+// ========================================
+// SERVER SYNC AND GAME DISPLAY
+// ========================================
+
 function serverSync(player = null) {
     updateUpdates();
     if (millis() - lastPlayerUpdate > playerUpdateTime) {
@@ -175,6 +182,7 @@ function serverSync(player = null) {
         getProjectileData();
         getCrateData();
         getEventData();
+        getShopData();
         lastPlayerUpdate = millis();
     }
     if (millis() - lastPing > pingUpdateTime) {
@@ -190,6 +198,7 @@ function handleGameDisplay(controlledPlayer) {
     textSize(12);
     textAlign(CENTER);
     stroke(0)
+    displayChat();
     if (controlledPlayer && signedIn) {
         // Display help menu prompt for first 10 seconds
         if (millis() - signedInTime < 10000 && !helpWindow) {
@@ -235,7 +244,6 @@ function handleGameDisplay(controlledPlayer) {
         displayPlayers();
         displayEnemies();
     }
-    displayChat();
     displayNoticeMessages();
     displayAppInfo();
 }
@@ -315,6 +323,63 @@ function handleTeleportButtonClick(mouseX, mouseY) {
     }
 
     return false; // Button was not clicked
+}
+
+function handleShopButtonClick(mouseX, mouseY) {
+    if (!shopButtonRegion) return false;
+
+    const isInside = mouseX >= shopButtonRegion.x - shopButtonRegion.width / 2 &&
+        mouseX <= shopButtonRegion.x + shopButtonRegion.width / 2 &&
+        mouseY >= shopButtonRegion.y - shopButtonRegion.height / 2 &&
+        mouseY <= shopButtonRegion.y + shopButtonRegion.height / 2;
+
+    if (isInside) {
+        shopOpen = !shopOpen; // Toggle shop state
+        console.log(`Shop ${shopOpen ? 'opened' : 'closed'}`);
+        return true; // Button was clicked
+    }
+
+    return false; // Button was not clicked
+}
+
+function handleSellAllButtonClick(mouseX, mouseY) {
+    if (!sellAllButtonRegion) return false;
+
+    const isInside = mouseX >= sellAllButtonRegion.x - sellAllButtonRegion.width / 2 &&
+        mouseX <= sellAllButtonRegion.x + sellAllButtonRegion.width / 2 &&
+        mouseY >= sellAllButtonRegion.y - sellAllButtonRegion.height / 2 &&
+        mouseY <= sellAllButtonRegion.y + sellAllButtonRegion.height / 2;
+
+    if (isInside) {
+        sendSellAllMessage();
+        console.log('Sell All button clicked');
+        return true; // Button was clicked
+    }
+
+    return false; // Button was not clicked
+}
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
+function sendSellAllMessage() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'sell_all'
+        };
+        ws.send(msgpack.encode(message));
+    }
+}
+
+function sendSellItemMessage(itemIndex) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const message = {
+            type: 'sell_item',
+            itemIndex: itemIndex
+        };
+        ws.send(msgpack.encode(message));
+    }
 }
 
 function sendTeleportMessage() {

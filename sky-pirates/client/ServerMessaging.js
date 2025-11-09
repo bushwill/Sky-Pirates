@@ -196,6 +196,15 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
+        case 'shop_data':
+            if (!decodedMessage.shops || !Array.isArray(decodedMessage.shops)) {
+                console.warn('Invalid shops data:', decodedMessage.shops);
+                shops = [];
+            } else {
+                shops = decodedMessage.shops;
+            }
+            break;
+
         case 'pong':
             const rtt = Date.now() - decodedMessage.clientTime;
             pingTimes.push(rtt / 2);
@@ -307,6 +316,18 @@ function getCrateData() {
 
 function getEventData() {
     const message = { type: 'get_events' };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+}
+
+function getShopData() {
+    const message = { type: 'get_shops' };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+}
+
+function purchaseShopItem(itemIndex) {
+    const message = { type: 'purchase_shop_item', itemIndex: itemIndex };
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
 }

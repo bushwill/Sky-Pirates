@@ -18,7 +18,25 @@ function mousePressed() {
         // Check teleport button first (higher priority)
         if (teleportButtonRegion) {
             const teleportClicked = handleTeleportButtonClick(mouseX, mouseY);
-            if (teleportClicked) return; // If teleport button was clicked, don't check inventory
+            if (teleportClicked) return; // If teleport button was clicked, don't check other regions
+        }
+        
+        // Check shop toggle button
+        if (shopButtonRegion) {
+            const shopButtonClicked = handleShopButtonClick(mouseX, mouseY);
+            if (shopButtonClicked) return; // If shop button was clicked, don't check other regions
+        }
+        
+        // Check sell all button
+        if (sellAllButtonRegion) {
+            const sellAllClicked = handleSellAllButtonClick(mouseX, mouseY);
+            if (sellAllClicked) return; // If sell all button was clicked, don't check other regions
+        }
+        
+        // Check shop items
+        if (shopRegions.length > 0) {
+            const shopClicked = handleShopClick(mouseX, mouseY);
+            if (shopClicked) return; // If shop item was clicked, don't check inventory
         }
         
         // Then check inventory

@@ -111,43 +111,43 @@ export class NavySalvagePlane extends EnemyPlane {
   }
 
   updateAI(players, crates, enemies) {
-    
-      // Initialize AI state if missing
-      if (!this.aiState || this.aiState === 'idle') this.enterSearchingState();
 
-      // Use helper to detect threats; the helper may set this.aiState = 'attacking' and select this.target
-      // but it will not call the attacking handler itself. We keep updateAI as a simple dispatcher.
-      this.checkForThreats(players);
+    // Initialize AI state if missing
+    if (!this.aiState || this.aiState === 'idle') this.enterSearchingState();
 
-      // If we have no fleet, ensure we're in seekFleet state (unless we've been set to attacking)
-      if (!this.fleetBoat && this.aiState !== 'attacking') {
-        if (this.aiState !== 'seekFleet') {
-          this.aiState = 'seekFleet';
-          this._ensureSeekStateInitialized();
-        }
+    // Use helper to detect threats; the helper may set this.aiState = 'attacking' and select this.target
+    // but it will not call the attacking handler itself. We keep updateAI as a simple dispatcher.
+    this.checkForThreats(players);
+
+    // If we have no fleet, ensure we're in seekFleet state (unless we've been set to attacking)
+    if (!this.fleetBoat && this.aiState !== 'attacking') {
+      if (this.aiState !== 'seekFleet') {
+        this.aiState = 'seekFleet';
+        this._ensureSeekStateInitialized();
       }
+    }
 
-      // If we're joined to a fleet and not attacking, decide to return when loaded
-      if (this.fleetBoat && this.aiState !== 'attacking' && this.crates && this.crates.length >= 5) {
-        this.aiState = 'returning';
-      }
+    // If we're joined to a fleet and not attacking, decide to return when loaded
+    if (this.fleetBoat && this.aiState !== 'attacking' && this.crates && this.crates.length >= 5) {
+      this.aiState = 'returning';
+    }
 
-      // Single dispatch: call the appropriate handler exactly once
-      switch (this.aiState) {
-        case 'attacking':
-          this.handleAttacking(players);
-          break;
-        case 'seekFleet':
-          this.handleSeekFleet(enemies);
-          break;
-        case 'returning':
-          this.handleReturning(crates);
-          break;
-        case 'searching':
-        default:
-          this.handleSearching();
-          break;
-      }
+    // Single dispatch: call the appropriate handler exactly once
+    switch (this.aiState) {
+      case 'attacking':
+        this.handleAttacking(players);
+        break;
+      case 'seekFleet':
+        this.handleSeekFleet(enemies);
+        break;
+      case 'returning':
+        this.handleReturning(crates);
+        break;
+      case 'searching':
+      default:
+        this.handleSearching();
+        break;
+    }
   }
 
   // --- State handlers (small and easy to locate) ---
@@ -280,13 +280,13 @@ export class NavySalvagePlane extends EnemyPlane {
       this.seekTargetBoat = null;
       return false;
     }
-    
+
     // Fly horizontally toward the boat at patrol altitude
     const dx = this.seekTargetBoat.x - this.x;
     const distanceFromBoat = Math.abs(dx);
     this.searchDirection = dx >= 0 ? 1 : -1;
     this.flyHorizontallyAtAltitude(this.patrolAltitude);
-    
+
     // Join fleet when close enough (horizontal distance only)
     const JOIN_DISTANCE = 100;
     if (distanceFromBoat <= JOIN_DISTANCE) {
@@ -314,7 +314,7 @@ export class NavySalvagePlane extends EnemyPlane {
       const index = this.fleetBoat.planes.indexOf(this) + 1;
       const baseLabel = this.displayName || planeLabelForLevel(this.level) || 'Navy Craft';
       this.username = `${baseLabel} ${fleetId}-${index}`;
-      
+
       // Update crates to reflect new carrier
       if (this.crates && Array.isArray(this.crates)) {
         for (const c of this.crates) {
@@ -632,12 +632,14 @@ export class NavySalvagePlane extends EnemyPlane {
 
 // A stationary enemy boat that only shoots at players
 export class NavySalvageBoat extends EnemyBoat {
-  constructor(username, r, g, b, x, y, planeCount = 3) {
+  constructor(username, r, g, b, x, y, planeCount = 3, level = 1) {
     super(username, r, g, b, x, y, 'navy');
+    this.level = level || 1;
     this.angle = -Math.PI / 2; // Point boat upward so gun can cover upper hemisphere
-    this.maxHull = 400;
+    this.maxHull = 400 + (this.level - 1) * 200; // Scale hull with level: 400/600/800
     this.hull = this.maxHull;
-    this.gun1 = createEnemyGun(1, 1); // You can adjust gun type as needed
+    const gunType = Math.random() < 0.5 ? 1 : 2; // 50/50 chance between boat gun (1) or boat scorpion (2)
+    this.gun1 = createEnemyGun(gunType, this.level);
     this.gun2 = null;
     this.isFiring = false;
     this.aimPoint = { x: null, y: null };
@@ -840,8 +842,8 @@ export class NavySalvageBoat extends EnemyBoat {
       // Use a guaranteed-unique internal username for the plane so crates/carrier lookups are unambiguous.
       // Also expose a friendly display name for the client.
       const level = Array.isArray(levels) ? (levels[i] || 1) : 1;
-  // Friendly type label (use helper so this logic is centralized and easy to extend)
-  const baseLabel = planeLabelForLevel(level);
+      // Friendly type label (use helper so this logic is centralized and easy to extend)
+      const baseLabel = planeLabelForLevel(level);
       // Create a unique server username while keeping a human-friendly prefix
       // e.g. 'Navy Fighter 1-1' where '1' is the fleet boat index and '1' is plane index
       const boatIdMatch = (this.username && this.username.match(/(\d+)$/)) ? this.username.match(/(\d+)$/)[1] : String(Date.now()).slice(-4);
@@ -934,58 +936,58 @@ export class NavySalvageBoat extends EnemyBoat {
 export class DummyPlane extends EnemyPlane {
   constructor(username, x, y) {
     super(username, 255, 165, 0, x, y, 'dummy'); // Orange color
-    
+
     // Create basic components
     this.gun1 = createEnemyGun(0, 1);
     this.gun2 = null;
     this.engine = createEnemyEngine(0, 1);
     this.chassis = createEnemyChassis(0, 1);
     this.wings = createEnemyWings(0, 1);
-    
+
     // Dummy-specific properties
     this.isDummy = true;
     this.aiState = "dummy";
     this.t_x = x;
     this.t_y = y;
-    
+
     // DPS tracking
     this.damageHistory = []; // Array of {timestamp, damage} objects
     this.currentDPS = 0;
-    
+
     // Set health to 500
     this.chassis.hull = 500;
     this.chassis.maxHull = 500;
   }
-  
+
   // Override updateAI to do nothing but update DPS
   updateAI() {
     // Dummies don't have AI - maintain "dummy" state
     this.aiState = "dummy";
   }
-  
+
   updateDPS() {
     const now = Date.now();
     const oneSecondAgo = now - 1000;
-    
+
     // Remove damage records older than 1 second
     this.damageHistory = this.damageHistory.filter(record => record.timestamp > oneSecondAgo);
-    
+
     // Calculate total damage in the last second
     this.currentDPS = this.damageHistory.reduce((total, record) => total + record.damage, 0);
   }
-  
+
   // Override onDamaged to track damage for DPS
   onDamaged(projectile, players) {
     // Track hull before damage
     const hullBefore = this.chassis?.hull ?? 0;
-    
+
     // Call parent method to apply normal damage
     super.onDamaged(projectile, players);
-    
+
     // Track hull after damage
     const hullAfter = this.chassis?.hull ?? 0;
     const damageDealt = hullBefore - hullAfter;
-    
+
     // Record the damage with timestamp
     if (damageDealt > 0) {
       this.damageHistory.push({
@@ -995,7 +997,7 @@ export class DummyPlane extends EnemyPlane {
     }
     this.updateDPS();
   }
-  
+
   toClientData() {
     return {
       type: this.type,
