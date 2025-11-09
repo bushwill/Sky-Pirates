@@ -1157,13 +1157,7 @@ function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
         return;
     } else {
         // Create a map of items to their original indices BEFORE sorting
-        const originalIndices = new Map();
-        if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
-            controlledPlayer.inventory.forEach((item, index) => {
-                originalIndices.set(item, index);
-            });
-        }
-        
+        // Don't track original indices - we need to use current indices after sorting
         // Sort inventory before displaying to ensure consistent ordering
         if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
             sortInventory(controlledPlayer.inventory);
@@ -1173,7 +1167,7 @@ function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
         const radius = 100; // World unit radius for inventory items.
         const slotSize = 40; // Display size for each item.
         rectMode(CENTER);
-        inventoryRegions = computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, originalIndices);
+        inventoryRegions = computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, null);
         // Loop through computed regions and draw each inventory item.
         for (let region of inventoryRegions) {
             // Skip null or undefined items
@@ -1359,6 +1353,10 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
     if (component.type === 'engine') equippedComponent = controlledPlayer.engine;
     else if (component.type === 'chassis') equippedComponent = controlledPlayer.chassis;
     else if (component.type === 'wings') equippedComponent = controlledPlayer.wings;
+    else if (component.type === 'gun') {
+        // For guns, compare to the currently selected gun
+        equippedComponent = controlledPlayer.selectedGun === 2 ? controlledPlayer.gun2 : controlledPlayer.gun1;
+    }
     
     const stats = getComponentStats(component, equippedComponent);
     const popupWidth = 300;

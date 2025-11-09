@@ -107,7 +107,7 @@ function handleInventoryClick(mx, my) {
  * @param {number} slotSize - The size for each inventory item display.
  * @param {number} playerScreenX - The player's current X position on screen.
  * @param {number} playerScreenY - The player's current Y position on screen.
- * @param {Map} originalIndices - Map of items to their original indices before sorting.
+ * @param {Map} originalIndices - DEPRECATED - not used anymore, always use current index after sorting.
  * @returns {Array} Array of region objects with properties: item, x, y, size, and angle.
  */
 function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, originalIndices) {
@@ -130,8 +130,8 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScree
       for (let i = 0; i < itemsInThisRing; i++) {
         const item = controlledPlayer.inventory[itemIndex];
         
-        // Get the original index before sorting (if map provided)
-        const originalIndex = originalIndices ? originalIndices.get(item) : itemIndex;
+        // Always use current index (after sorting) - this matches the actual position in inventory array
+        const currentIndex = itemIndex;
         
         // Calculate the angle for even distribution in this ring
         const angle = (2 * Math.PI * i) / itemsInThisRing;
@@ -142,7 +142,7 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScree
         
         regions.push({
           item: item,
-          inventoryIndex: originalIndex !== undefined ? originalIndex : itemIndex,  // Store the original inventory index
+          inventoryIndex: currentIndex,  // Store the current inventory index (post-sort)
           x: drawX,
           y: drawY,
           size: slotSize,
