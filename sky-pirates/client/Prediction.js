@@ -1,4 +1,14 @@
 // Prediction logic moved from Game.js to keep it organized
+//
+// Client-side prediction reduces perceived lag by simulating entity movement
+// between server updates. This gives smooth, responsive gameplay.
+//
+// Prediction Strategy:
+// - Players: Simple velocity-based prediction (vx, vy) for all players
+//   - Controlled player: Also gets advanced physics prediction (lift, drag, gravity, propulsion)
+// - Enemies: Simple velocity-based prediction (vx, vy)
+// - Projectiles: Simple velocity-based prediction (ballistic motion)
+// - Crates: Simple velocity-based prediction with water foam effects
 
 // Track previous biome states for projectiles
 let projectilePreviousBiomes = new Map();
@@ -8,6 +18,19 @@ function estimatePlayerPositions() {
     players.forEach(player => {
         player.x += player.vx * deltaTime;
         player.y += player.vy * deltaTime;
+    });
+}
+
+function estimateEnemyPositions() {
+    let deltaTime = 0.01;
+    enemies.forEach(enemy => {
+        // Only predict if enemy has valid position and velocity data
+        if (enemy && typeof enemy.x === 'number' && typeof enemy.y === 'number' &&
+            typeof enemy.vx === 'number' && typeof enemy.vy === 'number') {
+            // Apply velocity-based prediction for enemies
+            enemy.x += enemy.vx * deltaTime;
+            enemy.y += enemy.vy * deltaTime;
+        }
     });
 }
 
@@ -78,17 +101,34 @@ function advancedPlayerPrediction(player, inputKeys) {
     const deltaTime = 0.01;
     const speed = getPlayerSpeed(player);
 
-    // Only apply physics if not repairing
-    if (!inputKeys.r) {
-        applyPlayerTurning(player, speed, deltaTime, inputKeys);
-        applyPlayerThrottle(player, inputKeys);
+    // Only apply input-based physics to controlled player
+    if (inputKeys) {
+        // Only apply physics if not repairing
+        if (!inputKeys.r) {
+            applyPlayerTurning(player, speed, deltaTime, inputKeys);
+            applyPlayerThrottle(player, inputKeys);
+        }
     }
     
+    // Apply physics to all players (controlled or not)
     applyPlayerPropulsion(player, deltaTime);
     applyPlayerLiftForce(player, speed, deltaTime);
     applyPlayerGravityForce(player);
     applyPlayerDragForce(player, deltaTime, inputKeys);
     updatePlayerPosition(player, deltaTime);
+}
+
+// Predict all players with physics-based simulation
+function predictAllPlayers(controlledPlayer, inputKeys) {
+    players.forEach(player => {
+        if (player === controlledPlayer) {
+            // Controlled player gets input-based prediction
+            advancedPlayerPrediction(player, inputKeys);
+        } else {
+            // Other players get physics prediction without input
+            advancedPlayerPrediction(player, null);
+        }
+    });
 }
 
 // Helper functions that replicate server physics
@@ -202,8 +242,8 @@ function applyPlayerDragForce(player, deltaTime, inputKeys) {
     
     let dragCoefficient = 0.06;
     
-    // Air brake logic
-    if (player.wings?.airBrake) {
+    // Air brake logic (only for controlled player with input keys)
+    if (inputKeys && player.wings?.airBrake) {
         const minPower = player.engine?.minPower || 0;
         if (inputKeys.s && player.engine?.power === minPower) {
             dragCoefficient *= player.wings.airBrakeStrength || 3;

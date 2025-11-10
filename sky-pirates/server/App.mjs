@@ -54,6 +54,10 @@ let AUTO_SPAWN_FLEETS = true;
 let fleetCounter = 1;
 let lastFleetShipDestroyedAt = 0;
 
+// Zone-based crate spawning for even distribution
+const CRATE_ZONE_SIZE = 5000; // Each zone is 5km wide
+let crateZoneDensity = new Map(); // Track crate count per zone
+
 const shops = new Map();
 const startMillis = Date.now();
 
@@ -379,6 +383,101 @@ function updateCrates() {
   });
 }
 
+// Helper function to get zone ID from x coordinate
+function getZoneId(x) {
+  return Math.floor(x / CRATE_ZONE_SIZE);
+}
+
+// Update zone density map based on current crates
+function updateZoneDensity() {
+  crateZoneDensity.clear();
+  
+  for (const crate of crates) {
+    const zoneId = getZoneId(crate.x);
+    crateZoneDensity.set(zoneId, (crateZoneDensity.get(zoneId) || 0) + 1);
+  }
+}
+
+// Find the zone with lowest crate density that's outside exclusion zone
+function findLowestDensityZone() {
+  // Note: updateZoneDensity() should be called BEFORE this function
+  // to avoid recalculating density for every crate spawn
+  
+  // Find all zones within map bounds
+  const minZone = getZoneId(-mapData.sizeX);
+  const maxZone = getZoneId(mapData.sizeX);
+  
+  let lowestDensity = Infinity;
+  let lowestZones = [];
+  
+  for (let zoneId = minZone; zoneId <= maxZone; zoneId++) {
+    // Skip zones that are entirely within the exclusion radius
+    const zoneStart = zoneId * CRATE_ZONE_SIZE;
+    const zoneEnd = (zoneId + 1) * CRATE_ZONE_SIZE;
+    
+    // Check if zone overlaps with exclusion area (-1000 to +1000)
+    // Only skip if the ENTIRE zone is within exclusion radius
+    if (zoneStart >= -crateSpawnExclusionRadius && zoneEnd <= crateSpawnExclusionRadius) {
+      continue;
+    }
+    
+    // Skip zones that have no valid space within map bounds
+    const clampedMinX = Math.max(zoneStart, -mapData.sizeX);
+    const clampedMaxX = Math.min(zoneEnd, mapData.sizeX);
+    if (clampedMinX >= clampedMaxX) {
+      continue; // Zone extends beyond map bounds with no valid space
+    }
+    
+    const density = crateZoneDensity.get(zoneId) || 0;
+    
+    if (density < lowestDensity) {
+      lowestDensity = density;
+      lowestZones = [zoneId];
+    } else if (density === lowestDensity) {
+      lowestZones.push(zoneId);
+    }
+  }
+  
+  // Return a random zone from those with lowest density
+  return lowestZones[Math.floor(Math.random() * lowestZones.length)];
+}
+
+// Get a random x position within a zone
+function getRandomXInZone(zoneId) {
+  const zoneStart = zoneId * CRATE_ZONE_SIZE;
+  const zoneEnd = (zoneId + 1) * CRATE_ZONE_SIZE;
+  
+  // Clamp to map bounds
+  let minX = Math.max(zoneStart, -mapData.sizeX);
+  let maxX = Math.min(zoneEnd, mapData.sizeX);
+  
+  // If this zone overlaps with exclusion area, avoid the exclusion zone
+  if (minX < crateSpawnExclusionRadius && maxX > -crateSpawnExclusionRadius) {
+    // Zone spans the exclusion area - pick a side
+    if (Math.abs(minX) > Math.abs(maxX - crateSpawnExclusionRadius)) {
+      // More space on left side
+      maxX = -crateSpawnExclusionRadius;
+    } else {
+      // More space on right side
+      minX = crateSpawnExclusionRadius;
+    }
+  }
+  
+  // Add buffer from exact boundaries to prevent edge clustering (BEFORE range check)
+  const initialRange = maxX - minX;
+  const buffer = Math.min(100, initialRange * 0.05); // 5% buffer or 100 units, whichever is smaller
+  minX += buffer;
+  maxX -= buffer;
+  
+  // Ensure we have valid range after applying buffer
+  const finalRange = maxX - minX;
+  if (finalRange <= 0) {
+    return null; // Signal that this zone is invalid
+  }
+  
+  return minX + Math.random() * (maxX - minX);
+}
+
 function handleCarriedCratePhysics(crate, carrier, deltaTime) {
   const ROPE_LENGTH = 5;
   const TELEPORT_THRESHOLD = 3000;
@@ -582,25 +681,26 @@ function generateMoneyCrates() {
   const crate_count = max_money_crates - crates.filter(c => c.type === 'money').length;
 
   if (players.length === 0 || crates.length > max_money_crates) return;
+  
+  // Update zone density ONCE before spawning all crates
+  updateZoneDensity();
+  
   // Map boundaries
   const seaLevel = 300; // Top of water biome from your map definition
 
   for (let i = 0; i < crate_count; i++) {
-    let x;
-    // Determine the valid range for x outside the exclusion zone
-    // Valid x values are in [-mapData.sizeX, -crateSpawnExclusionRadius] and [crateSpawnExclusionRadius, mapData.sizeX]
-    const validRange = mapData.sizeX - crateSpawnExclusionRadius * 2;
-    if (validRange <= 0) {
-      console.warn("Map size is too small to place crate outside exclusion region.");
-      return;
+    // Find zone with lowest density for even distribution
+    const targetZone = findLowestDensityZone();
+    if (targetZone === undefined) {
+      console.warn("No valid zone found for crate spawning");
+      continue;
     }
-    // Randomly choose left or right side
-    if (Math.random() < 0.5) {
-      // Left side: from -mapData.sizeX up to -crateSpawnExclusionRadius
-      x = -crateSpawnExclusionRadius - Math.random() * validRange;
-    } else {
-      // Right side: from crateSpawnExclusionRadius to mapData.sizeX
-      x = crateSpawnExclusionRadius + Math.random() * validRange;
+    
+    // Get random position within the target zone
+    const x = getRandomXInZone(targetZone);
+    if (x === null) {
+      console.warn(`Could not generate valid position in zone ${targetZone}`);
+      continue;
     }
     const y = seaLevel;
 
@@ -623,6 +723,11 @@ function generateMoneyCrates() {
     const amount = Math.round(baseAmount * randomFactor);
 
     generateMoneyCrate(x, y, amount);
+    
+    // Incrementally update the zone density after spawning each crate
+    // This ensures subsequent crates in this batch avoid the same zone
+    const zoneId = getZoneId(x);
+    crateZoneDensity.set(zoneId, (crateZoneDensity.get(zoneId) || 0) + 1);
   }
 }
 
@@ -635,28 +740,34 @@ function generateStandardComponentCrates() {
 
   if (players.length === 0 || crate_count <= 0) return;
 
+  // Update zone density ONCE before spawning all crates
+  updateZoneDensity();
+  
   // Map boundaries
   const seaLevel = 300; // Top of water biome from your map definition
 
   for (let i = 0; i < crate_count; i++) {
-    let x;
-    // Determine the valid range for x outside the exclusion zone
-    // Valid x values are in [-mapData.sizeX, -crateSpawnExclusionRadius] and [crateSpawnExclusionRadius, mapData.sizeX]
-    const validRange = mapData.sizeX - crateSpawnExclusionRadius * 2;
-    if (validRange <= 0) {
-      console.warn("Map size is too small to place crate outside exclusion region.");
-      return;
+    // Find zone with lowest density for even distribution
+    const targetZone = findLowestDensityZone();
+    if (targetZone === undefined) {
+      console.warn("No valid zone found for crate spawning");
+      continue;
     }
-    // Randomly choose left or right side
-    if (Math.random() < 0.5) {
-      // Left side: from -mapData.sizeX up to -crateSpawnExclusionRadius
-      x = -crateSpawnExclusionRadius - Math.random() * validRange;
-    } else {
-      // Right side: from crateSpawnExclusionRadius to mapData.sizeX
-      x = crateSpawnExclusionRadius + Math.random() * validRange;
+    
+    // Get random position within the target zone
+    const x = getRandomXInZone(targetZone);
+    if (x === null) {
+      console.warn(`Could not generate valid position in zone ${targetZone}`);
+      continue;
     }
     const y = seaLevel;
+    
     generateRandomBasicComponentCrate(x, y);
+    
+    // Incrementally update the zone density after spawning each crate
+    // This ensures subsequent crates in this batch avoid the same zone
+    const zoneId = getZoneId(x);
+    crateZoneDensity.set(zoneId, (crateZoneDensity.get(zoneId) || 0) + 1);
   }
 }
 

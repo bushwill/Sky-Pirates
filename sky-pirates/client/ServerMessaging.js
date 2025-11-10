@@ -181,6 +181,10 @@ function handleDecodedMessage(decodedMessage) {
                 enemies = [];
             } else {
                 enemies = decodedMessage.enemies;
+                // Debug: log enemy positions
+                if (enemies.length > 0 && enemies[0].type === 'boat') {
+                    console.log('Boat enemy received:', enemies[0].x, enemies[0].y, 'type:', enemies[0].type);
+                }
             }
             break;
 

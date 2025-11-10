@@ -156,10 +156,11 @@ function draw() {
             serverSync(controlledPlayer);
             if (clientEstimating) {
                 estimatePlayerPositions();
+                estimateEnemyPositions();
                 estimateProjectilePositions();
                 estimateCratePositions();
 
-                // Use advanced prediction for controlled player, simple for others
+                // Use advanced prediction for controlled player only
                 if (controlledPlayer) {
                     advancedPlayerPrediction(controlledPlayer, keys);
                 }

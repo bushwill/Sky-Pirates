@@ -17,6 +17,7 @@ console.log('🔄 Auto-updating cache-busting versions...');
 // JavaScript files that need version management
 const jsFiles = [
     'Particle.js',
+    'Prediction.js',
     'Game.js', 
     'MapDraw.js',
     'Display.js',
