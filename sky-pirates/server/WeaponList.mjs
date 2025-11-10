@@ -118,7 +118,7 @@ export function createBoatGun(level, random = true) {
     const maxAngle = Math.PI;
     const value = randomFactor * (50 + level * 30);
     const heatDispersion = 30;
-    const projectileRange = 1000;
+    const projectileRange = 1500;
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
 }

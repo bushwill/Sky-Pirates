@@ -428,7 +428,7 @@ export class NavySalvagePlane extends EnemyPlane {
     this.t_x = aimX;
     this.t_y = aimY;
     this.aimPoint = { x: aimX, y: aimY };
-    const inRange = distToTarget < 1000 && this.gun1;
+    const inRange = distToTarget < this.gun1.projectileRange && this.gun1;
     const gunAngleDiff = inRange ? Math.abs(this.angleDiffTo(aimAngle)) : Infinity;
     const canShoot = inRange && gunAngleDiff < (this.gun1.maxAngle ?? Math.PI / 4);
     this.selectedGun = canShoot ? 1 : 0;
@@ -830,7 +830,7 @@ export class NavySalvageBoat extends EnemyBoat {
     this.t_y = aimY;
     this.aimPoint = { x: aimX, y: aimY };
 
-    const shootDistance = 1000;
+    const shootDistance = this.gun1.projectileRange || 1000;
     if (dist < shootDistance && this.gun1) {
       this.selectedGun = 1;
       this.keys.mouse = true;
