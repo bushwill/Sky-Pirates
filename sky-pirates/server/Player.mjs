@@ -200,6 +200,14 @@ export class Player extends Plane {
   }
 
   attachCrate(crate) {
+    const MAX_CRATES = 50; // Maximum crates a player can carry
+    
+    // If at max capacity, detach the oldest crate first
+    if (this.crates.length >= MAX_CRATES) {
+      const oldestCrate = this.crates[0];
+      this.detachCrate(oldestCrate);
+    }
+    
     this.crates.push(crate); // Add the crate to the player's carrying array
     crate.attach(this.username); // Call the attach method of the crate to apply its effect
     this.updatePlane(); // Update player's weight based on current components

@@ -542,15 +542,33 @@ function handleFreeCratePhysics(crate, deltaTime) {
   updateCratePosition(crate, deltaTime);
 }
 
-function applyCrateRepulsion(crate, crates, deltaTime) {
+function applyCrateRepulsion(crate, allCrates, deltaTime) {
   const REPULSION_RADIUS = crate.size * 2;
   const REPULSION_STRENGTH = 12;
+  const CHECK_RADIUS = REPULSION_RADIUS * 3; // Check slightly larger area
   
-  crates.forEach(otherCrate => {
-    if (otherCrate === crate) return;
+  // Find crate index for comparison
+  const crateIndex = allCrates.indexOf(crate);
+  if (crateIndex === -1) return;
+  
+  // If this crate is carried, only check against other crates carried by the same carrier
+  // Otherwise check all crates, but only those with higher index to avoid duplicate checks
+  const cratesToCheck = crate.carrier 
+    ? allCrates.filter(c => c.carrier === crate.carrier && allCrates.indexOf(c) > crateIndex)
+    : allCrates.slice(crateIndex + 1); // Only check crates after this one in the array
+  
+  cratesToCheck.forEach(otherCrate => {
     const dx = crate.x - otherCrate.x;
     const dy = crate.y - otherCrate.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Quick distance check before expensive sqrt
+    const distanceSquared = dx * dx + dy * dy;
+    const checkRadiusSquared = CHECK_RADIUS * CHECK_RADIUS;
+    
+    // Skip if crates are too far apart
+    if (distanceSquared > checkRadiusSquared) return;
+    
+    const distance = Math.sqrt(distanceSquared);
     
     if (distance < REPULSION_RADIUS && distance > 0.01) {
       const nx = dx / distance;
@@ -941,8 +959,6 @@ function applyRepairs(player, deltaTime) {
   const maxHull = (typeof player.maxHull === 'number') ? player.maxHull : (player.chassis && typeof player.chassis.maxHull === 'number' ? player.chassis.maxHull : null);
   if (!maxHull) return;
   const repairRate = maxHull / 15; // Hull repaired per second
-
-  if (player.biome === 'water') return; // No repairs in water
 
   if (typeof player.hull === 'number') {
     if (player.hull < maxHull) {

@@ -462,11 +462,18 @@ export class NavySalvagePlane extends EnemyPlane {
 
   attachCrate(crate) {
     if (!this.crates) this.crates = [];
-    // Limit enemy planes to 10 crates maximum
-    if (this.crates.length >= 10) return;
+    const MAX_CRATES = 10; // Maximum crates an enemy plane can carry
+    
     // Do not attach crates that have already been claimed by another carrier
     if (crate.removedFromWorld) return;
     if (crate.carrier) return; // prevent stealing from players or other entities
+    
+    // If at max capacity, detach the oldest crate first
+    if (this.crates.length >= MAX_CRATES) {
+      const oldestCrate = this.crates[0];
+      this.detachCrate(oldestCrate);
+    }
+    
     this.crates.push(crate);
     crate.attach(this.username);
   }
@@ -883,6 +890,15 @@ export class NavySalvageBoat extends EnemyBoat {
   // Store a crate in the boat's inventory (remove from world handled by App)
   storeCrate(crate) {
     if (!this.storedCrates) this.storedCrates = [];
+    const MAX_STORED_CRATES = 50; // Maximum crates a boat can store
+    
+    // If at max capacity, remove the oldest crate first
+    if (this.storedCrates.length >= MAX_STORED_CRATES) {
+      const oldestCrate = this.storedCrates.shift(); // Remove first (oldest) crate
+      oldestCrate.detach(); // Clear carrier reference
+      // Note: The removed crate is just dropped from memory, not placed back in world
+    }
+    
     this.storedCrates.push(crate);
     crate.attach(this.username);
   }
