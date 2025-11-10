@@ -98,20 +98,20 @@ function handleInventoryClick(mx, my) {
 }
 
 /**
- * Calculates the inventory regions based on the controlled player's inventory.
+ * Calculates the inventory regions based on the sorted inventory display.
  * Arranges items in multiple concentric circles around the player's screen position
  * when inventory has many items to prevent overlap.
  *
- * @param {Object} controlledPlayer - The controlled player object.
+ * @param {Array} sortedInventory - The sorted inventory array to display.
  * @param {number} radius - The base radius in pixels at which items are displayed around the center.
  * @param {number} slotSize - The size for each inventory item display.
  * @param {number} playerScreenX - The player's current X position on screen.
  * @param {number} playerScreenY - The player's current Y position on screen.
- * @param {Map} originalIndices - DEPRECATED - not used anymore, always use current index after sorting.
+ * @param {Map} sortedToOriginalIndex - Map from sorted items to their original unsorted indices.
  * @returns {Array} Array of region objects with properties: item, x, y, size, and angle.
  */
-function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, originalIndices) {
-    const itemCount = controlledPlayer.inventory.length;
+function computeInventoryRegions(sortedInventory, radius, slotSize, playerScreenX, playerScreenY, sortedToOriginalIndex) {
+    const itemCount = sortedInventory.length;
     const regions = [];
     
     // Maximum items per ring before creating a new ring (based on avoiding overlap)
@@ -128,10 +128,10 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScree
       
       // Place items in current ring
       for (let i = 0; i < itemsInThisRing; i++) {
-        const item = controlledPlayer.inventory[itemIndex];
+        const item = sortedInventory[itemIndex];
         
-        // Always use current index (after sorting) - this matches the actual position in inventory array
-        const currentIndex = itemIndex;
+        // Get the original index (before sorting) from the map - this matches server's array
+        const originalIndex = sortedToOriginalIndex ? sortedToOriginalIndex.get(item) : itemIndex;
         
         // Calculate the angle for even distribution in this ring
         const angle = (2 * Math.PI * i) / itemsInThisRing;
@@ -142,7 +142,7 @@ function computeInventoryRegions(controlledPlayer, radius, slotSize, playerScree
         
         regions.push({
           item: item,
-          inventoryIndex: currentIndex,  // Store the current inventory index (post-sort)
+          inventoryIndex: originalIndex,  // Store the ORIGINAL inventory index (server's index)
           x: drawX,
           y: drawY,
           size: slotSize,

@@ -1158,16 +1158,24 @@ function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
     } else {
         // Create a map of items to their original indices BEFORE sorting
         // Don't track original indices - we need to use current indices after sorting
-        // Sort inventory before displaying to ensure consistent ordering
-        if (controlledPlayer.inventory && Array.isArray(controlledPlayer.inventory)) {
-            sortInventory(controlledPlayer.inventory);
-        }
+        // Sort inventory for display - use a COPY so we don't modify the original array
+        // This preserves the server's indexing
+        let sortedInventory = controlledPlayer.inventory.slice(); // Make a copy
+        sortInventory(sortedInventory);
+        
+        // Create a map from sorted items back to their original indices
+        const sortedToOriginalIndex = new Map();
+        sortedInventory.forEach((sortedItem) => {
+            // Find this item's index in the original unsorted inventory
+            const originalIndex = controlledPlayer.inventory.indexOf(sortedItem);
+            sortedToOriginalIndex.set(sortedItem, originalIndex);
+        });
         
         // Set constants for inventory display.
         const radius = 100; // World unit radius for inventory items.
         const slotSize = 40; // Display size for each item.
         rectMode(CENTER);
-        inventoryRegions = computeInventoryRegions(controlledPlayer, radius, slotSize, playerScreenX, playerScreenY, null);
+        inventoryRegions = computeInventoryRegions(sortedInventory, radius, slotSize, playerScreenX, playerScreenY, sortedToOriginalIndex);
         // Loop through computed regions and draw each inventory item.
         for (let region of inventoryRegions) {
             // Skip null or undefined items
