@@ -1,7 +1,7 @@
 // --- Text content variables ---
 const controlsText = "Esc.: Pause menu\nWASD: Move\nWS: Increase/decrease throttle\nAD: Turn left/right\nC: Switch weapons\nF: Drop crate\nR: Repair hull\nMouse: Aim\nLeft Click: Fire\nEnter: Open/close chat";
-const gameText = "Collect crates for upgrades to become the most powerful pirate.\nOpen crates at recovery zones (Big Green Rectangles).\nThe further away the crate is found, the better the rewards.\nFight with or against other pirates\nAvoid the navy, they're out to collect crates too.\nGood luck, pirate!";
-const pilotText = "Plane chassis can overheat and cause hull damage.\nEngines generate heat when throttled.\nHigh speeds generate friction heat.\nWings require minimum speeds to generate lift.\nGoing to slowly will cause your plane to stall.\nIt's harder to turn at higher speeds.\nWeight is added to your plane by component weight and crates carried.\nMore weight means slower climbing and faster diving.";
+const gameText = "Collect crates for upgrades to become the most powerful pirate.\nOpen crates and buy parts at recovery zones (Big Green Rectangles).\nThe further away the crate is found, the better the rewards.\nFight with or against other pirates\nAvoid the navy, they're out to collect crates too.\nGood luck, pirate!";
+const pilotText = "Plane chassis can overheat and cause hull damage.\nEngines generate heat when throttled.\nHigh speeds generate friction heat.\nWings require minimum speeds to generate lift.\nGoing too slowly will cause your plane to stall.\nIt's harder to turn at higher speeds.\nWeight is added to your plane by component weight and crates carried.\nMore weight means slower climbing and faster diving.";
 
 // Draws the help window overlay
 function drawHelpWindow() {
