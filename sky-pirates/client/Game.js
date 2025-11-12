@@ -204,8 +204,8 @@ function serverSync(player = null) {
 }
 
 function handleGameDisplay(controlledPlayer) {
-    if (controlledPlayer) drawMapBackground(mapData);
-    else drawMapBackground(mapData);
+    drawMapBackground(mapData);
+    
     textSize(12);
     textAlign(CENTER);
     rectMode(CENTER);

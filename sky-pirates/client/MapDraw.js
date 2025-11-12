@@ -176,7 +176,66 @@ function polygonWinding(verts) {
   }
   
   // Draws the map background with the specified colors.
+  // First draws sky with sun and clouds, then overlays the map background color
   function drawMapBackground(map) {
-    background(map.backgroundR, map.backgroundG, map.backgroundB);
+    // Draw sky blue background
+    background(135, 206, 235);
+    
+    // Draw sun at top center
+    const sunX = windowWidth / 2;
+    const sunY = 80;
+    const sunRadius = 60;
+    
+    // Sun glow (outer layers)
+    noStroke();
+    fill(255, 255, 200, 80);
+    circle(sunX, sunY, sunRadius * 2.5);
+    fill(255, 255, 150, 120);
+    circle(sunX, sunY, sunRadius * 1.8);
+    
+    // Sun core
+    fill(255, 255, 100);
+    circle(sunX, sunY, sunRadius);
+    
+    // Draw clouds at fixed positions
+    drawClouds();
+    
+    // DON'T call background() again or it will erase everything
+    // The map background color would overwrite the sky/sun/clouds
+    // Instead, the sky blue IS our background
   }
+  
+  // Draw clouds at consistent positions across the screen
+  function drawClouds() {
+    // Use fixed positions for consistent cloud placement
+    const cloudPositions = [
+      { x: 0.15, y: 0.12, scale: 1.2 },
+      { x: 0.35, y: 0.08, scale: 0.9 },
+      { x: 0.55, y: 0.15, scale: 1.1 },
+      { x: 0.75, y: 0.10, scale: 1.0 },
+      { x: 0.90, y: 0.14, scale: 0.8 }
+    ];
+    
+    noStroke();
+    fill(255, 255, 255, 200);
+    
+    cloudPositions.forEach(cloud => {
+      const x = windowWidth * cloud.x;
+      const y = windowHeight * cloud.y;
+      drawCloud(x, y, cloud.scale);
+    });
+  }
+  
+  // Draw a single fluffy cloud
+  function drawCloud(x, y, scale = 1) {
+    const baseSize = 30 * scale;
+    // Cloud made of overlapping circles
+    circle(x, y, baseSize * 1.5);
+    circle(x - baseSize * 0.8, y + baseSize * 0.2, baseSize * 1.2);
+    circle(x + baseSize * 0.8, y + baseSize * 0.2, baseSize * 1.2);
+    circle(x - baseSize * 0.4, y - baseSize * 0.3, baseSize);
+    circle(x + baseSize * 0.4, y - baseSize * 0.3, baseSize);
+  }
+  
+  
   
