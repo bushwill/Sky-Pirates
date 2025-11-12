@@ -22,6 +22,7 @@ export class Player extends Plane {
     this.lastActivity = Date.now() - startMillis;
     this.startMillis = startMillis;
     this.privileges = false;
+    this.maxCrates = 50;
     
     // Navy aggro tracking
     this.navyTargeted = false; // Whether this player is currently targeted by navy
@@ -200,7 +201,7 @@ export class Player extends Plane {
   }
 
   attachCrate(crate) {
-    const MAX_CRATES = 50; // Maximum crates a player can carry
+    const MAX_CRATES = this.maxCrates;
     
     // If at max capacity, detach the oldest crate first
     if (this.crates.length >= MAX_CRATES) {
@@ -270,69 +271,4 @@ export class Player extends Plane {
     this.money += parseInt(value, 10);
     return value;
   }
-}
-
-/**
- * Deserialize a component from plain object back to class instance
- */
-function deserializeComponent(data) {
-  if (!data || !data.type) return null;
-
-  try {
-    if (data.type === 'engine') {
-      return new Engine(
-        data.name,
-        data.weight,
-        data.maxPower,
-        data.minPower,
-        data.heatEfficiency,
-        data.maxHeat,
-        data.value
-      );
-    } else if (data.type === 'chassis') {
-      return new Chassis(
-        data.name,
-        data.weight,
-        data.topSpeed,
-        data.maxHull,
-        data.heatDispersion,
-        data.buoyancy,
-        data.value
-      );
-    } else if (data.type === 'wings') {
-      return new Wings(
-        data.name,
-        data.weight,
-        data.baseTurnSpeed,
-        data.minTurnSpeed,
-        data.maxSpeed,
-        data.liftEfficiency,
-        data.minLiftSpeed,
-        data.liftAngle,
-        data.airBrake,
-        data.airBrakeStrength,
-        data.value
-      );
-    } else if (data.type === 'gun') {
-      return new Gun(
-        data.name,
-        data.weight,
-        data.maxHeat,
-        data.heatEfficiency,
-        data.damage,
-        data.cooldownTime,
-        data.projectileSpeed,
-        data.projectileSize,
-        data.maxAngle * 2, // Multiply by 2 because Gun constructor divides by 2
-        data.value,
-        data.heatDispersion,
-        data.projectileRange
-      );
-    }
-  } catch (error) {
-    console.error('Error deserializing component:', error);
-    return null;
-  }
-
-  return null;
 }

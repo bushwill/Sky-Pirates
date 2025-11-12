@@ -620,6 +620,7 @@ function updateCrate(crate) {
   applyCrateRepulsion(crate, crates, deltaTime);
 
   players.forEach((new_player) => {
+    if (new_player.crates.length >= new_player.maxCrates) return;
     const dx = new_player.x - crate.x;
     const dy = new_player.y - crate.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
