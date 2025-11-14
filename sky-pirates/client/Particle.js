@@ -124,7 +124,6 @@ class Particle {
             // Add wind-like horizontal drift
             this.vx += (Math.random() - 0.5) * 0.1 * deltaTime;
             
-            // Heavy air resistance - smoke disperses
             const smokeDragFactor = 0.95;
             this.vx *= Math.pow(smokeDragFactor, deltaTime);
             this.vy *= Math.pow(smokeDragFactor, deltaTime);
@@ -142,7 +141,7 @@ class Particle {
             this.vz += (Math.random() - 0.5) * 0.5 * deltaTime;
             
             // Medium drag - sparks lose energy but not instantly
-            const sparkDragFactor = 0.95; // Less drag than before (was 0.88)
+            const sparkDragFactor = 0.95;
             this.vx *= Math.pow(sparkDragFactor, deltaTime);
             this.vy *= Math.pow(sparkDragFactor, deltaTime);
             this.vz *= Math.pow(sparkDragFactor, deltaTime);

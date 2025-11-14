@@ -357,6 +357,11 @@ function createHitEvent(x, y, projectile) {
   events.push(event);
 }
 
+function createGunshotEvent(x, y, angle, projectileSpeed, projectileSize) {
+  const event = new GameEvent('gunshot', x, y, angle, projectileSpeed, projectileSize);
+  events.push(event);
+}
+
 function createExplosionEvent(x, y, size = 1) {
   const event = new GameEvent('explosion', x, y, 0, size);
   events.push(event);
@@ -898,13 +903,17 @@ function checkPlayerShooting(player) {
   if (player.keys?.mouse) {
     if (player.selectedGun === 1) {
       if (player.gun1.cooldown === 0 && player.gun1.heat < player.gun1.maxHeat - player.gun1.heatEfficiency) {
-        projectiles.push(createBullet(player, player.gun1));
+        const projectile = createBullet(player, player.gun1);
+        projectiles.push(projectile);
+        createGunshotEvent(player.x, player.y, player.gun1.angle, player.gun1.projectileSpeed, player.gun1.projectileSize);
         player.gun1.cooldown = player.gun1.cooldownTime;
         player.gun1.heat = Math.min(player.gun1.maxHeat, player.gun1.heat + player.gun1.heatEfficiency);
       }
     } else if (player.selectedGun === 2) {
       if (player.gun2.cooldown === 0 && player.gun2.heat < player.gun2.maxHeat - player.gun2.heatEfficiency) {
-        projectiles.push(createBullet(player, player.gun2));
+        const projectile = createBullet(player, player.gun2);
+        projectiles.push(projectile);
+        createGunshotEvent(player.x, player.y, player.gun2.angle, player.gun2.projectileSpeed, player.gun2.projectileSize);
         player.gun2.cooldown = player.gun2.cooldownTime;
         player.gun2.heat = Math.min(player.gun2.maxHeat, player.gun2.heat + player.gun2.heatEfficiency);
       }
@@ -1989,7 +1998,7 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'get_events':
       const playerForEvents = getPlayerOrRespawningPlayer(ws.currentUsername);
-      const filteredEvents = filterEntitiesInRange(events, playerForEvents);
+      const filteredEvents = filterEntitiesInRange(events, playerForEvents, 5000);
       sendMessage(ws, { type: 'event_data', events: filteredEvents });
       break;
     case 'get_shops':

@@ -360,6 +360,112 @@ function displayEvent(event, centerX = 0, centerY = -400) {
             
             spawnParticle(event.x, event.y, 0, fvx, fvy, fvz, fr, fg, fb, flameSize, flameLifetime, 'flame');
         }
+    } else if (event.type === 'gunshot') {
+        // Gunshot event - smoke particles and muzzle flash
+        // event.angle is the gun angle
+        // event.velocity is the projectile speed
+        // event.size is the projectile size
+        const projectileSpeed = event.velocity || 100;
+        const projectileSize = event.size || 1;
+        
+        console.log('Gunshot event:', {
+            projectileSpeed,
+            projectileSize,
+            angle: event.angle,
+            x: event.x,
+            y: event.y,
+            fullEvent: event
+        });
+        
+        // Random speed factor between 0.5 and 1.5
+        const speedFactor = 0.5 + Math.random();
+        
+        // Calculate base particle speed, normalized
+        const particleSpeed = speedFactor * (projectileSpeed / 100);
+        
+        // Helper function: Generate angle with distribution heavier near center
+        // Uses triangular distribution for weighted randomness
+        const getWeightedAngleSpread = (maxSpreadDegrees) => {
+            const maxSpreadRad = maxSpreadDegrees * Math.PI / 180;
+            // Triangular distribution: average of two random values gives center-weighted distribution
+            const r1 = Math.random() - 0.5;
+            const r2 = Math.random() - 0.5;
+            return (r1 + r2) * maxSpreadRad;
+        };
+        
+        // Projectile size affects particle count and size
+        // More smoke particles for larger projectiles
+        const baseSmokeCount = 3 + Math.floor(Math.random() * 3); // 3-5 base
+        const smokeCount = Math.floor(baseSmokeCount * projectileSize);
+        
+        // Spawn smoke particles
+        for (let i = 0; i < smokeCount; i++) {
+            // Tight cone within ±15 degrees, heavier distribution near true angle
+            const spread = getWeightedAngleSpread(15);
+            const smokeAngle = event.angle + spread;
+            
+            // Reduced and more randomized speed for smoke
+            const smokeSpeedFactor = 0.2 + Math.random() * 0.6; // Random factor between 0.2 and 0.8
+            const smokeSpeed = smokeSpeedFactor * (projectileSpeed / 100);
+
+            // Particle velocity based on angle and speed
+            const svx = Math.cos(smokeAngle) * smokeSpeed;
+            const svy = Math.sin(smokeAngle) * smokeSpeed;
+            const svz = (Math.random() - 0.5) * 0.3;
+            
+            // Gray/dark smoke colors
+            const smokeShade = 80 + Math.random() * 100; // 80-180 gray
+            const size = 1.5 + Math.random() * 2; // Size is no longer affected by projectileSize
+            const lifetime = 20 + Math.random() * 30;
+            
+            spawnParticle(event.x, event.y, 0, svx, svy, svz, smokeShade, smokeShade, smokeShade, size, lifetime, 'smoke');
+        }
+        
+        // Muzzle blast flame particles - count also scales with projectile size
+        const baseFlameCount = 8 + Math.floor(Math.random() * 5); // 8-12 base
+        const flameCount = Math.floor(baseFlameCount * projectileSize);
+        
+        // Spawn muzzle blast flame particles
+        for (let i = 0; i < flameCount; i++) {
+            // Tight cone within ±15 degrees, heavier distribution near true angle
+            const spread = getWeightedAngleSpread(15);
+            const flameAngle = event.angle + spread;
+            
+            // Slower and more random speed for muzzle blast
+            const flameSpeedFactor = 0.3 + Math.random() * 0.5; // Random factor between 0.3 and 0.8
+            const flameSpeed = flameSpeedFactor * (projectileSpeed / 100);
+
+            // Particle velocity based on angle and speed
+            const fvx = Math.cos(flameAngle) * flameSpeed;
+            const fvy = Math.sin(flameAngle) * flameSpeed;
+            const fvz = (Math.random() - 0.5) * 0.5;
+            
+            // Bright orange/yellow for muzzle flash
+            let fr, fg, fb;
+            const colorChoice = Math.random();
+            if (colorChoice < 0.4) {
+                // Bright orange
+                fr = 255;
+                fg = 120 + Math.random() * 80;
+                fb = 0;
+            } else if (colorChoice < 0.8) {
+                // Yellow-orange
+                fr = 255;
+                fg = 200 + Math.random() * 55;
+                fb = 0;
+            } else {
+                // Bright yellow
+                fr = 255;
+                fg = 240 + Math.random() * 15;
+                fb = 50 + Math.random() * 50;
+            }
+            
+            const flameSize = 1 + Math.random() * 1.5; // Size is no longer affected by projectileSize
+            const flameLifetime = 4 + Math.random() * 6; // Shorter lifetime for a quick flash
+            
+            spawnParticle(event.x, event.y, 0, fvx, fvy, fvz, fr, fg, fb, flameSize, flameLifetime, 'flame');
+        }
+
     } else if (event.type === 'explosion') {
         // Large explosion - lots of fire and smoke
         const explosionScale = 0.5;
