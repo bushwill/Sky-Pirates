@@ -287,6 +287,7 @@ function handleGameDisplay(controlledPlayer) {
         displayProjectiles(centerX, centerY);
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
+        drawEnemyTargetIndicators(controlledPlayer, centerX, centerY);
         if (helpWindow && !chatting) handleHelpWindow();
     } else if (respawnDelay) {
         // During respawn delay, keep camera at death location

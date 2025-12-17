@@ -6,57 +6,59 @@ function isOnScreen(drawX, drawY, margin = 0) {
     );
 }
 
-// Draw enemy indicators on screen edge if they have the player targeted and are off-screen
-function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400) {
-    if (!controlledPlayer) return;
-    for (let i in enemies) {
-        const enemy = enemies[i];
-        // Check if enemy has the controlled player targeted (using targetUsername from server)
-        if (enemy.targetUsername && enemy.targetUsername === controlledPlayer.username) {
-            const drawX = windowWidth / 2 + (enemy.x - centerX);
-            const drawY = windowHeight / 2 + (enemy.y - centerY);
-            if (drawX < 0 || drawX > windowWidth || drawY < 0 || drawY > windowHeight) {
-                // Clamp positions to screen edges
-                let indicatorX = drawX;
-                let indicatorY = drawY;
-                if (drawX < 0) indicatorX = 40;
-                else if (drawX > windowWidth) indicatorX = windowWidth - 40;
-                if (drawY < 0) indicatorY = 40;
-                else if (drawY > windowHeight) indicatorY = windowHeight - 40;
-
-                // Draw enemy indicator using appropriate helper function
-                push();
-                translate(indicatorX, indicatorY);
-                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
-                stroke(100, 0, 0);
-
-                // Normalize type to a string to avoid .includes on undefined
-                const enemyType = (typeof enemy.type === 'string') ? enemy.type : '';
-
-                // Use appropriate drawing function based on enemy type
-                if (enemyType.includes('Plane')) {
-                    drawEnemyPlane(enemy);
-                } else if (enemyType.includes('Boat')) {
-                    drawEnemyBoat(enemy);
-                } else {
-                    // Fallback: draw simple triangle for unknown types
-                    rotate(enemy.angle);
-                    triangle(-5, -3, -5, 3, 7, 0);
-                }
-
-                pop();
-                // Draw enemy name or faction
-                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
-                textAlign(CENTER);
-                textSize(12);
-                text(enemy.faction ?? "Enemy", indicatorX, indicatorY - 15);
-                // Display distance to player
-                let distance = Math.sqrt((enemy.x - controlledPlayer.x) ** 2 + (enemy.y - controlledPlayer.y) ** 2);
-                text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
-            }
-        }
+// Helper to calculate intersection of a ray from start point to target point with screen bounds
+function calculateScreenEdgeIntersection(startX, startY, targetX, targetY, margin = 40) {
+    const dx = targetX - startX;
+    const dy = targetY - startY;
+    
+    if (dx === 0 && dy === 0) return { x: startX, y: startY, angle: 0 };
+    
+    // Screen bounds
+    const minX = margin;
+    const maxX = windowWidth - margin;
+    const minY = margin;
+    const maxY = windowHeight - margin;
+    
+    let tMin = Infinity;
+    
+    // Check Right Edge (x = maxX)
+    if (dx > 0) {
+        const t = (maxX - startX) / dx;
+        if (t >= 0 && t < tMin) tMin = t;
     }
+    // Check Left Edge (x = minX)
+    else if (dx < 0) {
+        const t = (minX - startX) / dx;
+        if (t >= 0 && t < tMin) tMin = t;
+    }
+    
+    // Check Bottom Edge (y = maxY)
+    if (dy > 0) {
+        const t = (maxY - startY) / dy;
+        if (t >= 0 && t < tMin) tMin = t;
+    }
+    // Check Top Edge (y = minY)
+    else if (dy < 0) {
+        const t = (minY - startY) / dy;
+        if (t >= 0 && t < tMin) tMin = t;
+    }
+    
+    let x = targetX;
+    let y = targetY;
+    
+    if (tMin !== Infinity) {
+        x = startX + tMin * dx;
+        y = startY + tMin * dy;
+    }
+    
+    // Clamp to ensure it stays within bounds
+    x = Math.max(minX, Math.min(maxX, x));
+    y = Math.max(minY, Math.min(maxY, y));
+    
+    return { x, y, angle: Math.atan2(dy, dx) };
 }
+
+
 // Display all enemies
 function displayEnemies(centerX = 0, centerY = -400) {
     for (let i in enemies) {
@@ -167,6 +169,61 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
 
 }
 
+// Draw enemy indicators on screen edge if they have the player targeted and are off-screen
+function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400) {
+    if (!controlledPlayer) return;
+    
+    // Calculate player's screen position
+    const playerScreenX = windowWidth / 2 + (controlledPlayer.x - centerX);
+    const playerScreenY = windowHeight / 2 + (controlledPlayer.y - centerY);
+
+    for (let i in enemies) {
+        const enemy = enemies[i];
+        // Check if enemy has the controlled player targeted (using targetUsername from server)
+        if (enemy.targetUsername && enemy.targetUsername === controlledPlayer.username) {
+            const drawX = windowWidth / 2 + (enemy.x - centerX);
+            const drawY = windowHeight / 2 + (enemy.y - centerY);
+            
+            if (!isOnScreen(drawX, drawY)) {
+                // Calculate intersection from player's screen position to enemy's screen position
+                const edgePos = calculateScreenEdgeIntersection(playerScreenX, playerScreenY, drawX, drawY, 40);
+                const indicatorX = edgePos.x;
+                const indicatorY = edgePos.y;
+
+                // Draw enemy indicator using appropriate helper function
+                push();
+                translate(indicatorX, indicatorY);
+                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
+                stroke(100, 0, 0);
+
+                // Normalize type to a string to avoid .includes on undefined
+                const enemyType = (typeof enemy.type === 'string') ? enemy.type : '';
+
+                // Use appropriate drawing function based on enemy type
+                if (enemyType.includes('Plane')) {
+                    drawEnemyPlane(enemy);
+                } else if (enemyType.includes('Boat')) {
+                    drawEnemyBoat(enemy);
+                } else {
+                    // Fallback: draw simple triangle for unknown types
+                    rotate(enemy.angle);
+                    triangle(-5, -3, -5, 3, 7, 0);
+                }
+
+                pop();
+                // Draw enemy name or faction
+                fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
+                textAlign(CENTER);
+                textSize(12);
+                text(enemy.faction ?? "Enemy", indicatorX, indicatorY - 15);
+                // Display distance to player
+                let distance = Math.sqrt((enemy.x - controlledPlayer.x) ** 2 + (enemy.y - controlledPlayer.y) ** 2);
+                text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
+            }
+        }
+    }
+}
+
 function displayPlayers(centerX = 0, centerY = -400) {
     for (let i in players) {
         stroke(0);
@@ -233,6 +290,74 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     // Ensure no stroke is applied to player text (prevents white outlines from leaking UI state)
     noStroke();
     text(player.username, drawX, drawY - 15);
+}
+
+function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
+    // Only proceed if the controlled player has a party
+    if (!controlledPlayer || !controlledPlayer.party) {
+        return;
+    }
+
+    // Calculate player's screen position
+    const playerScreenX = windowWidth / 2 + (controlledPlayer.x - centerX);
+    const playerScreenY = windowHeight / 2 + (controlledPlayer.y - centerY);
+
+    // Loop through all players to find party members
+    for (let i in players) {
+        const player = players[i];
+
+        // Skip if this player doesn't have a party or it's not the same party
+        if (!player.party ||
+            player.party.r !== controlledPlayer.party.r ||
+            player.party.g !== controlledPlayer.party.g ||
+            player.party.b !== controlledPlayer.party.b) {
+            continue;
+        }
+
+        // Skip the controlled player (don't draw indicator for yourself)
+        if (player.username === controlledPlayer.username) {
+            continue;
+        }
+
+        // Calculate draw position
+        const drawX = windowWidth / 2 + (player.x - centerX);
+        const drawY = windowHeight / 2 + (player.y - centerY);
+
+        // Check if player is out of bounds
+        if (!isOnScreen(drawX, drawY)) {
+            // Calculate intersection from player's screen position to party member's screen position
+            const edgePos = calculateScreenEdgeIntersection(playerScreenX, playerScreenY, drawX, drawY, 40);
+            const indicatorX = edgePos.x;
+            const indicatorY = edgePos.y;
+
+            // Draw party indicator triangle
+            push();
+            translate(indicatorX, indicatorY);
+            rotate(player.angle);
+            fill(player.party.r, player.party.g, player.party.b);
+            stroke(0);
+            triangle(-5, -3, -5, 3, 7, 0);
+            pop();
+
+            // Draw username
+            fill(player.party.r, player.party.g, player.party.b);
+            textAlign(CENTER);
+            textSize(12);
+            text(player.username, indicatorX, indicatorY - 15);
+
+            // Calculate and display distance
+            let distance = Math.sqrt((player.x - controlledPlayer.x) ** 2 + (player.y - controlledPlayer.y) ** 2);
+            text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
+        } else {
+            // Draw party indicator above player if on screen
+            push();
+            translate(drawX, drawY - 40);
+            fill(player.party.r, player.party.g, player.party.b);
+            stroke(0);
+            triangle(-5, -5, 5, -5, 0, 0); // Downward pointing triangle
+            pop();
+        }
+    }
 }
 
 function displayProjectiles(centerX = 0, centerY = -400) {
@@ -619,7 +744,7 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawGunArc(player, drawX, drawY);
     drawPlaneInfo(player);
     drawCompass(player);
-    drawEnemyTargetIndicators(player, player.x, player.y);
+    // drawEnemyTargetIndicators moved to main loop
     if (player.browsing) {
         displayInventory(player, drawX, drawY);
     }
@@ -907,66 +1032,7 @@ function drawTopRightComponentStats(player) {
     pop();
 }
 
-function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
-    // Only proceed if the controlled player has a party
-    if (!controlledPlayer || !controlledPlayer.party) {
-        return;
-    }
 
-    // Loop through all players to find party members
-    for (let i in players) {
-        const player = players[i];
-
-        // Skip if this player doesn't have a party or it's not the same party
-        if (!player.party ||
-            player.party.r !== controlledPlayer.party.r ||
-            player.party.g !== controlledPlayer.party.g ||
-            player.party.b !== controlledPlayer.party.b) {
-            continue;
-        }
-
-        // Skip the controlled player (don't draw indicator for yourself)
-        if (player.username === controlledPlayer.username) {
-            continue;
-        }
-
-        // Calculate draw position
-        const drawX = windowWidth / 2 + (player.x - centerX);
-        const drawY = windowHeight / 2 + (player.y - centerY);
-
-        // Check if player is out of bounds
-        if (drawX < 0 || drawX > windowWidth || drawY < 0 || drawY > windowHeight) {
-            // Clamp positions to screen edges
-            let indicatorX = drawX;
-            let indicatorY = drawY;
-
-            if (drawX < 0) indicatorX = 40;
-            else if (drawX > windowWidth) indicatorX = windowWidth - 40;
-
-            if (drawY < 0) indicatorY = 40;
-            else if (drawY > windowHeight) indicatorY = windowHeight - 40;
-
-            // Draw party indicator triangle
-            push();
-            translate(indicatorX, indicatorY);
-            rotate(player.angle);
-            fill(player.party.r, player.party.g, player.party.b);
-            stroke(0);
-            triangle(-5, -3, -5, 3, 7, 0);
-            pop();
-
-            // Draw username
-            fill(player.party.r, player.party.g, player.party.b);
-            textAlign(CENTER);
-            textSize(12);
-            text(player.username, indicatorX, indicatorY - 15);
-
-            // Calculate and display distance
-            let distance = Math.sqrt((player.x - controlledPlayer.x) ** 2 + (player.y - controlledPlayer.y) ** 2);
-            text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
-        }
-    }
-}
 
 function drawStallWarning(player, drawX, drawY) {
     speed = Math.sqrt(player.vx ** 2 + player.vy ** 2).toFixed(0);
