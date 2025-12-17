@@ -156,6 +156,25 @@ function draw() {
             if (controlledPlayer) {
                 previousBiome = controlledPlayer.biome;
             }
+
+            // Smooth visual interpolation for all players
+            players.forEach(p => {
+                if (typeof p.displayX === 'undefined') {
+                    p.displayX = p.x;
+                    p.displayY = p.y;
+                }
+                // Smoothly interpolate display position towards physics position
+                // Use a fixed lerp factor. 0.3 is a good balance between smoothness and responsiveness.
+                let smoothFactor = 0.3;
+                p.displayX = lerp(p.displayX, p.x, smoothFactor);
+                p.displayY = lerp(p.displayY, p.y, smoothFactor);
+                
+                // Snap if too far (teleport)
+                if (dist(p.x, p.y, p.displayX, p.displayY) > 500) {
+                    p.displayX = p.x;
+                    p.displayY = p.y;
+                }
+            });
             
             serverSync(controlledPlayer);
             if (clientEstimating) {
@@ -244,7 +263,12 @@ function handleGameDisplay(controlledPlayer) {
         }
         
         // Calculate camera center between player and mouse cursor
-        const cameraCenter = getCameraCenter(controlledPlayer, mouseX, mouseY);
+        // Use display coordinates for smooth camera
+        const cameraCenter = getCameraCenter({
+            ...controlledPlayer, 
+            x: controlledPlayer.displayX, 
+            y: controlledPlayer.displayY
+        }, mouseX, mouseY);
         const centerX = cameraCenter.x;
         const centerY = cameraCenter.y;
         

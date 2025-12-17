@@ -172,9 +172,18 @@ function displayPlayers(centerX = 0, centerY = -400) {
         stroke(0);
         rectMode(CENTER);
         const player = players[i];
-        const drawX = windowWidth / 2 + (player.x - centerX);
-        const drawY = windowHeight / 2 + (player.y - centerY);
-        displayPlayer(player, drawX, drawY);
+        
+        // Use display coordinates if available (for smoothing), otherwise physics coordinates
+        const pX = (typeof player.displayX !== 'undefined') ? player.displayX : player.x;
+        const pY = (typeof player.displayY !== 'undefined') ? player.displayY : player.y;
+        
+        const drawX = windowWidth / 2 + (pX - centerX);
+        const drawY = windowHeight / 2 + (pY - centerY);
+        
+        // Create a visual proxy for displayPlayer so particles spawn at visual location
+        const visualPlayer = { ...player, x: pX, y: pY };
+        
+        displayPlayer(visualPlayer, drawX, drawY);
         if (player.username === username) {
             displayControlledPlayerStatus(player, drawX, drawY);
         } else {

@@ -179,6 +179,16 @@ function handleDecodedMessage(decodedMessage) {
             } else {
                 const newPlayers = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
                 
+                // Preserve visual state (displayX/Y) across updates
+                const visualState = new Map();
+                if (players && players.length > 0) {
+                    players.forEach(p => {
+                        if (p.username && typeof p.displayX !== 'undefined') {
+                            visualState.set(p.username, { x: p.displayX, y: p.displayY });
+                        }
+                    });
+                }
+
                 // Handle reconciliation for local player
                 if (typeof reconcilePlayer === 'function' && username) {
                     const localPlayerServerState = newPlayers.find(p => p.username === username);
@@ -187,21 +197,20 @@ function handleDecodedMessage(decodedMessage) {
                     }
                 }
                 
-                // For now, we still update the global players array, but reconciliation will fix the local player
-                // Ideally, we would merge the reconciled local player back into this array
                 players = newPlayers;
                 
-                // Re-apply reconciled state to the player object in the array
-                if (username) {
-                    const localPlayer = players.find(p => p.username === username);
-                    if (localPlayer && typeof reconcilePlayer === 'function') {
-                        // reconcilePlayer modifies the object in-place if passed, or we can call it again
-                        // Actually, reconcilePlayer in Prediction.js will likely modify the object passed to it.
-                        // Since we just replaced the array, we need to make sure the object in the array is the one we want.
-                        // The previous call to reconcilePlayer(localPlayerServerState) modified the object from the new array.
-                        // So 'players' now contains the reconciled local player.
+                // Restore visual state
+                players.forEach(p => {
+                    if (visualState.has(p.username)) {
+                        const state = visualState.get(p.username);
+                        p.displayX = state.x;
+                        p.displayY = state.y;
+                    } else {
+                        // Initialize for new players
+                        p.displayX = p.x;
+                        p.displayY = p.y;
                     }
-                }
+                });
             }
             break;
 
