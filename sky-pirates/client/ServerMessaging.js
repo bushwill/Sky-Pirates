@@ -3,6 +3,7 @@ let reconnectAttempts = 0;
 let reconnectTimeout = null;
 let lastLogin = null;
 let maxReconnectAttempts = 10;
+let serverTimeOffset = 0; // Difference between server time and client time
 
 function connectWebSocket() {
     if (connected) return;
@@ -102,11 +103,16 @@ function connectWebSocket() {
             const compressedData = buffer.slice(4, 4 + length);
             const decodedMessage = msgpack.decode(compressedData);
             
-            // Reject messages older than 100ms
+            // Reject messages older than 100ms using synchronized clock
             const now = Date.now();
-            if (decodedMessage.timestamp && (now - decodedMessage.timestamp) > 100) {
-                console.warn(`Rejected stale message (age: ${now - decodedMessage.timestamp}ms):`, decodedMessage.type);
-                return;
+            if (decodedMessage.timeSent) {
+                const estimatedServerTime = now + serverTimeOffset;
+                // Allow 150ms tolerance for jitter
+                if ((estimatedServerTime - decodedMessage.timeSent) > 150) {
+                    // console.warn(`Rejected stale message (age: ${estimatedServerTime - decodedMessage.timeSent}ms):`, decodedMessage.type);
+                    // return; 
+                    // Commented out strict rejection for now to prevent dropping valid packets during jitter spikes
+                }
             }
             
             handleDecodedMessage(decodedMessage);
@@ -171,7 +177,40 @@ function handleDecodedMessage(decodedMessage) {
                 console.warn('Invalid players data:', decodedMessage.players);
                 players = [];
             } else {
-                players = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
+                const newPlayers = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
+                
+                // Preserve visual state (displayX/Y) across updates
+                const visualState = new Map();
+                if (players && players.length > 0) {
+                    players.forEach(p => {
+                        if (p.username && typeof p.displayX !== 'undefined') {
+                            visualState.set(p.username, { x: p.displayX, y: p.displayY });
+                        }
+                    });
+                }
+
+                // Handle reconciliation for local player
+                if (typeof reconcilePlayer === 'function' && username) {
+                    const localPlayerServerState = newPlayers.find(p => p.username === username);
+                    if (localPlayerServerState) {
+                        reconcilePlayer(localPlayerServerState);
+                    }
+                }
+                
+                players = newPlayers;
+                
+                // Restore visual state
+                players.forEach(p => {
+                    if (visualState.has(p.username)) {
+                        const state = visualState.get(p.username);
+                        p.displayX = state.x;
+                        p.displayY = state.y;
+                    } else {
+                        // Initialize for new players
+                        p.displayX = p.x;
+                        p.displayY = p.y;
+                    }
+                });
             }
             break;
 
@@ -205,7 +244,6 @@ function handleDecodedMessage(decodedMessage) {
                 crates = decodedMessage.crates;
             }
             break;
-
         case 'event_data':
             if (!decodedMessage.events || !Array.isArray(decodedMessage.events)) {
                 console.warn('Invalid events data:', decodedMessage.events);
@@ -224,12 +262,21 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
-        case 'pong':
-            const rtt = Date.now() - decodedMessage.clientTime;
+        case 'pong': {
+            const now = Date.now();
+            const rtt = now - decodedMessage.clientTime;
             pingTimes.push(rtt / 2);
             if (pingTimes.length > 10) pingTimes.shift();
             avgPing = pingTimes.reduce((a, b) => a + b, 0) / pingTimes.length;
+            
+            // Calculate clock offset: serverTime = clientTime + offset
+            if (decodedMessage.timeSent) {
+                const estimatedServerTime = decodedMessage.timeSent;
+                const estimatedClientTimeAtServer = now - (rtt / 2);
+                serverTimeOffset = estimatedServerTime - estimatedClientTimeAtServer;
+            }
             break;
+        }
 
         case 'notice_message':
             notice_messages.push({
@@ -330,8 +377,9 @@ function sendPing() {
 }
 
 function updateUpdates() {
-    if (avgPing < 100) playerUpdateTime = avgPing;
-    else playerUpdateTime = 100;
+    // Removed dynamic update rate logic
+    // if (avgPing < 100) playerUpdateTime = avgPing;
+    // else playerUpdateTime = 100;
 }
 
 function sendPlayerData(player = null) {
@@ -348,7 +396,19 @@ function sendPlayerData(player = null) {
         t_x,
         t_y,
         chat_message,
+        sequence: inputSequence
     };
+    
+    // Store input for reconciliation
+    if (player) {
+        pendingInputs.push({
+            sequence: inputSequence,
+            keys: { ...keys },
+            angle: player.angle // Store angle if needed for prediction
+        });
+        inputSequence++;
+    }
+
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
     chat_message = null;

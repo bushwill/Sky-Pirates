@@ -8,12 +8,16 @@ let pingTimes = [];
 let connected = false;
 let reconnecting = false;
 let avgPing = 100;
-let playerUpdateTime = 100;
+let playerUpdateTime = 50; // Fixed update rate (20Hz) for consistent input handling
 let lastPlayerUpdate = 0;
 let pingUpdateTime = 100;
 let lastPing = 0;
 let gameUpdateTime = 10;
 let lastGameUpdate = 0;
+
+// Input prediction and reconciliation
+let inputSequence = 0;
+let pendingInputs = []; // Buffer to store inputs for reconciliation
 
 // Map and biome tracking
 let mapData;
@@ -152,17 +156,41 @@ function draw() {
             if (controlledPlayer) {
                 previousBiome = controlledPlayer.biome;
             }
+
+            // Smooth visual interpolation for all players
+            players.forEach(p => {
+                if (typeof p.displayX === 'undefined') {
+                    p.displayX = p.x;
+                    p.displayY = p.y;
+                }
+                // Smoothly interpolate display position towards physics position
+                // Use a fixed lerp factor. 0.3 is a good balance between smoothness and responsiveness.
+                let smoothFactor = 0.3;
+                p.displayX = lerp(p.displayX, p.x, smoothFactor);
+                p.displayY = lerp(p.displayY, p.y, smoothFactor);
+                
+                // Snap if too far (teleport)
+                if (dist(p.x, p.y, p.displayX, p.displayY) > 500) {
+                    p.displayX = p.x;
+                    p.displayY = p.y;
+                }
+            });
             
             serverSync(controlledPlayer);
             if (clientEstimating) {
-                estimatePlayerPositions();
-                estimateEnemyPositions();
-                estimateProjectilePositions();
-                estimateCratePositions();
+                // Use actual frame time for prediction to match real-time speed
+                // p5.js deltaTime is in milliseconds, convert to seconds
+                // Cap dt to avoid huge jumps if frame drops (e.g. max 100ms)
+                const dt = Math.min(deltaTime, 100) / 1000;
+                
+                estimatePlayerPositions(dt);
+                estimateEnemyPositions(dt);
+                estimateProjectilePositions(dt);
+                estimateCratePositions(dt);
 
                 // Use advanced prediction for controlled player only
                 if (controlledPlayer) {
-                    advancedPlayerPrediction(controlledPlayer, keys);
+                    advancedPlayerPrediction(controlledPlayer, keys, dt);
                 }
             }
             if (mapData) {
@@ -185,7 +213,7 @@ function draw() {
 // ========================================
 
 function serverSync(player = null) {
-    updateUpdates();
+    // updateUpdates(); // Removed dynamic update rate to ensure consistent input sampling
     if (millis() - lastPlayerUpdate > playerUpdateTime) {
         sendPlayerData(player);
         getPlayerData();
@@ -235,7 +263,12 @@ function handleGameDisplay(controlledPlayer) {
         }
         
         // Calculate camera center between player and mouse cursor
-        const cameraCenter = getCameraCenter(controlledPlayer, mouseX, mouseY);
+        // Use display coordinates for smooth camera
+        const cameraCenter = getCameraCenter({
+            ...controlledPlayer, 
+            x: controlledPlayer.displayX, 
+            y: controlledPlayer.displayY
+        }, mouseX, mouseY);
         const centerX = cameraCenter.x;
         const centerY = cameraCenter.y;
         

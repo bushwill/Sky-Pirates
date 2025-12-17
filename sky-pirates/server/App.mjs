@@ -1950,7 +1950,14 @@ function handleIncomingMessage(ws, message) {
       handleUpdate(ws, message);
       break;
     case 'get_players':
-      sendMessage(ws, { type: 'player_data', players: players });
+      const serializedPlayers = players.map(p => {
+        // Create a base object with all properties needed by client
+        const pData = Object.assign({}, p);
+        // Ensure lastInputSequence is included
+        pData.lastInputSequence = p.lastInputSequence || 0;
+        return pData;
+      });
+      sendMessage(ws, { type: 'player_data', players: serializedPlayers });
       break;
     case 'get_enemies':
       const playerForEnemies = getPlayerOrRespawningPlayer(ws.currentUsername);
@@ -2280,12 +2287,15 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
   }
 }
 
-function handleUpdate(ws, { username, keys, t_x, t_y, chat_message }) {
+function handleUpdate(ws, { username, keys, t_x, t_y, chat_message, sequence }) {
   const player = players.find((p) => p.username === username);
   if (player) {
     player.keys = keys || player.keys;
     player.t_x = t_x;
     player.t_y = t_y;
+    if (sequence) {
+      player.lastInputSequence = sequence;
+    }
     if (chat_message) {
       logMessage(username, chat_message);
       if (chat_message[0] === '/') checkCommand(chat_message, player);
