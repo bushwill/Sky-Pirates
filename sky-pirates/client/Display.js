@@ -65,9 +65,18 @@ function displayEnemies(centerX = 0, centerY = -400) {
         stroke(100, 0, 0); // Different color for enemies
         rectMode(CENTER);
         const enemy = enemies[i];
-        const drawX = windowWidth / 2 + (enemy.x - centerX);
-        const drawY = windowHeight / 2 + (enemy.y - centerY);
-        displayEnemy(enemy, drawX, drawY, centerX, centerY);
+        
+        // Use display coordinates if available (for smoothing), otherwise physics coordinates
+        const eX = (typeof enemy.displayX !== 'undefined') ? enemy.displayX : enemy.x;
+        const eY = (typeof enemy.displayY !== 'undefined') ? enemy.displayY : enemy.y;
+        
+        const drawX = windowWidth / 2 + (eX - centerX);
+        const drawY = windowHeight / 2 + (eY - centerY);
+        
+        // Create a visual proxy for displayEnemy so particles spawn at visual location
+        const visualEnemy = { ...enemy, x: eX, y: eY };
+        
+        displayEnemy(visualEnemy, drawX, drawY, centerX, centerY);
     }
 }
 
@@ -174,15 +183,22 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
     if (!controlledPlayer) return;
     
     // Calculate player's screen position
-    const playerScreenX = windowWidth / 2 + (controlledPlayer.x - centerX);
-    const playerScreenY = windowHeight / 2 + (controlledPlayer.y - centerY);
+    const pX = (typeof controlledPlayer.displayX !== 'undefined') ? controlledPlayer.displayX : controlledPlayer.x;
+    const pY = (typeof controlledPlayer.displayY !== 'undefined') ? controlledPlayer.displayY : controlledPlayer.y;
+    
+    const playerScreenX = windowWidth / 2 + (pX - centerX);
+    const playerScreenY = windowHeight / 2 + (pY - centerY);
 
     for (let i in enemies) {
         const enemy = enemies[i];
         // Check if enemy has the controlled player targeted (using targetUsername from server)
         if (enemy.targetUsername && enemy.targetUsername === controlledPlayer.username) {
-            const drawX = windowWidth / 2 + (enemy.x - centerX);
-            const drawY = windowHeight / 2 + (enemy.y - centerY);
+            // Use display coordinates if available
+            const eX = (typeof enemy.displayX !== 'undefined') ? enemy.displayX : enemy.x;
+            const eY = (typeof enemy.displayY !== 'undefined') ? enemy.displayY : enemy.y;
+            
+            const drawX = windowWidth / 2 + (eX - centerX);
+            const drawY = windowHeight / 2 + (eY - centerY);
             
             if (!isOnScreen(drawX, drawY)) {
                 // Calculate intersection from player's screen position to enemy's screen position
@@ -217,7 +233,7 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
                 textSize(12);
                 text(enemy.faction ?? "Enemy", indicatorX, indicatorY - 15);
                 // Display distance to player
-                let distance = Math.sqrt((enemy.x - controlledPlayer.x) ** 2 + (enemy.y - controlledPlayer.y) ** 2);
+                let distance = Math.sqrt((eX - pX) ** 2 + (eY - pY) ** 2);
                 text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
             }
         }
@@ -246,7 +262,7 @@ function displayPlayers(centerX = 0, centerY = -400) {
         } else {
             displayOtherPlayerStatus(player, drawX, drawY);
         }
-        displayMessages(player, centerX, centerY);
+        displayMessages(player, drawX, drawY);
     }
 }
 
@@ -299,8 +315,11 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
     }
 
     // Calculate player's screen position
-    const playerScreenX = windowWidth / 2 + (controlledPlayer.x - centerX);
-    const playerScreenY = windowHeight / 2 + (controlledPlayer.y - centerY);
+    const pX = (typeof controlledPlayer.displayX !== 'undefined') ? controlledPlayer.displayX : controlledPlayer.x;
+    const pY = (typeof controlledPlayer.displayY !== 'undefined') ? controlledPlayer.displayY : controlledPlayer.y;
+    
+    const playerScreenX = windowWidth / 2 + (pX - centerX);
+    const playerScreenY = windowHeight / 2 + (pY - centerY);
 
     // Loop through all players to find party members
     for (let i in players) {
@@ -320,8 +339,11 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
         }
 
         // Calculate draw position
-        const drawX = windowWidth / 2 + (player.x - centerX);
-        const drawY = windowHeight / 2 + (player.y - centerY);
+        const memberX = (typeof player.displayX !== 'undefined') ? player.displayX : player.x;
+        const memberY = (typeof player.displayY !== 'undefined') ? player.displayY : player.y;
+        
+        const drawX = windowWidth / 2 + (memberX - centerX);
+        const drawY = windowHeight / 2 + (memberY - centerY);
 
         // Check if player is out of bounds
         if (!isOnScreen(drawX, drawY)) {
@@ -346,7 +368,7 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
             text(player.username, indicatorX, indicatorY - 15);
 
             // Calculate and display distance
-            let distance = Math.sqrt((player.x - controlledPlayer.x) ** 2 + (player.y - controlledPlayer.y) ** 2);
+            let distance = Math.sqrt((memberX - pX) ** 2 + (memberY - pY) ** 2);
             text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
         } else {
             // Draw party indicator above player if on screen
@@ -705,8 +727,12 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
         // Find the carrier player object by username
         const carrierPlayer = players.find(p => p.username === crate.carrier);
         if (carrierPlayer) {
-            const carrierDrawX = windowWidth / 2 + (carrierPlayer.x - centerX);
-            const carrierDrawY = windowHeight / 2 + (carrierPlayer.y - centerY);
+            // Use display coordinates if available (for smoothing), otherwise physics coordinates
+            const pX = (typeof carrierPlayer.displayX !== 'undefined') ? carrierPlayer.displayX : carrierPlayer.x;
+            const pY = (typeof carrierPlayer.displayY !== 'undefined') ? carrierPlayer.displayY : carrierPlayer.y;
+
+            const carrierDrawX = windowWidth / 2 + (pX - centerX);
+            const carrierDrawY = windowHeight / 2 + (pY - centerY);
             line(drawX, drawY, carrierDrawX, carrierDrawY);
         } else {
             // Check if carrier is an enemy
@@ -1235,13 +1261,12 @@ function drawCompass(controlledPlayer) {
     }
 }
 
-function displayMessages(player, centerX = 0, centerY = 0) {
+function displayMessages(player, drawX, drawY) {
     stroke(0);
     fill(255);
     textSize(12);
     textAlign(CENTER);
-    const drawX = windowWidth / 2 + (player.x - centerX);
-    const drawY = windowHeight / 2 + (player.y - centerY);
+    
     if (!chatting || player.username !== username) {
         for (let i in player.messages) {
             const message = player.messages[i];
