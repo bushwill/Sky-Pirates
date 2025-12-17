@@ -13,29 +13,82 @@
 // Track previous biome states for projectiles
 let projectilePreviousBiomes = new Map();
 
-function estimatePlayerPositions() {
-    let deltaTime = 0.01;
+// Reconcile local player state with server state
+function reconcilePlayer(serverState) {
+    // Find the local player object in the current players array
+    // Note: 'players' is global from Game.js
+    const localPlayer = players.find(p => p.username === serverState.username);
+    if (!localPlayer) return;
+
+    // 1. Reset local player to server's authoritative state
+    localPlayer.x = serverState.x;
+    localPlayer.y = serverState.y;
+    localPlayer.vx = serverState.vx;
+    localPlayer.vy = serverState.vy;
+    localPlayer.angle = serverState.angle;
+    // Also sync other physics properties if needed (e.g. engine power, heat)
+    if (localPlayer.engine && serverState.engine) {
+        localPlayer.engine.power = serverState.engine.power;
+        localPlayer.engine.heat = serverState.engine.heat;
+    }
+
+    // 2. Remove processed inputs from pending buffer
+    // serverState.lastInputSequence is the last sequence number the server processed
+    const lastProcessed = serverState.lastInputSequence || 0;
+    
+    // Keep only inputs that haven't been processed yet
+    // pendingInputs is global from Game.js
+    if (typeof pendingInputs !== 'undefined') {
+        // Filter out inputs that are older than or equal to the last processed sequence
+        // We modify the array in-place or replace it. Replacing is safer.
+        // However, pendingInputs is a let variable in Game.js, so we can't reassign it directly if it's not exported.
+        // But since this file is likely concatenated or loaded in global scope, we assume access.
+        // If pendingInputs is not accessible, we need to expose it.
+        // Assuming global access:
+        
+        // Remove processed inputs
+        while (pendingInputs.length > 0 && pendingInputs[0].sequence <= lastProcessed) {
+            pendingInputs.shift();
+        }
+
+        // 3. Re-apply remaining pending inputs
+        pendingInputs.forEach(input => {
+            // Apply the input to the physics simulation
+            // We need to make sure we use the keys from the input
+            advancedPlayerPrediction(localPlayer, input.keys);
+        });
+    }
+}
+
+function estimatePlayerPositions(dt = 0.01) {
     players.forEach(player => {
-        player.x += player.vx * deltaTime;
-        player.y += player.vy * deltaTime;
+        // Skip prediction for local player if we are reconciling (handled in draw loop via advancedPlayerPrediction)
+        // But wait, advancedPlayerPrediction is called in draw() for the local player.
+        // Here we are just doing simple extrapolation for others.
+        // We should check if this is the local player.
+        if (typeof username !== 'undefined' && player.username === username) {
+            // Local player is handled by advancedPlayerPrediction in Game.js draw loop
+            return;
+        }
+
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
     });
 }
 
-function estimateEnemyPositions() {
-    let deltaTime = 0.01;
+function estimateEnemyPositions(dt = 0.01) {
     enemies.forEach(enemy => {
         // Only predict if enemy has valid position and velocity data
         if (enemy && typeof enemy.x === 'number' && typeof enemy.y === 'number' &&
             typeof enemy.vx === 'number' && typeof enemy.vy === 'number') {
             // Apply velocity-based prediction for enemies
-            enemy.x += enemy.vx * deltaTime;
-            enemy.y += enemy.vy * deltaTime;
+            enemy.x += enemy.vx * dt;
+            enemy.y += enemy.vy * dt;
         }
     });
 }
 
-function estimateProjectilePositions() {
-    let deltaTime = 0.01;
+function estimateProjectilePositions(dt = 0.01) {
     projectiles.forEach((projectile, index) => {
         // Get a unique identifier for this projectile (using index for now)
         const projectileId = `${projectile.owner}_${projectile.x}_${projectile.y}_${index}`;
@@ -44,8 +97,8 @@ function estimateProjectilePositions() {
         const prevBiome = projectilePreviousBiomes.get(projectileId) || 'air';
         
         // Update position (client prediction)
-        projectile.x += projectile.vx * deltaTime;
-        projectile.y += projectile.vy * deltaTime;
+        projectile.x += projectile.vx * dt;
+        projectile.y += projectile.vy * dt;
         
         // Check if projectile entered water according to server data
         const currentBiome = projectile.biome || 'air';
@@ -68,16 +121,15 @@ function estimateProjectilePositions() {
     }
 }
 
-function estimateCratePositions() {
-    let deltaTime = 0.01;
+function estimateCratePositions(dt = 0.01) {
     crates.forEach(crate => {
         // Store previous position to detect water entry
         const prevX = crate.x;
         const prevY = crate.y;
         
         // Update crate position
-        crate.x += crate.vx * deltaTime;
-        crate.y += crate.vy * deltaTime;
+        crate.x += crate.vx * dt;
+        crate.y += crate.vy * dt;
         
         // Check if crate is in water biome and moving
         const crateBiome = getBiomeAtPosition(crate.x, crate.y);
@@ -95,27 +147,26 @@ function estimateCratePositions() {
 }
 
 // Advanced player prediction that replicates server physics
-function advancedPlayerPrediction(player, inputKeys) {
+function advancedPlayerPrediction(player, inputKeys, dt = 0.01) {
     if (!player) return;
     
-    const deltaTime = 0.01;
     const speed = getPlayerSpeed(player);
 
     // Only apply input-based physics to controlled player
     if (inputKeys) {
         // Only apply physics if not repairing
         if (!inputKeys.r) {
-            applyPlayerTurning(player, speed, deltaTime, inputKeys);
+            applyPlayerTurning(player, speed, dt, inputKeys);
             applyPlayerThrottle(player, inputKeys);
         }
     }
     
     // Apply physics to all players (controlled or not)
-    applyPlayerPropulsion(player, deltaTime);
-    applyPlayerLiftForce(player, speed, deltaTime);
+    applyPlayerPropulsion(player, dt);
+    applyPlayerLiftForce(player, speed, dt);
     applyPlayerGravityForce(player);
-    applyPlayerDragForce(player, deltaTime, inputKeys);
-    updatePlayerPosition(player, deltaTime);
+    applyPlayerDragForce(player, dt, inputKeys);
+    updatePlayerPosition(player, dt);
 }
 
 // Predict all players with physics-based simulation

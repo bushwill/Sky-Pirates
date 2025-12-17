@@ -8,12 +8,16 @@ let pingTimes = [];
 let connected = false;
 let reconnecting = false;
 let avgPing = 100;
-let playerUpdateTime = 100;
+let playerUpdateTime = 50; // Fixed update rate (20Hz) for consistent input handling
 let lastPlayerUpdate = 0;
 let pingUpdateTime = 100;
 let lastPing = 0;
 let gameUpdateTime = 10;
 let lastGameUpdate = 0;
+
+// Input prediction and reconciliation
+let inputSequence = 0;
+let pendingInputs = []; // Buffer to store inputs for reconciliation
 
 // Map and biome tracking
 let mapData;
@@ -155,14 +159,19 @@ function draw() {
             
             serverSync(controlledPlayer);
             if (clientEstimating) {
-                estimatePlayerPositions();
-                estimateEnemyPositions();
-                estimateProjectilePositions();
-                estimateCratePositions();
+                // Use actual frame time for prediction to match real-time speed
+                // p5.js deltaTime is in milliseconds, convert to seconds
+                // Cap dt to avoid huge jumps if frame drops (e.g. max 100ms)
+                const dt = Math.min(deltaTime, 100) / 1000;
+                
+                estimatePlayerPositions(dt);
+                estimateEnemyPositions(dt);
+                estimateProjectilePositions(dt);
+                estimateCratePositions(dt);
 
                 // Use advanced prediction for controlled player only
                 if (controlledPlayer) {
-                    advancedPlayerPrediction(controlledPlayer, keys);
+                    advancedPlayerPrediction(controlledPlayer, keys, dt);
                 }
             }
             if (mapData) {
@@ -185,7 +194,7 @@ function draw() {
 // ========================================
 
 function serverSync(player = null) {
-    updateUpdates();
+    // updateUpdates(); // Removed dynamic update rate to ensure consistent input sampling
     if (millis() - lastPlayerUpdate > playerUpdateTime) {
         sendPlayerData(player);
         getPlayerData();

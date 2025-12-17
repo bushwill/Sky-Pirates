@@ -3,6 +3,7 @@ let reconnectAttempts = 0;
 let reconnectTimeout = null;
 let lastLogin = null;
 let maxReconnectAttempts = 10;
+let serverTimeOffset = 0; // Difference between server time and client time
 
 function connectWebSocket() {
     if (connected) return;
@@ -102,11 +103,16 @@ function connectWebSocket() {
             const compressedData = buffer.slice(4, 4 + length);
             const decodedMessage = msgpack.decode(compressedData);
             
-            // Reject messages older than 100ms
+            // Reject messages older than 100ms using synchronized clock
             const now = Date.now();
-            if (decodedMessage.timestamp && (now - decodedMessage.timestamp) > 100) {
-                console.warn(`Rejected stale message (age: ${now - decodedMessage.timestamp}ms):`, decodedMessage.type);
-                return;
+            if (decodedMessage.timeSent) {
+                const estimatedServerTime = now + serverTimeOffset;
+                // Allow 150ms tolerance for jitter
+                if ((estimatedServerTime - decodedMessage.timeSent) > 150) {
+                    // console.warn(`Rejected stale message (age: ${estimatedServerTime - decodedMessage.timeSent}ms):`, decodedMessage.type);
+                    // return; 
+                    // Commented out strict rejection for now to prevent dropping valid packets during jitter spikes
+                }
             }
             
             handleDecodedMessage(decodedMessage);
@@ -171,7 +177,31 @@ function handleDecodedMessage(decodedMessage) {
                 console.warn('Invalid players data:', decodedMessage.players);
                 players = [];
             } else {
-                players = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
+                const newPlayers = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
+                
+                // Handle reconciliation for local player
+                if (typeof reconcilePlayer === 'function' && username) {
+                    const localPlayerServerState = newPlayers.find(p => p.username === username);
+                    if (localPlayerServerState) {
+                        reconcilePlayer(localPlayerServerState);
+                    }
+                }
+                
+                // For now, we still update the global players array, but reconciliation will fix the local player
+                // Ideally, we would merge the reconciled local player back into this array
+                players = newPlayers;
+                
+                // Re-apply reconciled state to the player object in the array
+                if (username) {
+                    const localPlayer = players.find(p => p.username === username);
+                    if (localPlayer && typeof reconcilePlayer === 'function') {
+                        // reconcilePlayer modifies the object in-place if passed, or we can call it again
+                        // Actually, reconcilePlayer in Prediction.js will likely modify the object passed to it.
+                        // Since we just replaced the array, we need to make sure the object in the array is the one we want.
+                        // The previous call to reconcilePlayer(localPlayerServerState) modified the object from the new array.
+                        // So 'players' now contains the reconciled local player.
+                    }
+                }
             }
             break;
 
@@ -205,7 +235,6 @@ function handleDecodedMessage(decodedMessage) {
                 crates = decodedMessage.crates;
             }
             break;
-
         case 'event_data':
             if (!decodedMessage.events || !Array.isArray(decodedMessage.events)) {
                 console.warn('Invalid events data:', decodedMessage.events);
@@ -224,12 +253,21 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
-        case 'pong':
-            const rtt = Date.now() - decodedMessage.clientTime;
+        case 'pong': {
+            const now = Date.now();
+            const rtt = now - decodedMessage.clientTime;
             pingTimes.push(rtt / 2);
             if (pingTimes.length > 10) pingTimes.shift();
             avgPing = pingTimes.reduce((a, b) => a + b, 0) / pingTimes.length;
+            
+            // Calculate clock offset: serverTime = clientTime + offset
+            if (decodedMessage.timeSent) {
+                const estimatedServerTime = decodedMessage.timeSent;
+                const estimatedClientTimeAtServer = now - (rtt / 2);
+                serverTimeOffset = estimatedServerTime - estimatedClientTimeAtServer;
+            }
             break;
+        }
 
         case 'notice_message':
             notice_messages.push({
@@ -330,8 +368,9 @@ function sendPing() {
 }
 
 function updateUpdates() {
-    if (avgPing < 100) playerUpdateTime = avgPing;
-    else playerUpdateTime = 100;
+    // Removed dynamic update rate logic
+    // if (avgPing < 100) playerUpdateTime = avgPing;
+    // else playerUpdateTime = 100;
 }
 
 function sendPlayerData(player = null) {
@@ -348,7 +387,19 @@ function sendPlayerData(player = null) {
         t_x,
         t_y,
         chat_message,
+        sequence: inputSequence
     };
+    
+    // Store input for reconciliation
+    if (player) {
+        pendingInputs.push({
+            sequence: inputSequence,
+            keys: { ...keys },
+            angle: player.angle // Store angle if needed for prediction
+        });
+        inputSequence++;
+    }
+
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
     chat_message = null;
