@@ -516,6 +516,25 @@ function displayEvent(event, centerX = 0, centerY = -400) {
             
             spawnParticle(event.x, event.y, 0, fvx, fvy, fvz, fr, fg, fb, flameSize, flameLifetime, 'flame');
         }
+    } else if (event.type === 'animal_explosion') {
+        const particleCount = 10;
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 1.5 + 0.5;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            const vz = (Math.random() - 0.5) * 1;
+            
+            // Red blood color
+            const r = 200 + Math.random() * 55;
+            const g = 0;
+            const b = 0;
+            
+            const size = Math.random() * 1.5 + 1;
+            const lifetime = 30 + Math.random() * 20;
+            
+            spawnParticle(event.x, event.y, 0, vx, vy, vz, r, g, b, size, lifetime, 'water');
+        }
     } else if (event.type === 'gunshot') {
         // Gunshot event - smoke particles and muzzle flash
         // event.angle is the gun angle
@@ -714,6 +733,8 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
         fill(222, 191, 138);
     } else if (crate.type === 'component') {
         fill(255, 156, 69);
+    } else if (crate.type === 'weapon') {
+        fill(220, 50, 50);
     } else {
         fill(0, 255, 0);
     }
@@ -2119,4 +2140,41 @@ function drawEnemyDefault(enemy) {
 
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
+}
+function drawAnimals(centerX, centerY) {
+    animals.forEach(animal => {
+        // Calculate screen position relative to camera
+        const drawX = windowWidth / 2 + (animal.x - centerX);
+        const drawY = windowHeight / 2 + (animal.y - centerY);
+
+        // Only draw if on screen
+        if (isOnScreen(drawX, drawY, animal.size)) {
+            push();
+            translate(drawX, drawY);
+            rotate(animal.angle);
+
+            if (animal.type === 'fish') {
+                // Draw a simple fish
+                if (animal.r !== undefined) {
+                    fill(animal.r, animal.g, animal.b);
+                } else {
+                    fill(255, 100, 50); // Default fallback
+                }
+                noStroke();
+                ellipse(0, 0, animal.size * 2, animal.size); // Body
+                triangle(-animal.size, 0, -animal.size * 1.5, -animal.size/2, -animal.size * 1.5, animal.size/2); // Tail
+            } else if (animal.type === 'bird') {
+                // Draw a simple bird
+                fill(255);
+                noStroke();
+                ellipse(0, 0, animal.size, animal.size/2);
+                // Wings
+                stroke(0);
+                line(-animal.size/2, 0, -animal.size, -animal.size);
+                line(animal.size/2, 0, animal.size, -animal.size);
+            }
+
+            pop();
+        }
+    });
 }

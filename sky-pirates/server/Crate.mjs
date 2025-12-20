@@ -33,9 +33,9 @@ export class Crate{
     open(player) {
         if (this.type === 'money') {
             player.money += parseInt(this.cargo, 10);
-        } else if (this.type === 'component') {
+        } else if (this.type === 'component' || this.type === 'weapon') {
             this.cargo.position = player.inventory.length + 1; // Set the position in the inventory
-            player.inventory.push(this.cargo); // Add component to player's inventory
+            player.inventory.push(this.cargo); // Add component/weapon to player's inventory
         }
         player.detachCrate(this); // Detach the crate from the player
     }

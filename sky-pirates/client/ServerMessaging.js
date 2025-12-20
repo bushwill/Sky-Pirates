@@ -227,6 +227,15 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
+        case 'animal_data':
+            if (!decodedMessage.animals || !Array.isArray(decodedMessage.animals)) {
+                console.warn('Invalid animals data:', decodedMessage.animals);
+                animals = [];
+            } else {
+                animals = decodedMessage.animals;
+            }
+            break;
+
         case 'projectile_data':
             if (!decodedMessage.projectiles || !Array.isArray(decodedMessage.projectiles)) {
                 console.warn('Invalid projectiles data:', decodedMessage.projectiles);
@@ -441,6 +450,12 @@ function getPlayerData() {
 
 function getEnemyData() {
     const message = { type: 'get_enemies' };
+    const encodedMessage = msgpack.encode(message);
+    ws.send(encodedMessage);
+}
+
+function getAnimalData() {
+    const message = { type: 'get_animals' };
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
 }

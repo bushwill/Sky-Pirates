@@ -28,6 +28,7 @@ let previousBiome = null; // Track previous biome to detect when player enters r
 // Game entities
 let players = [];
 let enemies = [];
+let animals = [];
 let projectiles = [];
 let crates = [];
 let particles = [];
@@ -218,6 +219,7 @@ function serverSync(player = null) {
         sendPlayerData(player);
         getPlayerData();
         getEnemyData();
+        getAnimalData();
         getProjectileData();
         getCrateData();
         getEventData();
@@ -285,6 +287,7 @@ function handleGameDisplay(controlledPlayer) {
         drawMapPolygonsFronts(mapPolygonsMap, centerX, centerY);
         drawPartyIndicator(controlledPlayer, centerX, centerY);
         displayProjectiles(centerX, centerY);
+        drawAnimals(centerX, centerY);
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
         drawEnemyTargetIndicators(controlledPlayer, centerX, centerY);

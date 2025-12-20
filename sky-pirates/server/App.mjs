@@ -9,6 +9,7 @@ import fs from 'fs';
 import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
 import { NavySalvagePlane, NavySalvageBoat, EnemyPlane, DummyPlane } from './Enemy.mjs';
+import { Animal, Bird, Fish } from './Animal.mjs';
 import { Projectile } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { GameEvent } from './GameEvent.mjs';
@@ -34,9 +35,16 @@ const FLEET_RESPAWN_DELAY_MS = 2 * 60 * 1000;
 const MAX_FLEET_BOATS = 5;
 const MIN_FLEET_DISTANCE = 30000;
 
+// Animal Spawning Parameters
+const FISH_DENSITY_PER_KM = 5; // Target number of fish per 1000m radius
+const ANIMAL_SPAWN_RADIUS = 2000; // Radius around player to spawn/keep animals
+const ANIMAL_SPAWN_INTERVAL = 1000; // Check for spawning every 1 second
+let lastAnimalSpawnTime = 0;
+
 let timeSpeed = 1;
 let players = [];
 let enemies = [];
+let animals = [];
 const playerSockets = new Map();
 let parties = [];
 let lastEnemySpawnTime = 0;
@@ -47,6 +55,7 @@ let events = [];
 let crateScale = 10;
 let max_money_crates = crateScale * 40;
 let max_component_crates = crateScale * 10;
+let max_weapon_crates = crateScale * 2.5;
 let crateSpawnExclusionRadius = 1000;
 let pendingRespawns = []; // Track players waiting to respawn with { player, respawnTime }
 let lastFleetSpawnTime = 0;
@@ -108,6 +117,106 @@ function updateEnemies() {
 
     updateHull(enemy);
     enemy.messages = enemy.messages.filter((msg) => millis() - msg[0] < 8000);
+  });
+}
+
+function updateAnimals() {
+  const deltaTime = 0.01 * timeSpeed;
+  const DESPAWN_DISTANCE = ANIMAL_SPAWN_RADIUS; // Use the constant
+
+  // Spawning Logic
+  const now = Date.now();
+  if (now - lastAnimalSpawnTime > ANIMAL_SPAWN_INTERVAL) {
+    lastAnimalSpawnTime = now;
+    
+    players.forEach(player => {
+      // Count fish near player
+      let nearbyFish = 0;
+      const rangeSq = ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS;
+      
+      for (const animal of animals) {
+        if (animal.type === 'fish') {
+          const dx = animal.x - player.x;
+          const dy = animal.y - player.y;
+          if (dx*dx + dy*dy <= rangeSq) {
+            nearbyFish++;
+          }
+        }
+      }
+
+      // Calculate target (Density per 1000m of width)
+      const targetFish = (ANIMAL_SPAWN_RADIUS * 2 / 1000) * FISH_DENSITY_PER_KM;
+
+      if (nearbyFish < targetFish) {
+        // Spawn up to 2 fish per check to avoid spikes
+        const toSpawn = Math.min(targetFish - nearbyFish, 2);
+        
+        for (let i = 0; i < toSpawn; i++) {
+          // Random X within range
+          const offset = (Math.random() * 2 - 1) * ANIMAL_SPAWN_RADIUS;
+          const spawnX = player.x + offset;
+
+          // Find water biome at this X
+          const waterBiome = mapData.biomes.find(b => 
+            b.type === 'water' && 
+            spawnX >= b.x1 && spawnX <= b.x2
+          );
+
+          if (waterBiome) {
+            // Spawn near surface (top 200 units)
+            // Ensure we don't spawn below the bottom of the biome
+            const maxDepth = Math.min(200, waterBiome.y2 - waterBiome.y1);
+            const minDepth = 10;
+            const actualMax = Math.max(minDepth, maxDepth);
+            const depth = minDepth + Math.random() * (actualMax - minDepth);
+            const spawnY = waterBiome.y1 + depth;
+
+            // Check distance to player before spawning
+            const dx = spawnX - player.x;
+            const dy = spawnY - player.y;
+            if (dx * dx + dy * dy <= ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS) {
+              const fish = new Fish(Date.now() + Math.random(), spawnX, spawnY);
+              animals.push(fish);
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Filter out animals that are too far from all players
+  animals = animals.filter(animal => {
+    // Check if animal is within range of ANY player
+    const isNearPlayer = players.some(player => {
+      const dx = animal.x - player.x;
+      const dy = animal.y - player.y;
+      return (dx * dx + dy * dy) <= (DESPAWN_DISTANCE * DESPAWN_DISTANCE);
+    });
+
+    if (!isNearPlayer) {
+      return false; // Despawn
+    }
+
+    return true; // Keep
+  });
+
+  // Spatial Grid for efficient threat detection
+  const GRID_CELL_SIZE = 500;
+  const threatGrid = new Map();
+
+  function addToGrid(entity) {
+    const key = `${Math.floor(entity.x / GRID_CELL_SIZE)},${Math.floor(entity.y / GRID_CELL_SIZE)}`;
+    if (!threatGrid.has(key)) {
+      threatGrid.set(key, []);
+    }
+    threatGrid.get(key).push(entity);
+  }
+
+  players.forEach(addToGrid);
+  projectiles.forEach(addToGrid);
+
+  animals.forEach(animal => {
+    animal.update(deltaTime, threatGrid, GRID_CELL_SIZE);
   });
 }
 
@@ -349,6 +458,18 @@ function updateProjectile(projectile) {
       return;
     }
   }
+
+  for (const animal of animals) {
+    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
+      animal.x, animal.y, animal.size)) {
+      
+      const velocity = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
+      const event = new GameEvent('animal_explosion', animal.x, animal.y, projectile.angle, velocity);
+      events.push(event);
+
+      animals = animals.filter(a => a !== animal);
+    }
+  }
 }
 
 function createHitEvent(x, y, projectile) {
@@ -383,6 +504,7 @@ function updateShops() {
 function updateCrates() {
   generateMoneyCrates();
   generateStandardComponentCrates();
+  generateWeaponCrates();
   crates.forEach((crate) => {
     updateCrate(crate);
   });
@@ -609,7 +731,7 @@ function updateCrate(crate) {
       crate.open(player);
       if (crate.type === 'money') {
         sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
-      } else if (crate.type === 'component') {
+      } else if (crate.type === 'component' || crate.type === 'weapon') {
         sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
       }
       crate.removedFromWorld = true;
@@ -820,6 +942,62 @@ function generateRandomBasicComponentCrate(x, y) {
     component = createWings(manufacturer, level);
   }
   crates.push(new Crate(x, y, "component", component));
+}
+
+function generateWeaponCrates() {
+  const crate_count = max_weapon_crates - crates.filter(c => c.type === 'weapon').length;
+
+  if (players.length === 0 || crate_count <= 0) return;
+
+  // Update zone density ONCE before spawning all crates
+  updateZoneDensity();
+  
+  // Map boundaries
+  const seaLevel = 300; // Top of water biome from your map definition
+
+  for (let i = 0; i < crate_count; i++) {
+    // Find zone with lowest density for even distribution
+    const targetZone = findLowestDensityZone();
+    if (targetZone === undefined) {
+      console.warn("No valid zone found for crate spawning");
+      continue;
+    }
+    
+    // Get random position within the target zone
+    const x = getRandomXInZone(targetZone);
+    if (x === null) {
+      console.warn(`Could not generate valid position in zone ${targetZone}`);
+      continue;
+    }
+    const y = seaLevel;
+    
+    generateRandomWeaponCrate(x, y);
+    
+    // Incrementally update the zone density after spawning each crate
+    // This ensures subsequent crates in this batch avoid the same zone
+    const zoneId = getZoneId(x);
+    crateZoneDensity.set(zoneId, (crateZoneDensity.get(zoneId) || 0) + 1);
+  }
+}
+
+function generateRandomWeaponCrate(x, y) {
+  let value = Math.abs(x);
+  let level = 1;
+  let type = Math.floor(Math.random() * 3);
+  let component = null;
+
+  if (value >= 140000) level = 10;
+  else if (value >= 120000) level = 9;
+  else if (value >= 100000) level = 8;
+  else if (value >= 80000) level = 7;
+  else if (value >= 60000) level = 6;
+  else if (value >= 40000) level = 5;
+  else if (value >= 25000) level = 4;
+  else if (value >= 14000) level = 3;
+  else if (value >= 5000) level = 2;
+
+  component = createGun(type, level);
+  crates.push(new Crate(x, y, "weapon", component));
 }
 
 // --- Utility functions using your existing formulas ---
@@ -1987,6 +2165,11 @@ function handleIncomingMessage(ws, message) {
       });
       sendMessage(ws, { type: 'enemy_data', enemies: serializedEnemies });
       break;
+    case 'get_animals':
+      const playerForAnimals = getPlayerOrRespawningPlayer(ws.currentUsername);
+      const filteredAnimals = filterEntitiesInRange(animals, playerForAnimals);
+      sendMessage(ws, { type: 'animal_data', animals: filteredAnimals });
+      break;
     case 'get_parties':
       sendMessage(ws, { type: 'party_data', parties: getSerializableParties() });
       break;
@@ -2545,6 +2728,7 @@ function checkCommand(command, player) {
   let enemyweapontest_command = /^\/enemyweapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
   let spawnfleet_command = /^\/spawnfleet$/;
+  let spawnfish_command = /^\/spawnfish$/;
   let fleets_command = /^\/fleets$/;
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
@@ -2737,6 +2921,13 @@ function checkCommand(command, player) {
     console.log(`Fleet boat ${boatUsername} spawned by admin at (${Math.round(spawnX)}, ${spawnY}) with ${planes.length} planes`);
   }
 
+  match = command.match(spawnfish_command);
+  if (match) {
+    const fish = new Fish(Date.now(), player.x, player.y);
+    animals.push(fish);
+    sendNoticeMessage(player.username, `Spawned a fish at (${Math.round(player.x)}, ${Math.round(player.y)}).`, 'server');
+  }
+
   // List all known fleet boats and their locations
   match = command.match(fleets_command);
   if (match) {
@@ -2851,6 +3042,7 @@ setInterval(() => {
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
 setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
+setInterval(() => { if (players.length > 0 || animals.length > 0) updateAnimals() }, 10);
 setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
