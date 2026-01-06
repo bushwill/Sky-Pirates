@@ -72,6 +72,8 @@ let respawnDelay = false; // Whether we're in the respawn delay period
 let respawnDelayEnd = 0; // Timestamp when respawn delay ends
 let deathCameraX = 0; // Camera X position at death
 let deathCameraY = 0; // Camera Y position at death
+let globalCameraX = 0; // Global camera X for aiming logic
+let globalCameraY = 0; // Global camera Y for aiming logic
 
 // Settings dictionary - contains all user-configurable settings
 let settings = {
@@ -239,7 +241,30 @@ function serverSync(player = null) {
 }
 
 function handleGameDisplay(controlledPlayer) {
-    drawMapBackground(mapData);
+    // 1. Calculate Camera Position
+    let centerX = 0;
+    let centerY = 0;
+
+    if (controlledPlayer && signedIn) {
+        // Calculate camera center between player and mouse cursor
+        const cameraCenter = getCameraCenter({
+            ...controlledPlayer, 
+            x: controlledPlayer.displayX, 
+            y: controlledPlayer.displayY
+        }, mouseX, mouseY);
+        centerX = cameraCenter.x;
+        centerY = cameraCenter.y;
+    } else if (respawnDelay) {
+        centerX = deathCameraX;
+        centerY = deathCameraY;
+    } else {
+        // Fallback or Menu Background
+        centerX = Math.sin(millis() / 15000) * 800;
+        centerY = -2000 + Math.cos(millis() / 20000) * 300; 
+    }
+
+    // 2. Draw Background (Sky + Sun)
+    drawMapBackground(mapData, centerX);
     
     textSize(12);
     textAlign(CENTER);
@@ -269,23 +294,17 @@ function handleGameDisplay(controlledPlayer) {
             textSize(12);
         }
         
-        // Calculate camera center between player and mouse cursor
-        // Use display coordinates for smooth camera
-        const cameraCenter = getCameraCenter({
-            ...controlledPlayer, 
-            x: controlledPlayer.displayX, 
-            y: controlledPlayer.displayY
-        }, mouseX, mouseY);
-        const centerX = cameraCenter.x;
-        const centerY = cameraCenter.y;
-        
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
 
-        // Draw background elements (Clouds) first
+        // Draw Water sides first (Background)
+        drawMapPolygonsSides(mapPolygonsMap, 'water');
+
+        // Draw background elements (Clouds)
         displayClouds(centerX, centerY);
 
-        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
+        // Draw Everything else (Land/Recovery sides)
+        drawMapPolygonsSides(mapPolygonsMap, 'other');
 
         // Draw particles behind all game objects
         updateParticles();
@@ -302,17 +321,17 @@ function handleGameDisplay(controlledPlayer) {
         drawEnemyTargetIndicators(controlledPlayer, centerX, centerY);
         if (helpWindow && !chatting) handleHelpWindow();
     } else if (respawnDelay) {
-        // During respawn delay, keep camera at death location
-        const centerX = deathCameraX;
-        const centerY = deathCameraY;
-        
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
 
-        // Draw background elements (Clouds) first
+        // Draw Water sides first (Background)
+        drawMapPolygonsSides(mapPolygonsMap, 'water');
+
+        // Draw background elements (Clouds)
         displayClouds(centerX, centerY);
 
-        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
+        // Draw Everything else (Land/Recovery sides)
+        drawMapPolygonsSides(mapPolygonsMap, 'other');
 
         // Draw particles behind all game objects
         updateParticles();
@@ -334,18 +353,17 @@ function handleGameDisplay(controlledPlayer) {
         text("Respawning...", windowWidth / 2, windowHeight / 2);
         strokeWeight(1);
     } else {
-        // Fallback or Menu Background
-        // Slowly pan the camera
-        const centerX = Math.sin(millis() / 15000) * 800;
-        const centerY = -2000 + Math.cos(millis() / 20000) * 300; 
-
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
 
-        // Draw background elements (Clouds) first
+        // Draw Water sides first (Background)
+        drawMapPolygonsSides(mapPolygonsMap, 'water');
+
+        // Draw background elements (Clouds)
         displayClouds(centerX, centerY);
 
-        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
+        // Draw Everything else (Land/Recovery sides)
+        drawMapPolygonsSides(mapPolygonsMap, 'other');
 
         // Draw particles behind all game objects
         updateParticles();
@@ -617,6 +635,10 @@ function getCameraCenter(player, mouseScreenX, mouseScreenY) {
         }
     }
     
+    // Update global camera variables for aiming logic
+    globalCameraX = camX;
+    globalCameraY = camY;
+
     // Interpolate between player position and mouse position
     return {
         x: camX,

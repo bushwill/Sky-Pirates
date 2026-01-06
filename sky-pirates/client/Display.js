@@ -1895,9 +1895,9 @@ function displayClouds(centerX, centerY) {
         let relY = cloud.y - centerY;
 
         // Parallax scaling factor based on Z depth
-        // A simple perspective projection where items further back move slower/are smaller
-        const depthFactor = 0.01; 
-        const scale = 1 - (cloud.z * depthFactor);
+        // Uses inverse distance scaling for natural perspective (scale = focal / (focal + z))
+        const focalLength = 2000; 
+        const scale = focalLength / (focalLength + cloud.z);
 
         // Don't draw if behind camera or invalid scale
         if (scale <= 0) continue;

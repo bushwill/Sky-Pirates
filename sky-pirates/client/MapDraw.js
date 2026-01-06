@@ -70,7 +70,7 @@ function polygonWinding(verts) {
   }
   
   // Draws the sides of polygons that face the camera.
-  function drawMapPolygonsSides(map) {
+  function drawMapPolygonsSides(map, typeFilter = null) {
     textSize(12);
     textAlign(CENTER);
     stroke(0);
@@ -79,6 +79,11 @@ function polygonWinding(verts) {
     const cameraY = windowHeight / 2;
   
     for (const polygon of map.polygons) {
+      if (typeFilter) {
+          if (typeFilter === 'water' && polygon.type !== 'water') continue;
+          if (typeFilter === 'other' && polygon.type === 'water') continue;
+      }
+      
       // Set fill based on color, applying a 0.7 multiplier.
       if (polygon.color) {
         fill(
@@ -139,7 +144,7 @@ function polygonWinding(verts) {
   }
   
   // Helper to build a polygon from biome data.
-  function createBiomePolygon(biome, color, depth) {
+  function createBiomePolygon(biome, color, depth, type) {
     return {
       vertices: [
         { x: biome.x1, y: biome.y1 },
@@ -149,6 +154,7 @@ function polygonWinding(verts) {
       ],
       color: color,
       depth: depth,
+      type: type
     };
   }
   
@@ -166,10 +172,10 @@ function polygonWinding(verts) {
           b: 255,
           t: 150,
         };
-        mapObj.polygons.push(createBiomePolygon(biome, waterColor, 90));
+        mapObj.polygons.push(createBiomePolygon(biome, waterColor, 97, 'water'));
       } else if (biome.type === 'recovery') {
         const recoveryColor = { r: 0, g: 255, b: 0, t: 100 };
-        mapObj.polygons.push(createBiomePolygon(biome, recoveryColor, 20));
+        mapObj.polygons.push(createBiomePolygon(biome, recoveryColor, 20, 'recovery'));
       }
     }
     return mapObj;
@@ -177,12 +183,22 @@ function polygonWinding(verts) {
   
   // Draws the map background with the specified colors.
   // First draws sky with sun and clouds, then overlays the map background color
-  function drawMapBackground(map) {
+  function drawMapBackground(map, centerX = 0) {
     // Draw sky blue background
     background(135, 206, 235);
     
-    // Draw sun at top center
-    const sunX = windowWidth / 2;
+    // Draw sun with parallax
+    // Range is approx -150000 to 150000
+    // When camera is at 0, sun is in center
+    // When camera is at 150000, sun moves left
+    const parallaxFactor = 0.5; // Controls how much the sun moves relative to screen width
+    const mapBounds = 150000;
+    
+    // Calculate offset (-1 to 1 based on world position)
+    const normalizedPos = Math.max(-1, Math.min(1, centerX / mapBounds));
+    
+    // Apply offset inverse to camera movement
+    const sunX = (windowWidth / 2) - (normalizedPos * (windowWidth * parallaxFactor));
     const sunY = 80;
     const sunRadius = 60;
     

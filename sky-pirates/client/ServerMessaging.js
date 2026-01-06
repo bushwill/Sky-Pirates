@@ -392,12 +392,23 @@ function updateUpdates() {
 }
 
 function sendPlayerData(player = null) {
-    let t_x = mouseX - windowWidth / 2;
-    let t_y = mouseY - windowHeight / 2;
-    if (player) {
-        t_x += player.x;
-        t_y += player.y;
+    let t_x = 0;
+    let t_y = 0;
+    
+    // Use the global camera position if available, which includes screen shake and offsets
+    if (typeof globalCameraX !== 'undefined' && typeof globalCameraY !== 'undefined') {
+        t_x = mouseX - windowWidth / 2 + globalCameraX;
+        t_y = mouseY - windowHeight / 2 + globalCameraY;
+    } else {
+        // Fallback to basic player-centered calculation
+        t_x = mouseX - windowWidth / 2;
+        t_y = mouseY - windowHeight / 2;
+        if (player) {
+            t_x += player.x;
+            t_y += player.y;
+        }
     }
+
     const message = {
         type: 'update',
         username,

@@ -31,11 +31,11 @@ class SeededRandom {
 // Function to generate deterministic cloud layer
 function generateCloudLayer(targetArray) {
     // Determine the fixed seed so clouds are always the same for everyone
-    const rng = new SeededRandom(12345);
+    const rng = new SeededRandom(67);
     
     // Limits
-    const minX = -100000;
-    const maxX = 100000;
+    const minX = -150000;
+    const maxX = 150000;
     const fixedY = -6000;
     
     // Create cloud clusters for structure instead of uniform noise
@@ -44,7 +44,11 @@ function generateCloudLayer(targetArray) {
     for (let i = 0; i < numClusters; i++) {
         // Cluster center
         const cx = rng.range(minX, maxX);
-        const baseZ = rng.range(50, 95);
+        
+        // Distribute Z uniformly across a deep range
+        // With inverse-distance scaling in Display.js, uniform Z means most clouds appear far away (small)
+        // Range 200 (close/large) to 80000 (horizon/tiny) - Deep background
+        const baseZ = rng.range(200, 80000); 
         
         // Randomize cluster characteristics
         // Roughly 15,000 clouds total target (avg 37 per cluster)
