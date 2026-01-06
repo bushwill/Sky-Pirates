@@ -34,6 +34,12 @@ export class Animal {
             }
         }
 
+        // Biome transition check
+        if (inWater !== this.wasInWater) {
+            this.onBiomeChange(inWater);
+        }
+        this.wasInWater = inWater;
+
         // Update timers
         if (this.fleeTimer > 0) {
             this.fleeTimer -= deltaTime;
@@ -53,6 +59,10 @@ export class Animal {
 
     updateAI(threatGrid, gridSize, inWater, deltaTime) {
         // Default AI (none)
+    }
+
+    onBiomeChange(inWater) {
+        // Default implementation (empty)
     }
 
     applyPhysics(inWater, deltaTime) {
@@ -119,22 +129,28 @@ export class Fish extends Animal {
         }
     }
 
-    updateAI(threatGrid, gridSize, inWater, deltaTime) {
-        // Detect re-entry
-        if (inWater && !this.wasInWater) {
-            this.fleeTimer = 0;
+    onBiomeChange(inWater) {
+        if (inWater) {
             this.pickDesiredY();
+            // Re-entry splash: flee downwards randomly
+            this.fleeTimer = 1.0;
+            this.speed = this.normalSpeed * 3;
+            // Downward angle (PI is Left, 0 is Right, PI/2 is Down)
+            // 0 to PI covers all downward directions as per math conventions usually 0=Right, PI/2=Down, PI=Left, 3PI/2=Up
+            // But here gravity is +y (down), so positive Y is down.
+            // Angle 0=Right, PI=Left. Down is PI/2?
+            // "Math.random() * Math.PI" gives 0 to 3.14.
+            // If 0 is Right and PI is Left, then angles between 0 and PI are "Down" in canvas/screen coords where +Y is Down.
+            this.angle = Math.random() * Math.PI;
         }
-        
-        this.wasInWater = inWater;
+    }
 
-        if (!inWater) return;
-
+    updateAI(threatGrid, gridSize, inWater, deltaTime) {
         let closestDistSq = Infinity;
         let closestThreat = null;
 
         // Lazy threat lookup
-        if (threatGrid) {
+        if (threatGrid && inWater) {
             const cx = Math.floor(this.x / gridSize);
             const cy = Math.floor(this.y / gridSize);
             
@@ -176,25 +192,27 @@ export class Fish extends Animal {
             // Return to normal
             this.speed = this.normalSpeed;
             
-            // Determine base horizontal direction
-            if (Math.abs(Math.cos(this.angle)) < 0.5) {
-                 this.angle = Math.random() < 0.5 ? 0 : Math.PI;
-            }
-            const baseAngle = (Math.abs(this.angle) < Math.PI / 2) ? 0 : Math.PI;
-            
-            // Adjust for desiredY
-            const dy = this.desiredY - this.y;
-            const threshold = 5;
-            
-            if (Math.abs(dy) > threshold) {
-                const incline = 0.2; 
-                if (dy > 0) { // Target is below
-                    this.angle = baseAngle === 0 ? incline : Math.PI - incline;
-                } else { // Target is above
-                    this.angle = baseAngle === 0 ? -incline : Math.PI + incline;
+            if (inWater) {
+                // Determine base horizontal direction
+                if (Math.abs(Math.cos(this.angle)) < 0.5) {
+                     this.angle = Math.random() < 0.5 ? 0 : Math.PI;
                 }
-            } else {
-                this.angle = baseAngle;
+                const baseAngle = (Math.abs(this.angle) < Math.PI / 2) ? 0 : Math.PI;
+                
+                // Adjust for desiredY
+                const dy = this.desiredY - this.y;
+                const threshold = 5;
+                
+                if (Math.abs(dy) > threshold) {
+                    const incline = 0.2; 
+                    if (dy > 0) { // Target is below
+                        this.angle = baseAngle === 0 ? incline : Math.PI - incline;
+                    } else { // Target is above
+                        this.angle = baseAngle === 0 ? -incline : Math.PI + incline;
+                    }
+                } else {
+                    this.angle = baseAngle;
+                }
             }
         }
     }

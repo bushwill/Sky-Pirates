@@ -152,8 +152,19 @@ function updateAnimals() {
         const toSpawn = Math.min(targetFish - nearbyFish, 2);
         
         for (let i = 0; i < toSpawn; i++) {
-          // Random X within range
-          const offset = (Math.random() * 2 - 1) * ANIMAL_SPAWN_RADIUS;
+          // Random X within range but avoid spawning on screen (approx 1200 width)
+          const MIN_SPAWN_DIST = 1200;
+          const range = ANIMAL_SPAWN_RADIUS - MIN_SPAWN_DIST;
+          
+          let offset;
+          if (Math.random() < 0.5) {
+             // Left side: -ANIMAL_SPAWN_RADIUS to -MIN_SPAWN_DIST
+             offset = -MIN_SPAWN_DIST - (Math.random() * range);
+          } else {
+             // Right side: MIN_SPAWN_DIST to ANIMAL_SPAWN_RADIUS
+             offset = MIN_SPAWN_DIST + (Math.random() * range);
+          }
+
           const spawnX = player.x + offset;
 
           // Find water biome at this X
