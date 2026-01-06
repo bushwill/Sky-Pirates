@@ -286,14 +286,6 @@ function handleGameDisplay(controlledPlayer) {
     }
     
     if (controlledPlayer && signedIn) {
-        // Display help menu prompt for first 10 seconds
-        if (millis() - signedInTime < 10000 && !helpWindow) {
-            textSize(16);
-            textAlign(CENTER, CENTER);
-            text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
-            textSize(12);
-        }
-        
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
 
@@ -319,7 +311,13 @@ function handleGameDisplay(controlledPlayer) {
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
         drawEnemyTargetIndicators(controlledPlayer, centerX, centerY);
-        if (helpWindow && !chatting) handleHelpWindow();
+        // Display help menu prompt for first 10 seconds
+        if (millis() - signedInTime < 10000 && !helpWindow) {
+            textSize(16);
+            textAlign(CENTER, CENTER);
+            text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
+            textSize(12);
+        } else if (helpWindow && !chatting) handleHelpWindow();
     } else if (respawnDelay) {
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
