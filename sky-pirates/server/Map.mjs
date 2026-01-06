@@ -1,7 +1,7 @@
 export class MapObject {
     constructor() {
       this.sizeX = 150000;
-      this.skyHeight = 5000;
+      this.skyHeight = 10000;
       this.oceanDepth = 2000;
       this.width = this.sizeX * 2;
       this.height = this.skyHeight + this.oceanDepth;

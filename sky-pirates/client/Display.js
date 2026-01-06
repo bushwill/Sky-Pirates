@@ -1885,6 +1885,42 @@ function drawParticles(centerX = 0, centerY = -400) {
     });
 }
 
+function displayClouds(centerX, centerY) {
+    const screenCenterX = windowWidth / 2;
+    const screenCenterY = windowHeight / 2;
+
+    for (const cloud of clouds) {
+        // Base distance from camera center
+        let relX = cloud.x - centerX;
+        let relY = cloud.y - centerY;
+
+        // Parallax scaling factor based on Z depth
+        // A simple perspective projection where items further back move slower/are smaller
+        const depthFactor = 0.01; 
+        const scale = 1 - (cloud.z * depthFactor);
+
+        // Don't draw if behind camera or invalid scale
+        if (scale <= 0) continue;
+
+        // Project position
+        let drawX = screenCenterX + (relX * scale);
+        let drawY = screenCenterY + (relY * scale);
+        
+        // Project size
+        let drawSize = cloud.size * scale;
+
+        // Culling
+        if (drawX + drawSize < 0 || drawX - drawSize > windowWidth ||
+            drawY + drawSize < 0 || drawY - drawSize > windowHeight) {
+            continue;
+        }
+
+        noStroke();
+        fill(cloud.r, cloud.g, cloud.b, cloud.alpha);
+        circle(drawX, drawY, drawSize);
+    }
+}
+
 function spawnParticle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type = 'default') {
     // Add a new particle to the global particles array
     particles.push(new Particle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type));

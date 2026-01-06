@@ -32,6 +32,7 @@ let animals = [];
 let projectiles = [];
 let crates = [];
 let particles = [];
+let clouds = [];
 let events = [];
 let shops = [];
 let displayedEventIds = new Set(); // Track which events we've already displayed
@@ -87,6 +88,7 @@ let menuManager;
 let colorPicker;
 let menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
 
+
 // ========================================
 // P5.JS LIFECYCLE FUNCTIONS
 // ========================================
@@ -116,6 +118,9 @@ function setup() {
     colorPicker.hide();
 
     menuManager = new MenuManager(colorPicker);
+
+    // Generate procedural cloud layer
+    generateCloudLayer(clouds);
 
     // Add screens
     menuManager.addScreen('login', new LoginMenuScreen(colorPicker));
@@ -276,6 +281,10 @@ function handleGameDisplay(controlledPlayer) {
         
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
+
+        // Draw background elements (Clouds) first
+        displayClouds(centerX, centerY);
+
         drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
 
         // Draw particles behind all game objects
@@ -299,6 +308,10 @@ function handleGameDisplay(controlledPlayer) {
         
         const mapPolygonsMap = getMapPolygonsMap(mapData);
         preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
+
+        // Draw background elements (Clouds) first
+        displayClouds(centerX, centerY);
+
         drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
 
         // Draw particles behind all game objects
@@ -321,20 +334,30 @@ function handleGameDisplay(controlledPlayer) {
         text("Respawning...", windowWidth / 2, windowHeight / 2);
         strokeWeight(1);
     } else {
+        // Fallback or Menu Background
+        // Slowly pan the camera
+        const centerX = Math.sin(millis() / 15000) * 800;
+        const centerY = -2000 + Math.cos(millis() / 20000) * 300; 
+
         const mapPolygonsMap = getMapPolygonsMap(mapData);
-        preparePolygonsForDrawing(mapPolygonsMap);
-        drawMapPolygonsSides(mapPolygonsMap);
+        preparePolygonsForDrawing(mapPolygonsMap, centerX, centerY);
+
+        // Draw background elements (Clouds) first
+        displayClouds(centerX, centerY);
+
+        drawMapPolygonsSides(mapPolygonsMap, centerX, centerY);
 
         // Draw particles behind all game objects
         updateParticles();
-        displayEvents();
-        drawParticles();
+        displayEvents(centerX, centerY);
+        drawParticles(centerX, centerY);
 
-        displayCrates();
-        drawMapPolygonsFronts(mapPolygonsMap);
-        displayProjectiles();
-        displayPlayers();
-        displayEnemies();
+        displayCrates(centerX, centerY);
+        drawMapPolygonsFronts(mapPolygonsMap, centerX, centerY);
+        displayProjectiles(centerX, centerY);
+        drawAnimals(centerX, centerY);
+        displayPlayers(centerX, centerY);
+        displayEnemies(centerX, centerY);
     }
     displayNoticeMessages();
     displayAppInfo();
