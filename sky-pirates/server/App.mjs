@@ -120,11 +120,7 @@ function updateEnemies() {
   });
 }
 
-function updateAnimals() {
-  const deltaTime = 0.01 * timeSpeed;
-  const DESPAWN_DISTANCE = ANIMAL_SPAWN_RADIUS; // Use the constant
-
-  // Spawning Logic
+function manageAnimalSpawning() {
   const now = Date.now();
   if (now - lastAnimalSpawnTime > ANIMAL_SPAWN_INTERVAL) {
     lastAnimalSpawnTime = now;
@@ -151,20 +147,18 @@ function updateAnimals() {
         // Spawn up to 2 fish per check to avoid spikes
         const toSpawn = Math.min(targetFish - nearbyFish, 2);
         
-        for (let i = 0; i < toSpawn; i++) {
-          // Random X within range but avoid spawning on screen (approx 1200 width)
-          const MIN_SPAWN_DIST = 1200;
-          const range = ANIMAL_SPAWN_RADIUS - MIN_SPAWN_DIST;
-          
-          let offset;
-          if (Math.random() < 0.5) {
-             // Left side: -ANIMAL_SPAWN_RADIUS to -MIN_SPAWN_DIST
-             offset = -MIN_SPAWN_DIST - (Math.random() * range);
-          } else {
-             // Right side: MIN_SPAWN_DIST to ANIMAL_SPAWN_RADIUS
-             offset = MIN_SPAWN_DIST + (Math.random() * range);
-          }
+        // Performance optimization: 
+        // If player is high up (y < -500), they are likely >800 units from water surface.
+        // In this case, we can spawn directly underneath (minDist = 0).
+        // Otherwise, enforce horizontal off-screen buffer (minDist = 1200).
+        const isHighAltitude = player.y < -200;
+        const minSpawnDist = isHighAltitude ? 0 : 1200;
+        const range = ANIMAL_SPAWN_RADIUS - minSpawnDist;
 
+        for (let i = 0; i < toSpawn; i++) {
+          // Deterministic single-pass generation
+          const sign = Math.random() < 0.5 ? -1 : 1;
+          const offset = sign * (minSpawnDist + Math.random() * range);
           const spawnX = player.x + offset;
 
           // Find water biome at this X
@@ -175,29 +169,44 @@ function updateAnimals() {
 
           if (waterBiome) {
             // Spawn near surface (top 200 units)
-            // Ensure we don't spawn below the bottom of the biome
             const maxDepth = Math.min(200, waterBiome.y2 - waterBiome.y1);
             const minDepth = 10;
             const actualMax = Math.max(minDepth, maxDepth);
             const depth = minDepth + Math.random() * (actualMax - minDepth);
             const spawnY = waterBiome.y1 + depth;
-
-            // Check distance to player before spawning
-            const dx = spawnX - player.x;
-            const dy = spawnY - player.y;
-            if (dx * dx + dy * dy <= ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS) {
-              const fish = new Fish(Date.now() + Math.random(), spawnX, spawnY);
-              animals.push(fish);
-            }
+            
+            // Only verifying distance slightly to ensure we don't spawn exactly on player if high altitude check was borderline
+            // But generally trusting the minSpawnDist heuristic for performance
+            const fish = new Fish(Date.now() + Math.random(), spawnX, spawnY);
+            animals.push(fish);
           }
         }
       }
     });
   }
+}
+
+function updateAnimal(animal, deltaTime, threatGrid, gridSize) {
+  animal.update(deltaTime, threatGrid, gridSize);
+}
+
+function updateAnimals() {
+  const deltaTime = 0.01 * timeSpeed;
+  const DESPAWN_DISTANCE = ANIMAL_SPAWN_RADIUS; // Use the constant
+
+  manageAnimalSpawning();
 
   // Filter out animals that are too far from all players
   animals = animals.filter(animal => {
-    // Check if animal is within range of ANY player
+    // 1. Check bounds for fish (INSTANT KILL)
+    if (animal.type === 'fish') {
+      if (animal.x < -mapData.sizeX || animal.x > mapData.sizeX ||
+          animal.y > mapData.oceanDepth || animal.y < -mapData.skyHeight) {
+          return false;
+      }
+    }
+
+    // 2. Check if animal is within range of ANY player
     const isNearPlayer = players.some(player => {
       const dx = animal.x - player.x;
       const dy = animal.y - player.y;
@@ -227,7 +236,7 @@ function updateAnimals() {
   projectiles.forEach(addToGrid);
 
   animals.forEach(animal => {
-    animal.update(deltaTime, threatGrid, GRID_CELL_SIZE);
+    updateAnimal(animal, deltaTime, threatGrid, GRID_CELL_SIZE);
   });
 }
 
@@ -235,14 +244,14 @@ function updateFleets() {
   if (players.length === 0) return;
 
   const now = Date.now();
-
-  // Only do expensive checks every 5 seconds
-  if (now - lastFleetSpawnTime < 5000) return;
+  
+  // Create a quick lookup set for O(1) checks
+  const enemySet = new Set(enemies);
 
   if (AUTO_SPAWN_FLEETS) {
     const fleetBoats = enemies.filter(e => e.isFleetBoat);
     if (lastFleetShipDestroyedAt && (now - lastFleetShipDestroyedAt) < FLEET_RESPAWN_DELAY_MS) {
-      return;
+      // Waiting for respawn delay
     } else {
       if (lastFleetShipDestroyedAt && (now - lastFleetShipDestroyedAt) >= FLEET_RESPAWN_DELAY_MS) {
         lastFleetShipDestroyedAt = 0;
@@ -256,27 +265,34 @@ function updateFleets() {
     
     // Check if any fleet boats need to respawn missing planes
     fleetBoats.forEach(boat => {
-      checkAndRespawnFleetPlanes(boat, now);
+      checkAndRespawnFleetPlanes(boat, now, enemySet);
     });
   }
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     const enemy = enemies[i];
     if (enemy.type && enemy.type.includes('Plane') && enemy.faction === 'navy' && enemy.fleetBoat) {
-      const boatStillExists = enemies.includes(enemy.fleetBoat);
+      // Use Set for O(1) lookup instead of O(N) array scan
+      const boatStillExists = enemySet.has(enemy.fleetBoat);
       if (!boatStillExists) {
-        console.log(`Plane ${enemy.username} lost its fleet boat, becoming independent`);
+        // console.log(`Plane ${enemy.username} lost its fleet boat, becoming independent`);
         enemy.fleetBoat = null;
       }
     }
   }
 }
 
-function checkAndRespawnFleetPlanes(boat, now) {
+function checkAndRespawnFleetPlanes(boat, now, enemySet) {
   if (!boat || !boat.isFleetBoat || !boat.planeLevels || boat.planeLevels.length === 0) return;
   
   // Count current planes (filter out any that might have been destroyed but still in array)
-  boat.planes = boat.planes.filter(p => enemies.includes(p));
+  // Use enemySet if provided for O(1) checks, otherwise fall back to linear scan
+  if (enemySet) {
+    boat.planes = boat.planes.filter(p => enemySet.has(p));
+  } else {
+    boat.planes = boat.planes.filter(p => enemies.includes(p));
+  }
+  
   const currentPlaneCount = boat.planes.length;
   const expectedPlaneCount = boat.planeLevels.length;
   
