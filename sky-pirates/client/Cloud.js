@@ -68,7 +68,7 @@ function generateCloudLayer(targetArray) {
             const z = baseZ + zOffset;
 
             // Visual properties
-            const greyVal = rng.range(220, 255);
+            const greyVal = rng.range(220, 240);
             const r = greyVal;
             const g = greyVal;
             const b = greyVal;
@@ -76,7 +76,7 @@ function generateCloudLayer(targetArray) {
             // Fade alpha slightly at edges of cluster to blend
             const distFactor = Math.abs(xOffset) / clusterSpreadX; 
             const alphaBase = rng.range(20, 100);
-            const alpha = alphaBase * (1.0 - (distFactor * 0.3)); // 30% fade at max extent
+            const alpha = alphaBase * (1.0 - (distFactor * 0.2)); // 30% fade at max extent
 
             // Size variation
             const size = rng.range(500, 2000) * (0.8 + rng.random() * 0.4);
