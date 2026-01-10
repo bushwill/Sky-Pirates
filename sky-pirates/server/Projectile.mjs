@@ -122,6 +122,6 @@ export class FireworksFire extends Projectile {
     constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
         super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'fireworks_fire';
-        this.damageDelay = 500; // 0.5 seconds delay before dealing damage
+        this.damageDelay = 200;
     }
 }
