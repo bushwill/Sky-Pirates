@@ -15,7 +15,7 @@ import { Crate } from './Crate.mjs';
 import { GameEvent } from './GameEvent.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
-import { createEnemyGun, createGun } from './WeaponList.mjs';
+import { createEnemyGun, createGun, getRandomGunType } from './WeaponList.mjs';
 import { Shop } from './Shop.mjs';
 import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState } from './PlayerStateManager.mjs';
 
@@ -1042,7 +1042,7 @@ function generateWeaponCrates() {
 function generateRandomWeaponCrate(x, y) {
   let value = Math.abs(x);
   let level = 1;
-  let type = Math.floor(Math.random() * 4); // Updated to 4 to include Fireworks
+  let type = getRandomGunType();
   let component = null;
 
   if (value >= 140000) level = 10;
@@ -1203,6 +1203,7 @@ function createBullet(player, gun) {
       gun.projectileSize,
       player.username,
       gun.projectileRange,
+      gun.projectileLifetime,
       255, 0, 0 // Red rocket
     );
   }
@@ -1227,6 +1228,7 @@ function createBullet(player, gun) {
       gun.projectileSize,
       player.username,
       gun.projectileRange,
+      gun.projectileLifetime,
       255, 100 + Math.random() * 100, 0 // Orange-yellow variable color
     );
   }
@@ -1241,6 +1243,7 @@ function createBullet(player, gun) {
     gun.projectileSize, // size
     player.username,
     gun.projectileRange, // max distance in meters
+    gun.projectileLifetime,
     100,
     100, // color RGB
     100

@@ -80,8 +80,72 @@ function drawWeaponItem(weaponName, x = 0, y = 0, size = 40) {
         ellipse(size/2, -size/8, size/7, size/7);
         // "Stinger" spike
         stroke(220, 80, 80); strokeWeight(2);
-        line(size/2, size/8, size/2 + 6, size/8);
-        line(size/2, -size/8, size/2 + 6, -size/8);
+        line(size/2, size/8, size/2 + size/6, size/8);
+        line(size/2, -size/8, size/2 + size/6, -size/8);
+        strokeWeight(1);
+    }
+    // Firework Launcher
+    else if (name.includes("firework")) {
+        // Barrel (Simple dark tube)
+        stroke(0); 
+        fill(60, 60, 70); 
+        rect(-size/6, 0, size * 0.6, size * 0.25);
+        
+        // Rocket (Red body + Red nose)
+        fill(200, 30, 30);
+        // Rocket body sticking out
+        rect(size/10, 0, size * 0.4, size * 0.2);
+        // Rocket nose cone
+        triangle(
+            size/10 + size*0.2, -size*0.1,
+            size/10 + size*0.2, size*0.1,
+            size/10 + size*0.4, 0
+        );
+
+        // Fuse (wiggly line)
+        noFill();
+        stroke(160, 140, 80);
+        strokeWeight(1.5);
+        beginShape();
+        vertex(-size/6 - size*0.3, 0);
+        bezierVertex(
+            -size/6 - size*0.35, 0,
+            -size/6 - size*0.35, -size*0.2,
+            -size/6 - size*0.45, -size*0.15
+        );
+        endShape();
+
+        // Fuse Spark
+        noStroke();
+        fill(255, 200, 0);
+        circle(-size/6 - size*0.45, -size*0.15, size/12);
+        strokeWeight(1);
+    }
+    // Flamethrower
+    else if (name.includes("flamethrower")) {
+        stroke(0);
+        
+        // Rear Body / Grip (Industrial Grey)
+        fill(80, 80, 90);
+        rect(-size/3, 0, size * 0.6, size * 0.5, 6);
+
+        // Fuel Tank (Mounted underneath, Safety Red)
+        fill(200, 50, 50);
+        rect(-size/12, size/4, size * 0.65, size * 0.25, 8);
+        
+        // Barrel (Silver, on top - shortened)
+        fill(180, 180, 190);
+        rect(-size/12, -size/8, size * 0.75, size * 0.2, 4);
+        
+        // Muzzle / Pilot Light Cage (Dark, wide tip - moved left)
+        fill(40, 35, 35);
+        rect(size/3, -size/8, size * 0.15, size * 0.35, 3);
+
+        // Connecting Hose (Curved detail hint)
+        noFill();
+        stroke(50);
+        strokeWeight(2);
+        line(-size/5, size/4, -size/5, 0); // Tank to body
         strokeWeight(1);
     }
     // Unknown/default

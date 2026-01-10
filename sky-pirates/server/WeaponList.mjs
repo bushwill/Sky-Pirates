@@ -3,6 +3,28 @@
 
 import { Gun } from "./Gun.mjs"
 
+export function getRandomGunType() {
+    // Weights: MachineGun(2), Cannon(2), Scorpion(2), Firework(1), Flamethrower(1)
+    const weights = [
+        { type: 0, weight: 2 },
+        { type: 1, weight: 2 },
+        { type: 2, weight: 2 },
+        { type: 3, weight: 1 },
+        { type: 4, weight: 1 }
+    ];
+    
+    const totalWeight = weights.reduce((sum, item) => sum + item.weight, 0);
+    let random = Math.random() * totalWeight;
+    
+    for (const item of weights) {
+        if (random < item.weight) {
+            return item.type;
+        }
+        random -= item.weight;
+    }
+    return 0; // Fallback
+}
+
 export function createGun(selection, level = 1) {
     switch (selection) {
         case 0:
@@ -35,8 +57,9 @@ export function createMachineGun(level, random = true) {
     const value = randomFactor * (50 + adjustedLevel * 150);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1500;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createCannon(level, random = true) {
@@ -54,8 +77,9 @@ export function createCannon(level, random = true) {
     const value = randomFactor * (150 + adjustedLevel * 400);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1500;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createScorpion(level, random = true) {
@@ -73,8 +97,9 @@ export function createScorpion(level, random = true) {
     const value = randomFactor * (80 + adjustedLevel * 200);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1000;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createFireworkLauncher(level, random = true) {
@@ -91,9 +116,10 @@ export function createFireworkLauncher(level, random = true) {
     const maxAngle = randomFactor * (Math.PI / 48 + level * Math.PI / 160);
     const value = randomFactor * (120 + adjustedLevel * 250);
     const heatDispersion = randomFactor * (20 + adjustedLevel);
-    const projectileRange = projectileSpeed; // Distance before exploding
+    const projectileRange = projectileSpeed * 3;
+    const projectileLifetime = 750;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createFlamethrower(level, random = true) {
@@ -111,8 +137,9 @@ export function createFlamethrower(level, random = true) {
     const value = randomFactor * (100 + adjustedLevel * 50);
     const heatDispersion = randomFactor * (40.0 + adjustedLevel * 2.0); // Rapid cooling needed
     const projectileRange = 300; // Short range
+    const projectileLifetime = 2000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createEnemyGun(selection, level = 1) {
@@ -143,8 +170,9 @@ export function createPeaShooter(level, random = true) {
     const adjustedLevel = level - 1;
     const heatDispersion = randomFactor * (12.5 + adjustedLevel * 2.0);
     const projectileRange = 1000;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createBoatGun(level, random = true) {
@@ -161,8 +189,9 @@ export function createBoatGun(level, random = true) {
     const value = randomFactor * (50 + level * 30);
     const heatDispersion = 30;
     const projectileRange = 1500;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
 
 export function createBoatScorpion(level, random = true) {
@@ -179,6 +208,7 @@ export function createBoatScorpion(level, random = true) {
     const value = randomFactor * (10 + level * 10);
     const heatDispersion = 30;
     const projectileRange = 1000;
+    const projectileLifetime = 5000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange);
+    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }

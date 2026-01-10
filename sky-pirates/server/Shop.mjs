@@ -1,5 +1,5 @@
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
-import { createGun } from './WeaponList.mjs';
+import { createGun, getRandomGunType } from './WeaponList.mjs';
 
 export class Shop {
   constructor(recoveryZoneId, centerX) {
@@ -62,8 +62,8 @@ export class Shop {
       });
     }
     
-    // Generate 1 random weapon (0-2 for Machine Gun, Cannon, Scorpion)
-    const weaponType = Math.floor(Math.random() * 3);
+    // Generate 1 random weapon using weighted probability
+    const weaponType = getRandomGunType();
     const weapon = createGun(weaponType, level);
     const weaponPrice = Math.round(weapon.value * 1.5);
     

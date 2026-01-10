@@ -1035,19 +1035,26 @@ function getComponentStats(component, equippedComponent = null) {
         ];
     } else if (component.type === 'gun') {
         // Calculate DPS: shots per second * damage per shot
+        let dps;
         if (component.cooldownTime <= 0) dps = round1(component.damage);
         else dps = round1((1000 / component.cooldownTime) * component.damage);
-        const equippedDps = equippedComponent ? round1((1000 / equippedComponent.cooldownTime) * equippedComponent.damage) : null;
         
-        // Convert maxAngle from radians to degrees for display
-        const angleDegrees = 2*Math.round(component.maxAngle * (180 / Math.PI));
-        const equippedAngleDegrees = equippedComponent ? Math.round(equippedComponent.maxAngle * (180 / Math.PI)) : null;
+        let equippedDps = null;
+        if (equippedComponent) {
+             if (equippedComponent.cooldownTime <= 0) equippedDps = round1(equippedComponent.damage);
+             else equippedDps = round1((1000 / equippedComponent.cooldownTime) * equippedComponent.damage);
+        }
+        
+        // Convert maxAngle from radians to degrees for display (Doubled as requested)
+        const angleDegrees = Math.round(component.maxAngle * (180 / Math.PI)) * 2;
+        const equippedAngleDegrees = equippedComponent ? Math.round(equippedComponent.maxAngle * (180 / Math.PI)) * 2 : null;
         
         return [
             { label: 'DPS', value: round1(dps), equipped: equippedDps },
             { label: 'Max Angle', value: angleDegrees + '°', numericValue: angleDegrees, equipped: equippedAngleDegrees },
             { label: 'Damage', value: round1(component.damage), equipped: equippedComponent ? round1(equippedComponent.damage) : null },
             { label: 'Range', value: round1(component.projectileRange), equipped: equippedComponent ? round1(equippedComponent.projectileRange) : null },
+            { label: 'Lifetime', value: round1(component.projectileLifetime) + 'ms', numericValue: round1(component.projectileLifetime), equipped: equippedComponent ? round1(equippedComponent.projectileLifetime) : null },
             { label: 'Cooldown', value: round1(component.cooldownTime) + 'ms', numericValue: round1(component.cooldownTime), equipped: equippedComponent ? round1(equippedComponent.cooldownTime) : null, lowerIsBetter: true },
             { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Max Heat', value: round1(component.maxHeat), equipped: equippedComponent ? round1(equippedComponent.maxHeat) : null },

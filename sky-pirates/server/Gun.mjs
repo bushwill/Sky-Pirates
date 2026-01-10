@@ -1,5 +1,5 @@
 export class Gun {
-    constructor(name = "standard gun", weight = 0.5, maxHeat = 100.0, heatEfficiency = 5.0, damage = 15.0, cooldownTime = 150, projectileSpeed = 1000.0, projectileSize = 1, maxAngle = Math.PI/12, value = 10, heatDispersion = 30, projectileRange = 5000) {
+    constructor(name = "standard gun", weight = 0.5, maxHeat = 100.0, heatEfficiency = 5.0, damage = 15.0, cooldownTime = 150, projectileSpeed = 1000.0, projectileSize = 1, maxAngle = Math.PI/12, value = 10, heatDispersion = 30, projectileRange = 5000, projectileLifetime = 5000) {
         this.type = "gun"; // type of component
         this.name = name;
         this.weight = weight; // weight of the gun
@@ -11,6 +11,7 @@ export class Gun {
         this.projectileSpeed = projectileSpeed; // speed of the projectile fired by the gun
         this.projectileSize = projectileSize; // size of the projectile fired by the gun
         this.projectileRange = projectileRange; // maximum distance projectile travels in meters
+        this.projectileLifetime = projectileLifetime; // maximum time projectile exists in milliseconds
 
         this.cooldown = 0.0; // current cooldown time before the next shot can be fired
         this.heat = 0.0; // current heat level of the gun

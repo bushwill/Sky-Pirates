@@ -1,5 +1,5 @@
 export class Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b) {
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
         this.type = 'bullet';
         this.x = x;          // X position of the projectile
         this.y = y;          // Y position of the projectile
@@ -18,7 +18,7 @@ export class Projectile {
         this.biome = 'air';  // Current biome the projectile is in
         this.creationTime = Date.now();
         this.damageDelay = 0; // Default: deal damage immediately
-        this.lifetime = 5000; // Default lifetime in ms
+        this.lifetime = lifetime || 5000; // Default lifetime in ms
     }
 
     onExpire() {
@@ -27,10 +27,9 @@ export class Projectile {
 }
 
 export class FireworkRocket extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b) {
-        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b);
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'firework_rocket';
-        this.lifetime = 3000;
     }
 
     onExpire() {
@@ -74,6 +73,7 @@ export class FireworkRocket extends Projectile {
                 this.size,
                 this.owner,
                 particleRange, 
+                3000, // lifetime
                 color.r, color.g, color.b
             ));
         }
@@ -101,6 +101,7 @@ export class FireworkRocket extends Projectile {
                 this.size * 0.8,   // Smaller
                 this.owner,
                 particleRange * 0.8, // Slightly shorter range for inner
+                3000, // lifetime
                 color.r, color.g, color.b
             ));
         }
@@ -110,19 +111,17 @@ export class FireworkRocket extends Projectile {
 }
 
 export class Fire extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b) {
-        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b);
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'fire';
         this.damageDelay = 200; // Shorter delay for direct flamethrower
-        this.lifetime = 1500;
     }
 }
 
 export class FireworksFire extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b) {
-        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, r, g, b);
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+        super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'fireworks_fire';
         this.damageDelay = 500; // 0.5 seconds delay before dealing damage
-        this.lifetime = 3000;
     }
 }
