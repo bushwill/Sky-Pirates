@@ -412,8 +412,57 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
     translate(drawX, drawY);
     rotate(projectile.angle); // assumes angle in radians
 
-    // Scale the triangle points by projectile size
-    triangle(-5 / 3 * s, -1 * s, -5 / 3 * s, 1 * s, 7 / 3 * s, 0);
+    if (projectile.type === 'firework_rocket') {
+        rectMode(CENTER);
+        stroke(0);
+        strokeWeight(1);
+        
+        // Rocket Body
+        fill(projectile.r, projectile.g, projectile.b);
+        rect(0, 0, 6 * s, 3 * s);
+        
+        // Rocket Head
+        fill(255, 0, 0);
+        triangle(3 * s, -1.5 * s, 3 * s, 3 * s, 5 * s, 0);
+
+        // Occasional trail particle
+        if (Math.random() < 0.5) {
+            // Spawn at the back of the rocket
+            const offset = 12 * s; 
+            const px = projectile.x - Math.cos(projectile.angle) * offset;
+            const py = projectile.y - Math.sin(projectile.angle) * offset;
+            
+            if (typeof spawnSmokeParticles === 'function') {
+                spawnSmokeParticles(px, py, 1, 1.0);
+            }
+        }
+
+    } else if (projectile.type === 'fire') {
+        noStroke();
+        fill(projectile.r, projectile.g, projectile.b, 200);
+        circle(0, 0, 5 * s);
+
+        // Smoke trail for flamethrower fire
+        if (Math.random() < 0.3) {
+             const vx = (Math.random() - 0.5) * 0.5;
+             const vy = -0.5; // Upward drift
+             const vz = 0;
+             const size = 2 + Math.random() * 2;
+             const lifetime = 10 + Math.random() * 20; // Short lifetime (10-30 frames)
+             
+             if (typeof spawnParticle === 'function') {
+                spawnParticle(projectile.x, projectile.y, 0, vx, vy, vz, 100, 100, 100, size, lifetime, 'smoke');
+             }
+        }
+
+    } else if (projectile.type === 'fireworks_fire') {
+        noStroke();
+        fill(projectile.r, projectile.g, projectile.b, 200);
+        circle(0, 0, 5 * s);
+    } else {
+        // Standard bullet
+        triangle(-5 / 3 * s, -1 * s, -5 / 3 * s, 1 * s, 7 / 3 * s, 0);
+    }
 
     pop();
 }
@@ -986,11 +1035,12 @@ function getComponentStats(component, equippedComponent = null) {
         ];
     } else if (component.type === 'gun') {
         // Calculate DPS: shots per second * damage per shot
-        const dps = round1((1000 / component.cooldownTime) * component.damage);
+        if (component.cooldownTime <= 0) dps = round1(component.damage);
+        else dps = round1((1000 / component.cooldownTime) * component.damage);
         const equippedDps = equippedComponent ? round1((1000 / equippedComponent.cooldownTime) * equippedComponent.damage) : null;
         
         // Convert maxAngle from radians to degrees for display
-        const angleDegrees = Math.round(component.maxAngle * (180 / Math.PI));
+        const angleDegrees = 2*Math.round(component.maxAngle * (180 / Math.PI));
         const equippedAngleDegrees = equippedComponent ? Math.round(equippedComponent.maxAngle * (180 / Math.PI)) : null;
         
         return [

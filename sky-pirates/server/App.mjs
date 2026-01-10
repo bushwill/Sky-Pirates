@@ -10,7 +10,7 @@ import { MapObject } from './Map.mjs';
 import { Player } from './Player.mjs';
 import { NavySalvagePlane, NavySalvageBoat, EnemyPlane, DummyPlane } from './Enemy.mjs';
 import { Animal, Bird, Fish } from './Animal.mjs';
-import { Projectile } from './Projectile.mjs';
+import { Projectile, FireworkRocket, Fire } from './Projectile.mjs';
 import { Crate } from './Crate.mjs';
 import { GameEvent } from './GameEvent.mjs';
 import { createEngine, createChassis, createWings } from './ComponentList.mjs';
@@ -124,17 +124,17 @@ function manageAnimalSpawning() {
   const now = Date.now();
   if (now - lastAnimalSpawnTime > ANIMAL_SPAWN_INTERVAL) {
     lastAnimalSpawnTime = now;
-    
+
     players.forEach(player => {
       // Count fish near player
       let nearbyFish = 0;
       const rangeSq = ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS;
-      
+
       for (const animal of animals) {
         if (animal.type === 'fish') {
           const dx = animal.x - player.x;
           const dy = animal.y - player.y;
-          if (dx*dx + dy*dy <= rangeSq) {
+          if (dx * dx + dy * dy <= rangeSq) {
             nearbyFish++;
           }
         }
@@ -146,7 +146,7 @@ function manageAnimalSpawning() {
       if (nearbyFish < targetFish) {
         // Spawn up to 2 fish per check to avoid spikes
         const toSpawn = Math.min(targetFish - nearbyFish, 2);
-        
+
         // Performance optimization: 
         // If player is high up (y < -500), they are likely >800 units from water surface.
         // In this case, we can spawn directly underneath (minDist = 0).
@@ -162,8 +162,8 @@ function manageAnimalSpawning() {
           const spawnX = player.x + offset;
 
           // Find water biome at this X
-          const waterBiome = mapData.biomes.find(b => 
-            b.type === 'water' && 
+          const waterBiome = mapData.biomes.find(b =>
+            b.type === 'water' &&
             spawnX >= b.x1 && spawnX <= b.x2
           );
 
@@ -174,7 +174,7 @@ function manageAnimalSpawning() {
             const actualMax = Math.max(minDepth, maxDepth);
             const depth = minDepth + Math.random() * (actualMax - minDepth);
             const spawnY = waterBiome.y1 + depth;
-            
+
             // Only verifying distance slightly to ensure we don't spawn exactly on player if high altitude check was borderline
             // But generally trusting the minSpawnDist heuristic for performance
             const fish = new Fish(Date.now() + Math.random(), spawnX, spawnY);
@@ -201,8 +201,8 @@ function updateAnimals() {
     // 1. Check bounds for fish (INSTANT KILL)
     if (animal.type === 'fish') {
       if (animal.x < -mapData.sizeX || animal.x > mapData.sizeX ||
-          animal.y > mapData.oceanDepth || animal.y < -mapData.skyHeight) {
-          return false;
+        animal.y > mapData.oceanDepth || animal.y < -mapData.skyHeight) {
+        return false;
       }
     }
 
@@ -244,7 +244,7 @@ function updateFleets() {
   if (players.length === 0) return;
 
   const now = Date.now();
-  
+
   // Create a quick lookup set for O(1) checks
   const enemySet = new Set(enemies);
 
@@ -262,7 +262,7 @@ function updateFleets() {
         if (spawnFleetBoat()) lastFleetSpawnTime = now;
       }
     }
-    
+
     // Check if any fleet boats need to respawn missing planes
     fleetBoats.forEach(boat => {
       checkAndRespawnFleetPlanes(boat, now, enemySet);
@@ -284,7 +284,7 @@ function updateFleets() {
 
 function checkAndRespawnFleetPlanes(boat, now, enemySet) {
   if (!boat || !boat.isFleetBoat || !boat.planeLevels || boat.planeLevels.length === 0) return;
-  
+
   // Count current planes (filter out any that might have been destroyed but still in array)
   // Use enemySet if provided for O(1) checks, otherwise fall back to linear scan
   if (enemySet) {
@@ -292,19 +292,19 @@ function checkAndRespawnFleetPlanes(boat, now, enemySet) {
   } else {
     boat.planes = boat.planes.filter(p => enemies.includes(p));
   }
-  
+
   const currentPlaneCount = boat.planes.length;
   const expectedPlaneCount = boat.planeLevels.length;
-  
+
   // If missing planes and enough time has passed since last destruction
   if (currentPlaneCount < expectedPlaneCount) {
     if (boat.lastPlaneDestroyedAt && (now - boat.lastPlaneDestroyedAt) >= boat.planeRespawnDelay) {
       const missingCount = expectedPlaneCount - currentPlaneCount;
-      
+
       // Determine which plane levels to respawn (the ones that are missing)
       const existingLevels = boat.planes.map(p => p.level);
       const levelsToSpawn = [];
-      
+
       for (let i = 0; i < boat.planeLevels.length && levelsToSpawn.length < missingCount; i++) {
         const level = boat.planeLevels[i];
         const indexInExisting = existingLevels.indexOf(level);
@@ -315,7 +315,7 @@ function checkAndRespawnFleetPlanes(boat, now, enemySet) {
           existingLevels.splice(indexInExisting, 1);
         }
       }
-      
+
       // Spawn the missing planes
       if (levelsToSpawn.length > 0) {
         const newPlanes = boat.spawnPlanes(levelsToSpawn);
@@ -352,7 +352,7 @@ function updatePlayer(player) {
   updatePlane(player);
   checkSpawnEnemyPlane(player);
   const deltaTime = 0.01 * timeSpeed;
-  
+
   if (player.biome === 'recovery') {
     applyRecoveryJello(player, deltaTime);
 
@@ -438,7 +438,19 @@ function updateProjectile(projectile) {
   if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
     projectiles = projectiles.filter((p) => p !== projectile);
     return;
-  } else if (projectile.distanceTraveled >= projectile.maxDistance) {
+  }
+  
+  const age = Date.now() - (projectile.creationTime || 0);
+  const expiredByTime = age >= (projectile.lifetime || 5000);
+  const expiredByDistance = projectile.distanceTraveled >= projectile.maxDistance;
+
+  if (expiredByDistance || expiredByTime) {
+    if (typeof projectile.onExpire === 'function') {
+      const newProjectiles = projectile.onExpire();
+      if (newProjectiles && newProjectiles.length > 0) {
+        projectiles.push(...newProjectiles);
+      }
+    }
     projectiles = projectiles.filter((p) => p !== projectile);
     return;
   }
@@ -448,13 +460,21 @@ function updateProjectile(projectile) {
 
   projectile.x += projectile.vx * deltaTime;
   projectile.y += projectile.vy * deltaTime;
-  
+
   // Track distance traveled
   const dx = projectile.x - prevX;
   const dy = projectile.y - prevY;
   projectile.distanceTraveled += Math.sqrt(dx * dx + dy * dy);
-  
+
   projectile.biome = mapData.getBiomeAtPosition(projectile.x, projectile.y);
+
+  if (projectile.biome === 'water' && (projectile.type === 'fire' || projectile.type === 'fireworks_fire')) {
+    projectiles = projectiles.filter((p) => p !== projectile);
+    return;
+  }
+
+  // Skip all collision checks if this projectile is too young based on its own damageDelay property
+  if (age < (projectile.damageDelay || 0)) return;
 
   for (const player of players) {
     if (player.username === projectile.owner) continue;
@@ -464,6 +484,12 @@ function updateProjectile(projectile) {
       createHitEvent(player.x, player.y, projectile);
       if (player.onDamaged) {
         player.onDamaged(projectile);
+      }
+      if (typeof projectile.onExpire === 'function') {
+        const newProjectiles = projectile.onExpire();
+        if (newProjectiles && newProjectiles.length > 0) {
+          projectiles.push(...newProjectiles);
+        }
       }
       projectiles = projectiles.filter((p) => p !== projectile);
       return;
@@ -481,6 +507,12 @@ function updateProjectile(projectile) {
       if (enemy.onDamaged) {
         enemy.onDamaged(projectile, players);
       }
+      if (typeof projectile.onExpire === 'function') {
+        const newProjectiles = projectile.onExpire();
+        if (newProjectiles && newProjectiles.length > 0) {
+          projectiles.push(...newProjectiles);
+        }
+      }
       projectiles = projectiles.filter((p) => p !== projectile);
       return;
     }
@@ -489,7 +521,7 @@ function updateProjectile(projectile) {
   for (const animal of animals) {
     if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
       animal.x, animal.y, animal.size)) {
-      
+
       const velocity = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
       const event = new GameEvent('animal_explosion', animal.x, animal.y, projectile.angle, velocity);
       events.push(event);
@@ -545,7 +577,7 @@ function getZoneId(x) {
 // Update zone density map based on current crates
 function updateZoneDensity() {
   crateZoneDensity.clear();
-  
+
   for (const crate of crates) {
     const zoneId = getZoneId(crate.x);
     crateZoneDensity.set(zoneId, (crateZoneDensity.get(zoneId) || 0) + 1);
@@ -556,34 +588,34 @@ function updateZoneDensity() {
 function findLowestDensityZone() {
   // Note: updateZoneDensity() should be called BEFORE this function
   // to avoid recalculating density for every crate spawn
-  
+
   // Find all zones within map bounds
   const minZone = getZoneId(-mapData.sizeX);
   const maxZone = getZoneId(mapData.sizeX);
-  
+
   let lowestDensity = Infinity;
   let lowestZones = [];
-  
+
   for (let zoneId = minZone; zoneId <= maxZone; zoneId++) {
     // Skip zones that are entirely within the exclusion radius
     const zoneStart = zoneId * CRATE_ZONE_SIZE;
     const zoneEnd = (zoneId + 1) * CRATE_ZONE_SIZE;
-    
+
     // Check if zone overlaps with exclusion area (-1000 to +1000)
     // Only skip if the ENTIRE zone is within exclusion radius
     if (zoneStart >= -crateSpawnExclusionRadius && zoneEnd <= crateSpawnExclusionRadius) {
       continue;
     }
-    
+
     // Skip zones that have no valid space within map bounds
     const clampedMinX = Math.max(zoneStart, -mapData.sizeX);
     const clampedMaxX = Math.min(zoneEnd, mapData.sizeX);
     if (clampedMinX >= clampedMaxX) {
       continue; // Zone extends beyond map bounds with no valid space
     }
-    
+
     const density = crateZoneDensity.get(zoneId) || 0;
-    
+
     if (density < lowestDensity) {
       lowestDensity = density;
       lowestZones = [zoneId];
@@ -591,7 +623,7 @@ function findLowestDensityZone() {
       lowestZones.push(zoneId);
     }
   }
-  
+
   // Return a random zone from those with lowest density
   return lowestZones[Math.floor(Math.random() * lowestZones.length)];
 }
@@ -600,11 +632,11 @@ function findLowestDensityZone() {
 function getRandomXInZone(zoneId) {
   const zoneStart = zoneId * CRATE_ZONE_SIZE;
   const zoneEnd = (zoneId + 1) * CRATE_ZONE_SIZE;
-  
+
   // Clamp to map bounds
   let minX = Math.max(zoneStart, -mapData.sizeX);
   let maxX = Math.min(zoneEnd, mapData.sizeX);
-  
+
   // If this zone overlaps with exclusion area, avoid the exclusion zone
   if (minX < crateSpawnExclusionRadius && maxX > -crateSpawnExclusionRadius) {
     // Zone spans the exclusion area - pick a side
@@ -616,19 +648,19 @@ function getRandomXInZone(zoneId) {
       minX = crateSpawnExclusionRadius;
     }
   }
-  
+
   // Add buffer from exact boundaries to prevent edge clustering (BEFORE range check)
   const initialRange = maxX - minX;
   const buffer = Math.min(100, initialRange * 0.05); // 5% buffer or 100 units, whichever is smaller
   minX += buffer;
   maxX -= buffer;
-  
+
   // Ensure we have valid range after applying buffer
   const finalRange = maxX - minX;
   if (finalRange <= 0) {
     return null; // Signal that this zone is invalid
   }
-  
+
   return minX + Math.random() * (maxX - minX);
 }
 
@@ -636,15 +668,15 @@ function handleCarriedCratePhysics(crate, carrier, deltaTime) {
   const ROPE_LENGTH = 5;
   const TELEPORT_THRESHOLD = 3000;
   const springStrength = 32;
-  
+
   const ropeAngle = carrier.angle + Math.PI;
   const targetX = carrier.x + Math.cos(ropeAngle) * ROPE_LENGTH;
   const targetY = carrier.y + Math.sin(ropeAngle) * ROPE_LENGTH;
-  
+
   const deltaX = targetX - crate.x;
   const deltaY = targetY - crate.y;
   const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-  
+
   if (distance > TELEPORT_THRESHOLD) {
     crate.x = crate.x + deltaX * 0.5;
     crate.y = crate.y + deltaY * 0.5;
@@ -654,19 +686,19 @@ function handleCarriedCratePhysics(crate, carrier, deltaTime) {
     crate.vx += deltaX * springStrength * deltaTime;
     crate.vy += deltaY * springStrength * deltaTime;
   }
-  
+
   applyCrateDrag(crate, 1.0, deltaTime);
   applyCrateBuoyancy(crate, null);
-  
+
   const distanceToTarget = Math.sqrt((targetX - crate.x) ** 2 + (targetY - crate.y) ** 2);
   let dampingFactor = 0.8;
   if (distanceToTarget > 1000) {
     dampingFactor -= Math.min(0.3, distanceToTarget / 50000);
   }
-  
+
   crate.vx *= dampingFactor;
   crate.vy *= dampingFactor;
-  
+
   const maxVelocity = Math.min(5000, 200 + (distanceToTarget * 0.3));
   const speed = Math.sqrt(crate.vx * crate.vx + crate.vy * crate.vy);
   if (speed > maxVelocity) {
@@ -674,14 +706,14 @@ function handleCarriedCratePhysics(crate, carrier, deltaTime) {
     crate.vx *= scale;
     crate.vy *= scale;
   }
-  
+
   updateCratePosition(crate, deltaTime);
 }
 
 function handleFreeCratePhysics(crate, deltaTime) {
   let fluidDensity = 1.0;
   let biomeType = null;
-  
+
   for (let i = 0; i < mapData.biomes.length; i++) {
     const biome = mapData.biomes[i];
     if (biome.x1 <= crate.x && crate.x <= biome.x2 && biome.y1 <= crate.y && crate.y <= biome.y2) {
@@ -690,7 +722,7 @@ function handleFreeCratePhysics(crate, deltaTime) {
       break;
     }
   }
-  
+
   applyCrateDrag(crate, fluidDensity, deltaTime);
   applyCrateBuoyancy(crate, biomeType);
   updateCratePosition(crate, deltaTime);
@@ -700,30 +732,30 @@ function applyCrateRepulsion(crate, allCrates, deltaTime) {
   const REPULSION_RADIUS = crate.size * 2;
   const REPULSION_STRENGTH = 12;
   const CHECK_RADIUS = REPULSION_RADIUS * 3; // Check slightly larger area
-  
+
   // Find crate index for comparison
   const crateIndex = allCrates.indexOf(crate);
   if (crateIndex === -1) return;
-  
+
   // If this crate is carried, only check against other crates carried by the same carrier
   // Otherwise check all crates, but only those with higher index to avoid duplicate checks
-  const cratesToCheck = crate.carrier 
+  const cratesToCheck = crate.carrier
     ? allCrates.filter(c => c.carrier === crate.carrier && allCrates.indexOf(c) > crateIndex)
     : allCrates.slice(crateIndex + 1); // Only check crates after this one in the array
-  
+
   cratesToCheck.forEach(otherCrate => {
     const dx = crate.x - otherCrate.x;
     const dy = crate.y - otherCrate.y;
-    
+
     // Quick distance check before expensive sqrt
     const distanceSquared = dx * dx + dy * dy;
     const checkRadiusSquared = CHECK_RADIUS * CHECK_RADIUS;
-    
+
     // Skip if crates are too far apart
     if (distanceSquared > checkRadiusSquared) return;
-    
+
     const distance = Math.sqrt(distanceSquared);
-    
+
     if (distance < REPULSION_RADIUS && distance > 0.01) {
       const nx = dx / distance;
       const ny = dy / distance;
@@ -742,18 +774,18 @@ function updateCrate(crate) {
     crates = crates.filter((c) => c !== crate);
     return;
   }
-  
+
   const deltaTime = 0.01 * timeSpeed;
   const player = players.find(p => p.username === crate.carrier);
   const enemy = enemies.find(e => e.username === crate.carrier);
   const carrier = player || enemy;
-  
+
   if (crate.carrier) {
     if (!carrier) {
       crate.detach();
       return;
     }
-    
+
     if (player && mapData.getBiomeAtPosition(crate.x, crate.y) === 'recovery') {
       crate.open(player);
       if (crate.type === 'money') {
@@ -765,12 +797,12 @@ function updateCrate(crate) {
       crates = crates.filter((c) => c !== crate);
       return;
     }
-    
+
     handleCarriedCratePhysics(crate, carrier, deltaTime);
   } else {
     handleFreeCratePhysics(crate, deltaTime);
   }
-  
+
   applyCrateRepulsion(crate, crates, deltaTime);
 
   players.forEach((new_player) => {
@@ -854,10 +886,10 @@ function generateMoneyCrates() {
   const crate_count = max_money_crates - crates.filter(c => c.type === 'money').length;
 
   if (players.length === 0 || crates.length > max_money_crates) return;
-  
+
   // Update zone density ONCE before spawning all crates
   updateZoneDensity();
-  
+
   // Map boundaries
   const seaLevel = 300; // Top of water biome from your map definition
 
@@ -868,7 +900,7 @@ function generateMoneyCrates() {
       console.warn("No valid zone found for crate spawning");
       continue;
     }
-    
+
     // Get random position within the target zone
     const x = getRandomXInZone(targetZone);
     if (x === null) {
@@ -896,7 +928,7 @@ function generateMoneyCrates() {
     const amount = Math.round(baseAmount * randomFactor);
 
     generateMoneyCrate(x, y, amount);
-    
+
     // Incrementally update the zone density after spawning each crate
     // This ensures subsequent crates in this batch avoid the same zone
     const zoneId = getZoneId(x);
@@ -915,7 +947,7 @@ function generateStandardComponentCrates() {
 
   // Update zone density ONCE before spawning all crates
   updateZoneDensity();
-  
+
   // Map boundaries
   const seaLevel = 300; // Top of water biome from your map definition
 
@@ -926,7 +958,7 @@ function generateStandardComponentCrates() {
       console.warn("No valid zone found for crate spawning");
       continue;
     }
-    
+
     // Get random position within the target zone
     const x = getRandomXInZone(targetZone);
     if (x === null) {
@@ -934,9 +966,9 @@ function generateStandardComponentCrates() {
       continue;
     }
     const y = seaLevel;
-    
+
     generateRandomBasicComponentCrate(x, y);
-    
+
     // Incrementally update the zone density after spawning each crate
     // This ensures subsequent crates in this batch avoid the same zone
     const zoneId = getZoneId(x);
@@ -978,7 +1010,7 @@ function generateWeaponCrates() {
 
   // Update zone density ONCE before spawning all crates
   updateZoneDensity();
-  
+
   // Map boundaries
   const seaLevel = 300; // Top of water biome from your map definition
 
@@ -989,7 +1021,7 @@ function generateWeaponCrates() {
       console.warn("No valid zone found for crate spawning");
       continue;
     }
-    
+
     // Get random position within the target zone
     const x = getRandomXInZone(targetZone);
     if (x === null) {
@@ -997,9 +1029,9 @@ function generateWeaponCrates() {
       continue;
     }
     const y = seaLevel;
-    
+
     generateRandomWeaponCrate(x, y);
-    
+
     // Incrementally update the zone density after spawning each crate
     // This ensures subsequent crates in this batch avoid the same zone
     const zoneId = getZoneId(x);
@@ -1010,7 +1042,7 @@ function generateWeaponCrates() {
 function generateRandomWeaponCrate(x, y) {
   let value = Math.abs(x);
   let level = 1;
-  let type = Math.floor(Math.random() * 3);
+  let type = Math.floor(Math.random() * 4); // Updated to 4 to include Fireworks
   let component = null;
 
   if (value >= 140000) level = 10;
@@ -1105,24 +1137,31 @@ function checkPlayerShooting(player) {
   if (player.biome === 'recovery') {
     return;
   }
+  
   if (player.keys?.mouse) {
-    if (player.selectedGun === 1) {
-      if (player.gun1.cooldown === 0 && player.gun1.heat < player.gun1.maxHeat - player.gun1.heatEfficiency) {
-        const projectile = createBullet(player, player.gun1);
-        projectiles.push(projectile);
-        createGunshotEvent(player.x, player.y, player.gun1.angle, player.gun1.projectileSpeed, player.gun1.projectileSize);
-        player.gun1.cooldown = player.gun1.cooldownTime;
-        player.gun1.heat = Math.min(player.gun1.maxHeat, player.gun1.heat + player.gun1.heatEfficiency);
-      }
-    } else if (player.selectedGun === 2) {
-      if (player.gun2.cooldown === 0 && player.gun2.heat < player.gun2.maxHeat - player.gun2.heatEfficiency) {
-        const projectile = createBullet(player, player.gun2);
-        projectiles.push(projectile);
-        createGunshotEvent(player.x, player.y, player.gun2.angle, player.gun2.projectileSpeed, player.gun2.projectileSize);
-        player.gun2.cooldown = player.gun2.cooldownTime;
-        player.gun2.heat = Math.min(player.gun2.maxHeat, player.gun2.heat + player.gun2.heatEfficiency);
-      }
+    const gun = player.selectedGun === 1 ? player.gun1 : (player.selectedGun === 2 ? player.gun2 : null);
+    if (gun) {
+      attemptFireGun(player, gun);
     }
+  }
+}
+
+function attemptFireGun(player, gun) {
+  if (gun.cooldown === 0 && gun.heat <= gun.maxHeat - gun.heatEfficiency) {
+    const projectile = createBullet(player, gun);
+    projectiles.push(projectile);
+
+    let visualSpeed = gun.projectileSpeed;
+    if (gun.name.includes('Fireworks')) {
+      visualSpeed += 1000;
+    }
+
+    if (!gun.name.includes('Flamethrower')) {
+      createGunshotEvent(player.x, player.y, gun.angle, visualSpeed, gun.projectileSize);
+    }
+    
+    gun.cooldown = gun.cooldownTime;
+    gun.heat = Math.min(gun.maxHeat, gun.heat + gun.heatEfficiency);
   }
 }
 
@@ -1148,12 +1187,53 @@ function checkSpawnEnemyPlane(plane) {
 
 function createBullet(player, gun) {
   const angle = gun.angle;
-  const vx = Math.cos(angle) * gun.projectileSpeed;
-  const vy = Math.sin(angle) * gun.projectileSpeed;
+  const vx = Math.cos(angle) * gun.projectileSpeed + (player.vx || 0);
+  const vy = Math.sin(angle) * gun.projectileSpeed + (player.vy || 0);
 
-  const projectile = new Projectile(
-    player.x,
-    player.y,
+  const deltaTime = 0.01 * timeSpeed;
+
+  if (gun.name.includes('Firework Launcher')) {
+    return new FireworkRocket(
+      player.x - vx * deltaTime,
+      player.y - vy * deltaTime,
+      vx,
+      vy,
+      angle,
+      gun.damage,
+      gun.projectileSize,
+      player.username,
+      gun.projectileRange,
+      255, 0, 0 // Red rocket
+    );
+  }
+
+  if (gun.name.includes('Flamethrower')) {
+    // Gaussian distribution for angle (Box-Muller transform)
+    const u1 = 1.0 - Math.random(); 
+    const u2 = 1.0 - Math.random();
+    const randStdNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+    const spreadAngle = angle + (randStdNormal * 0.1); // ~11 degrees standard deviation
+
+    const fireVx = Math.cos(spreadAngle) * gun.projectileSpeed + (player.vx || 0);
+    const fireVy = Math.sin(spreadAngle) * gun.projectileSpeed + (player.vy || 0);
+
+    return new Fire(
+      player.x - fireVx * deltaTime,
+      player.y - fireVy * deltaTime,
+      fireVx,
+      fireVy,
+      spreadAngle,
+      gun.damage,
+      gun.projectileSize,
+      player.username,
+      gun.projectileRange,
+      255, 100 + Math.random() * 100, 0 // Orange-yellow variable color
+    );
+  }
+
+  return new Projectile(
+    player.x - vx * deltaTime,
+    player.y - vy * deltaTime,
     vx,
     vy,
     angle,
@@ -1165,8 +1245,6 @@ function createBullet(player, gun) {
     100, // color RGB
     100
   );
-
-  return projectile;
 }
 
 function applyRepairs(player, deltaTime) {
@@ -1300,7 +1378,7 @@ function updateGunAngle(player, gun, targetAngle, deltaTime) {
 
   // Determine constant rotation speed based on weight
   // Here, rotationSpeed is constant per second, you may adjust the base factor as needed.
-  const rotationSpeed = 1 / gun.weight; // For example: if weight is higher, turn slower
+  const rotationSpeed = 2 / gun.weight; // For example: if weight is higher, turn slower
 
   // Compute the maximum change permitted this frame
   const maxChange = rotationSpeed * deltaTime;
@@ -1450,16 +1528,16 @@ function applyPlayerGravity(player) {
 
   if (player.biome === 'water') {
     const isStationary = player.engine.power <= player.engine.minPower;
-    
+
     if (isStationary) {
       // When throttle is 0, make the boat float at equilibrium on the surface
       const waterSurfaceY = 0;
       const targetFloatDepth = 3; // Float slightly submerged (y=3 is below surface)
       const targetY = waterSurfaceY + targetFloatDepth;
-      
+
       // Calculate distance from target
       const distanceFromTarget = player.y - targetY;
-      
+
       if (distanceFromTarget > 0) {
         // Below target (deeper in water) - apply gentle upward buoyancy
         const buoyancyForce = Math.min(distanceFromTarget * 0.06, 0.5);
@@ -1468,10 +1546,10 @@ function applyPlayerGravity(player) {
         // At or above target - just gravity, no upward force
         player.vy += gravityForce;
       }
-      
+
       // Very strong damping to prevent oscillation
       player.vy *= 0.75;
-      
+
     } else {
       // Enhanced buoyancy for easier water lift-off when moving
       const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
@@ -1573,7 +1651,7 @@ function updateHull(entity) {
     if (isPlayer) {
       // Check if player is already pending respawn to prevent multiple triggers
       const alreadyPendingRespawn = pendingRespawns.some(pr => pr.player.username === entity.username);
-      
+
       if (!alreadyPendingRespawn) {
         if (entity.money >= entity.value) handleRevive(entity);
         else handleDeath(entity);
@@ -1591,25 +1669,25 @@ function handleRevive(player) {
   // Create explosion immediately at death location
   const explosionSize = Math.max(player.size / 10 || 1, 1);
   createExplosionEvent(player.x, player.y, explosionSize);
-  
+
   // Store player info for respawn
   const username = player.username;
   const respawnCost = player.value;
   const socket = playerSockets.get(username);
   const deathX = player.x;
   const deathY = player.y;
-  
+
   // Detach crates
   player.detachAllCrates();
-  
+
   // Remove player from the game temporarily
   const playerIndex = players.findIndex(p => p.username === username);
   if (playerIndex !== -1) {
     players.splice(playerIndex, 1);
   }
-  
+
   sendNoticeMessageAll(`${player.username} has been downed!`, 'server');
-  
+
   if (socket) {
     sendMessage(socket, {
       type: 'player_downed',
@@ -1617,39 +1695,39 @@ function handleRevive(player) {
       cost: respawnCost
     });
   }
-  
+
   // Schedule respawn after 2 seconds (will deduct money and re-add player then)
   const respawnTime = Date.now() + 2000;
   pendingRespawns.push({ player, respawnTime, respawnCost, socket, username, deathX, deathY });
-  
+
   console.log(`${username} scheduled for respawn in 2 seconds (cost: $${respawnCost})`);
 }
 
 function processPendingRespawns() {
   const now = Date.now();
-  
+
   // Process all respawns that are ready
   for (let i = pendingRespawns.length - 1; i >= 0; i--) {
     const pending = pendingRespawns[i];
-    
+
     if (now >= pending.respawnTime) {
       const player = pending.player;
       const cost = pending.respawnCost;
       const socket = pending.socket;
       const username = pending.username;
-      
+
       // Check if player's socket is still connected
       if (socket && playerSockets.has(username)) {
         // Deduct repair cost at respawn time
         player.money -= cost;
-        
+
         try {
           // Respawn the player
           player.respawn();
-          
+
           // Re-add player to the game
           players.push(player);
-          
+
           if (player && player.lastRecoveryZone) {
             sendNoticeMessage(username, `You were respawned at recovery zone ${player.lastRecoveryZone.id}. -$${cost}`, 'game');
           } else {
@@ -1658,7 +1736,7 @@ function processPendingRespawns() {
           console.log(`${username} respawned after delay (cost: $${cost})`);
         } catch (err) {
           console.error('Error during delayed respawn', username, err);
-          try { 
+          try {
             player.respawn();
             players.push(player);
           } catch (e) { /* ignore */ }
@@ -1666,7 +1744,7 @@ function processPendingRespawns() {
       } else {
         console.log(`${username} disconnected before respawn could complete`);
       }
-      
+
       // Remove this respawn from the queue
       pendingRespawns.splice(i, 1);
     }
@@ -1684,13 +1762,13 @@ function handleDeath(entity) {
 
   if (playerIndex !== -1) {
     sendNoticeMessageAll(`${entity.username} has been killed!`, 'server');
-    
+
     // Delete the player's saved state so they start fresh on next login
     if (entity.playerId) {
       deletePlayerState(entity.playerId);
       console.log(`Deleted player state for ${entity.username} (ID: ${entity.playerId}) after death`);
     }
-    
+
     if (socket) {
       sendMessage(socket, {
         type: 'player_destroyed'
@@ -1754,7 +1832,7 @@ function handleDeath(entity) {
       if (enemy && enemy.isFleetBoat) {
         lastFleetShipDestroyedAt = Date.now();
         console.log(`Fleet ship ${enemy.username} destroyed - delaying fleet respawns for ${FLEET_RESPAWN_DELAY_MS / 1000} seconds`);
-        
+
         // Immediately notify all planes that belonged to this fleet boat
         if (enemy.planes && Array.isArray(enemy.planes)) {
           enemy.planes.forEach(plane => {
@@ -1765,7 +1843,7 @@ function handleDeath(entity) {
             }
           });
         }
-        
+
         // Also check all enemy planes in case they reference this boat but aren't in the boat's array
         enemies.forEach(e => {
           if (e.fleetBoat === enemy) {
@@ -1775,7 +1853,7 @@ function handleDeath(entity) {
           }
         });
       }
-    } catch (e) { 
+    } catch (e) {
       console.error('Error handling fleet boat destruction cleanup:', e);
     }
     // Detach any crates held by the enemy in its standard 'crates' array
@@ -1793,15 +1871,15 @@ function updatePosition(player, deltaTime = 0.01 * timeSpeed) {
 function checkPlayerBiome(player) {
   let foundBiome = null;
   const BIOME_HYSTERESIS = 5; // Add buffer to prevent flickering at boundaries
-  
+
   // Iterate all biomes to check if the player's position is within any biome.
   for (let i = 0; i < mapData.biomes.length; i++) {
     const biome = mapData.biomes[i];
-    
+
     // Apply hysteresis: if player is already in this biome, extend the boundaries slightly
     const isCurrentBiome = player.biome === biome.type;
     const buffer = isCurrentBiome ? BIOME_HYSTERESIS : 0;
-    
+
     if (
       biome.x1 - buffer <= player.x &&
       player.x <= biome.x2 + buffer &&
@@ -2088,7 +2166,7 @@ function getPlayerOrRespawningPlayer(username) {
   // First check if player is active
   const activePlayer = players.find(p => p.username === username);
   if (activePlayer) return activePlayer;
-  
+
   // Check if player is pending respawn
   const respawning = pendingRespawns.find(pr => pr.username === username);
   if (respawning) {
@@ -2099,7 +2177,7 @@ function getPlayerOrRespawningPlayer(username) {
       y: respawning.deathY
     };
   }
-  
+
   return null;
 }
 
@@ -2124,7 +2202,7 @@ wss.on('connection', (ws, request) => {
         if (player.playerId) {
           savePlayerState(player.playerId, player);
         }
-        
+
         // Defensive: only call methods if the player object still exists
         if (typeof player.detachAllCrates === 'function') {
           try {
@@ -2384,7 +2462,7 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
     let player;
-    
+
     // Try to load saved state if playerId is provided
     if (playerId) {
       const savedState = loadPlayerState(playerId);
@@ -2396,14 +2474,14 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
         sendNoticeMessageAll(username + " rejoined!", "server");
       }
     }
-    
+
     // Create new player if no saved state found
     if (!player) {
       player = new Player('air', username, r, g, b, 0, -400, startMillis, selectedGun1, selectedGun2);
       player.playerId = generatePlayerId(); // Generate new ID for new players
       sendNoticeMessageAll(username + " joined!", "server");
     }
-    
+
     players.push(player);
     playerSockets.set(username, ws);
     ws.currentUsername = username; // Set username in socket context
@@ -2423,14 +2501,14 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
 
     // Send player ID to client so it can be stored in cookie
     sendMessage(ws, { type: 'login_success', username, playerId: player.playerId, map: mapData });
-    
+
     // Send welcome message AFTER login_success so client is ready to receive it
     if (playerId && loadPlayerState(playerId)) {
       sendNoticeMessage(username, `Loaded game state: ${playerId.substring(0, 8)}...`, 'game');
     } else {
       sendNoticeMessage(username, "Hi!", 'game');
     }
-    
+
     sendNoticeMessage(username, "Current players: " + players.length, 'server');
     logPlayerJoin(username);
     if (player.username === admin_name) {
@@ -2554,33 +2632,33 @@ function handlePing(ws, message) {
 function handleSuicide(ws, message) {
   const player = players.find(p => p.username === ws.currentUsername);
   if (!player) return;
-  
+
   // Store player info
   const username = player.username;
-  
+
   // Create explosion at player location
   const explosionSize = Math.max(player.size / 10 || 1, 1);
   createExplosionEvent(player.x, player.y, explosionSize);
-  
+
   // Detach all crates
   if (typeof player.detachAllCrates === 'function') {
     player.detachAllCrates();
   }
-  
+
   // Remove the player from the game
   players = players.filter(p => p.username !== username);
-  
+
   // Clean up the socket mapping
   playerSockets.delete(username);
   ws.currentUsername = null;
-  
+
   // Send logout confirmation to client
   const logoutMessage = msgpack.encode({
     type: 'logout_success',
     message: 'Progress reset complete. Please sign in again.'
   });
   ws.send(logoutMessage);
-  
+
   console.log(`${username} reset their progress via suicide`);
 }
 
@@ -2591,13 +2669,13 @@ function handleDeletePlayerState(ws, message) {
     // Delete the player's saved state file
     deletePlayerState(player.playerId);
     console.log(`Deleted player state for ${player.username} (ID: ${player.playerId})`);
-    
+
     // Remove the player from the active players list
     players = players.filter((p) => p.username !== ws.currentUsername);
-    
+
     // Clean up the socket mapping
     playerSockets.delete(ws.currentUsername);
-    
+
     // Notify other players
     sendNoticeMessageAll(ws.currentUsername + ' has reset their progress', 'server');
   }
@@ -2906,7 +2984,7 @@ function checkCommand(command, player) {
     const dx = spawnX - spawnOrigin.x;
     const dy = spawnY - spawnOrigin.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    
+
     let boatLevel = 1;
     if (distance >= 100000) {
       boatLevel = 3;
