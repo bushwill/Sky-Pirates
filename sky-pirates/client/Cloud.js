@@ -36,52 +36,67 @@ function generateCloudLayer(targetArray) {
     // Limits
     const minX = -150000;
     const maxX = 150000;
-    const fixedY = -6000;
-    
-    // Create cloud clusters for structure instead of uniform noise
-    const numClusters = 400; 
-    
-    for (let i = 0; i < numClusters; i++) {
-        // Cluster center
-        const cx = rng.range(minX, maxX);
-        
-        // Distribute Z uniformly across a deep range
-        // With inverse-distance scaling in Display.js, uniform Z means most clouds appear far away (small)
-        // Range 200 (close/large) to 80000 (horizon/tiny) - Deep background
-        const baseZ = rng.range(200, 80000); 
-        
-        // Randomize cluster characteristics
-        // Roughly 15,000 clouds total target (avg 37 per cluster)
-        const cloudsInCluster = Math.floor(rng.range(20, 55));
-        const clusterSpreadX = rng.range(1500, 5000); // How wide the cloud bank is
-        const clusterSpreadZ = rng.range(0, 2); // Keep Z tight so they move together as a parallax layer
-        
-        for (let j = 0; j < cloudsInCluster; j++) {
-            // Gaussian-ish distribution for organic shape (bias towards center of cluster)
-            // Summing two randoms creates a "triangle" distribution, good enough for "clumping"
-            const xOffset = (rng.random() - 0.5 + rng.random() - 0.5) * clusterSpreadX;
-            // Slight Z variation to prevent z-fighting flicker if that was an issue, but mostly flat
-            const zOffset = (rng.random() - 0.5) * clusterSpreadZ;
-            
-            const x = cx + xOffset;
-            const y = fixedY; 
-            const z = baseZ + zOffset;
 
-            // Visual properties
-            const greyVal = rng.range(220, 240);
-            const r = greyVal;
-            const g = greyVal;
-            const b = greyVal;
+    // Helper function to generate clusters
+    const createClusters = (numClusters, minY, maxY, minZ, maxZ) => {
+        for (let i = 0; i < numClusters; i++) {
+            // Cluster center
+            const cx = rng.range(minX, maxX);
+            // Cluster height (Y)
+            const cy = (minY === maxY) ? minY : rng.range(minY, maxY);
             
-            // Fade alpha slightly at edges of cluster to blend
-            const distFactor = Math.abs(xOffset) / clusterSpreadX; 
-            const alphaBase = rng.range(20, 100);
-            const alpha = alphaBase * (1.0 - (distFactor * 0.2)); // 30% fade at max extent
+            // Distribute Z uniformly across a deep range
+            // With inverse-distance scaling in Display.js, uniform Z means most clouds appear far away (small)
+            // Range 200 (close/large) to 80000 (horizon/tiny) - Deep background
+            const baseZ = rng.range(minZ, maxZ); 
+            
+            // Randomize cluster characteristics
+            // Roughly 15,000 clouds total target (avg 37 per cluster)
+            const cloudsInCluster = Math.floor(rng.range(20, 55));
+            const clusterSpreadX = rng.range(1500, 5000); // How wide the cloud bank is
+            const clusterSpreadZ = rng.range(0, 2); // Keep Z tight so they move together as a parallax layer
+            
+            for (let j = 0; j < cloudsInCluster; j++) {
+                // Gaussian-ish distribution for organic shape (bias towards center of cluster)
+                // Summing two randoms creates a "triangle" distribution, good enough for "clumping"
+                const xOffset = (rng.random() - 0.5 + rng.random() - 0.5) * clusterSpreadX;
+                // Slight Z variation to prevent z-fighting flicker if that was an issue, but mostly flat
+                const zOffset = (rng.random() - 0.5) * clusterSpreadZ;
+                
+                const x = cx + xOffset;
+                const y = cy; 
+                const z = baseZ + zOffset;
 
-            // Size variation
-            const size = rng.range(500, 2000) * (0.8 + rng.random() * 0.4);
-            
-            targetArray.push(new Cloud(x, y, z, r, g, b, alpha, size));
+                // Visual properties
+                const greyVal = rng.range(220, 240);
+                const r = greyVal;
+                const g = greyVal;
+                const b = greyVal;
+                
+                // Fade alpha slightly at edges of cluster to blend
+                const distFactor = Math.abs(xOffset) / clusterSpreadX; 
+                const alphaBase = rng.range(20, 100);
+                const alpha = alphaBase * (1.0 - (distFactor * 0.2)); // 30% fade at max extent
+
+                // Size variation
+                const size = rng.range(500, 2000) * (0.8 + rng.random() * 0.4);
+                
+                targetArray.push(new Cloud(x, y, z, r, g, b, alpha, size));
+            }
         }
-    }
+    };
+    
+    // Heavy Cloud Zone (Original Layer)
+    // Fixed at Y = -6000
+    createClusters(400, -6000, -6000, 200, 80000);
+
+    // Light Cloud Zone (New Layer)
+    // Spanning -6000 < y < -3000
+    // Exclusively closer in Z value (Foreground only)
+    createClusters(100, -6000, -3000, 200, 15000);
+
+    // Sort clouds by Z descending (painter's algorithm)
+    // Higher Z (background) drawn first, Lower Z (foreground) drawn last
+    // This happens once at the end of generation
+    targetArray.sort((a, b) => b.z - a.z);
 }
