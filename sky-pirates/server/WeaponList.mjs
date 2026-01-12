@@ -131,13 +131,13 @@ export function createFlamethrower(level, random = true) {
     const heatEfficiency = randomFactor * (2.0 - level * 0.1); // High heat generation per shot, but rapid fire
     const damage = randomFactor * (1.0 + level * 0.05); // Low damage per particle
     const cooldownTime = 10;
-    const projectileSpeed = randomFactor * (100.0 + level * 5.0); // Slower than bullets
+    const projectileSpeed = randomFactor * (250.0 + level * 10.0); // Slower than bullets
     const projectileSize = randomFactor * (1 + level * 0.05);
     const maxAngle = Math.PI * 2; // 360 degrees
     const value = randomFactor * (100 + adjustedLevel * 50);
     const heatDispersion = randomFactor * (40.0 + adjustedLevel * 2.0); // Rapid cooling needed
-    const projectileRange = 300; // Short range
-    const projectileLifetime = 2000;
+    const projectileRange = 200; // Short range
+    const projectileLifetime = 1000;
 
     return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
 }
