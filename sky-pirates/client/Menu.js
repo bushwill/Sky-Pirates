@@ -336,7 +336,11 @@ class LoginMenuScreen extends MenuScreen {
     this.loginButton.setPosition(loginBtnX, loginBtnY);
     this.loginButton.setSize(120, 40);
     // Change label when signed in: allow changing party mid-match
-    this.loginButton.label = signedIn ? "Change Party" : "Log In";
+    if (signedIn) {
+        this.loginButton.label = "Change Party";
+    } else {
+        this.loginButton.label = this.hasSavedState ? "Resume" : "Log In";
+    }
     this.loginButton.selected = (this.selected === -1);
     this.loginButton.draw();
         
@@ -357,8 +361,8 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         // --- Draw weapon lists ---
-        // If the player is already signed in, hide weapon selection (can't change weapons from pause menu)
-        if (!signedIn) {
+        // If the player is already signed in or resuming, hide weapon selection (can't change weapons)
+        if (!signedIn && !this.hasSavedState) {
             let listSpacing = 54;
             let listYOffset = y + 360; // Position well below error message area
             let gunListW = 180, gunListH = 44;
@@ -515,6 +519,9 @@ class LoginMenuScreen extends MenuScreen {
         if (typeof loadUserPreferences === 'function') {
             const prefs = loadUserPreferences();
             
+            // Check for saved state via player ID cookie
+            this.hasSavedState = typeof getCookie === 'function' && !!getCookie('skyPiratesPlayerId');
+
             if (prefs.name) {
                 this.usernameField.value = prefs.name;
             }
@@ -631,6 +638,12 @@ class SettingsMenuScreen extends MenuScreen {
         if (confirm("Are you sure you want to reset your progress? This will delete your saved game state and you'll start fresh.")) {
             // Delete the player ID cookie
             document.cookie = 'skyPiratesPlayerId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict';
+            
+            // Update login screen state if it exists
+            if (typeof menuManager !== 'undefined' && menuManager.screens && menuManager.screens['login']) {
+                menuManager.screens['login'].loadSavedPreferences();
+            }
+            
             alert("Progress reset! You'll start a new game on your next login.");
         }
     }

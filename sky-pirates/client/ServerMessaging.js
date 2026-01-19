@@ -153,6 +153,9 @@ function handleDecodedMessage(decodedMessage) {
                     }, 2000);
                 }
             } else {
+                if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].loginMsg = "Logged in.";
+                }
                 menuManager.show("main"); // or whatever is your game screen
                 console.log("Successfully logged in!");
             }
