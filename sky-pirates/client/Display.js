@@ -933,6 +933,7 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
 }
 
 function drawOverSpeedFireIcon(player, drawX, drawY) {
+    if (player.biome === 'recovery') return;
     push();
     translate(drawX + 40, drawY - 30);
     scale(1.2);
@@ -1220,8 +1221,34 @@ function drawTopRightComponentStats(player) {
 
 function drawStallWarning(player, drawX, drawY) {
     speed = Math.sqrt(player.vx ** 2 + player.vy ** 2).toFixed(0);
+    
+    // Check if player is near water surface (floating or landing)
+    let nearWater = false; // Default false
+    if (typeof mapData !== 'undefined' && mapData.biomes) {
+        const waterBiome = mapData.biomes.find(b => b.type === 'water');
+        // Check if within 25 units of water surface (floating height is ~12-15 units above)
+        if (waterBiome && player.y > waterBiome.y1 - 25) { 
+            nearWater = true;
+        }
+    }
+
+    // Determine if we should suppress warnings because we are "floating"
+    // Floating criteria: Near water AND low/no throttle.
+    // If throttle is high, we are likely attempting to take off or fly low, so show stall warnings.
+    let isFloating = false;
+    if (nearWater) {
+        // Safe access to engine power (sync'd from server)
+        const enginePower = (player.engine && player.engine.power !== undefined) ? player.engine.power : 999;
+        const minPower = (player.engine && player.engine.minPower !== undefined) ? player.engine.minPower : 0;
+        
+        if (enginePower <= minPower) {
+            isFloating = true;
+        }
+    }
+
     // Draw stalling icon if stalling is true
-    if (player.biome !== 'recovery') {
+    // Hide in recovery, actual water biome, or if floating on surface
+    if (player.biome !== 'recovery' && player.biome !== 'water' && !isFloating) {
         if (player.stalling) {
             drawStallIndicator(player, drawX, drawY, 255, 0, 0);
         } else if (speed < player.wings.minLiftSpeed) {

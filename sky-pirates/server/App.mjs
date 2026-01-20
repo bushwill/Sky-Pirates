@@ -1530,34 +1530,61 @@ function applyPlayerGravity(player) {
   const gravityForce = 0.5; // normal gravity
 
   if (player.biome === 'water') {
-    const isStationary = player.engine.power <= player.engine.minPower;
+    // Find actual water surface level from biome data
+    let waterSurfaceY = 310; // Default fallback
+    if (mapData && mapData.biomes) {
+        const waterBiome = mapData.biomes.find(b => b.type === 'water' && player.x >= b.x1 && player.x <= b.x2);
+        if (waterBiome) waterSurfaceY = waterBiome.y1;
+    }
 
-    if (isStationary) {
-      // When throttle is 0, make the boat float at equilibrium on the surface
-      const waterSurfaceY = 0;
-      const targetFloatDepth = 3; // Float slightly submerged (y=3 is below surface)
+    const isStationary = player.engine.power <= player.engine.minPower;
+    const distToSurface = Math.abs(player.y - waterSurfaceY);
+    const isNearSurface = distToSurface < 50;
+
+    if (isStationary && isNearSurface) {
+      // When throttle is 0 AND near surface, make the boat float at equilibrium
+      // Equilibrium requires depth=10 (to get 0.5 upward force matches gravity).
+      // So set target higher (-12) so the equilibrium point (at +10 depth from target) ends up slightly above surface.
+      const targetFloatDepth = -12; 
       const targetY = waterSurfaceY + targetFloatDepth;
 
-      // Calculate distance from target
-      const distanceFromTarget = player.y - targetY;
+      // Calculate distance from target (positive means deeper)
+      const depth = player.y - targetY;
 
-      if (distanceFromTarget > 0) {
-        // Below target (deeper in water) - apply gentle upward buoyancy
-        const buoyancyForce = Math.min(distanceFromTarget * 0.06, 0.5);
-        player.vy += gravityForce - buoyancyForce;
+      if (depth > 0) {
+        // Below target (deeper in water) - apply upward buoyancy
+        // Force must exceed gravity (0.5) to push up
+        // Spring-like force: stronger when deeper
+        // Cap max force to avoid rocket-launching, but ensure it's > 0.5
+        const springForce = Math.min(depth * 0.05, 1.5); // Max 1.5 upward (net 1.0 up)
+        
+        player.vy += gravityForce - springForce;
+        
+        // Apply Drag (damping) only, don't hard multiply
+        player.vy *= 0.95; 
       } else {
-        // At or above target - just gravity, no upward force
-        player.vy += gravityForce;
+         // Above target (in air or just surfaced) - apply gravity + damping to settle
+         // If we are slightly above target (e.g. bobbed up), gravity pulls down.
+         player.vy += gravityForce;
+         
+         // If very close to surface, dampen to stop bouncing forever?
+         if (depth > -20) {
+            player.vy *= 0.90;
+         }
       }
 
-      // Very strong damping to prevent oscillation
-      player.vy *= 0.75;
-
     } else {
-      // Enhanced buoyancy for easier water lift-off when moving
+      // Normal water physics (moving OR deep underwater)
+      // Enhanced buoyancy for easier water lift-off when moving, or just floating up from deep
       const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
+      
       // Buoyancy opposes gravity
       player.vy += gravityForce - buoyancyForce;
+      
+      // Apply water drag to vertical movement to prevent infinite acceleration
+      if (Math.abs(player.vy) > 2) {
+          player.vy *= 0.98;
+      }
     }
   } else if (player.biome === 'recovery') {
     return;
