@@ -30,6 +30,12 @@ function connectWebSocket() {
                 menuManager.screens['login'].loginMsg = "Reconnected. Please log in again.";
             }
         }
+        
+        // Check session status if we have a saved ID
+        const savedId = getCookie('skyPiratesPlayerId');
+        if (savedId) {
+            checkSessionStatus(savedId);
+        }
     };
 
     ws.onclose = () => {
@@ -124,6 +130,12 @@ function connectWebSocket() {
 
 function handleDecodedMessage(decodedMessage) {
     switch (decodedMessage.type) {
+        case 'session_status':
+            if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                menuManager.screens['login'].setSessionActive(decodedMessage.active);
+            }
+            break;
+
         case 'map_data':
             mapData = decodedMessage.map;
             recovery = mapData.biomes.find(biome => biome.type === "recovery")
@@ -514,6 +526,19 @@ function getMapData() {
 }
 
 // Accept username and color params from menu, not HTML inputs
+function checkSessionStatus(playerId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    // Send check_session request
+    const message = {
+        type: 'check_session',
+        playerId
+    };
+    
+    const encoded = msgpack.encode(message);
+    ws.send(encoded);
+}
+
 function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clearParty = false) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         if (menuManager && menuManager.screens && menuManager.screens['login']) {

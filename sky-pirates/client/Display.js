@@ -104,11 +104,15 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
             spawnWaterFoamParticles(enemy.x, enemy.y, { vx: enemy.vx, vy: enemy.vy });
         }
     }
+
+    push(); // Start Main Enemy push
+
     textSize(12);
     textAlign(CENTER);
     stroke(100, 0, 0);
     fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
-    push();
+    
+    push(); // Transformation push
     translate(drawX, drawY);
 
     // Draw enemy based on type using dedicated functions
@@ -120,7 +124,8 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
         drawEnemyDefault(enemy);
     }
 
-    pop();
+    pop(); // End Transformation push
+
     // Draw enemy hull/health arc (guard chassis fields)
     const arcRadius = 60;
     const arcThickness = 4;
@@ -155,6 +160,7 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
     }
 
     // Draw a single unified label for the enemy above its position.
+    noStroke();
     fill(255);
     textSize(12);
     // Prefer an explicit username when available; otherwise fall back to displayName, type, or constructor name
@@ -172,9 +178,13 @@ function displayEnemy(enemy, drawX = 0, drawY = -400, centerX = 0, centerY = -40
         textStyle(NORMAL);
     }
 
-    fill(0, 255, 0); // Green text for AI state
-    textSize(10);
-    text(`AI: ${enemy.aiState}`, drawX, drawY - 30); // Display above the enemy label
+    if (testing) {
+        fill(0, 255, 0); // Green text for AI state
+        textSize(10);
+        text(`AI: ${enemy.aiState}`, drawX, drawY - 30); // Display above the enemy label
+    }
+
+    pop(); // End Main Enemy push
 
 }
 
@@ -227,20 +237,25 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
                 }
 
                 pop();
+
+                push();
                 // Draw enemy name or faction
                 fill(enemy.r ?? 255, enemy.g ?? 50, enemy.b ?? 50);
                 textAlign(CENTER);
                 textSize(12);
+                noStroke();
                 text(enemy.faction ?? "Enemy", indicatorX, indicatorY - 15);
                 // Display distance to player
                 let distance = Math.sqrt((eX - pX) ** 2 + (eY - pY) ** 2);
                 text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
+                pop();
             }
         }
     }
 }
 
 function displayPlayers(centerX = 0, centerY = -400) {
+    push();
     for (let i in players) {
         stroke(0);
         rectMode(CENTER);
@@ -264,6 +279,7 @@ function displayPlayers(centerX = 0, centerY = -400) {
         }
         displayMessages(player, drawX, drawY);
     }
+    pop();
 }
 
 function displayPlayer(player, drawX = 0, drawY = -400) {
@@ -282,8 +298,66 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
         if (Math.random() < 0.3) { // 30% chance when displaying (increased from 12%)
             spawnWaterFoamParticles(player.x, player.y, { vx: player.vx, vy: player.vy });
         }
+    } else {
+        // Rooster Tail Effect (Flying low over water)
+        // Check if there is a water biome directly below the player
+        if (mapData && mapData.biomes) {
+            const waterBiome = mapData.biomes.find(b => 
+                b.type === 'water' && player.x >= b.x1 && player.x <= b.x2
+            );
+
+            if (waterBiome) {
+                // Calculate distance to water surface (assuming +Y is down, surface is at y1)
+                const distToWater = waterBiome.y1 - player.y;
+                // Calculate total speed
+                const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+                
+                // Activation height: 80 units (approx 1.5 plane heights) - REDUCED from 120
+                // Speed threshold: 50
+                const maxEffectHeight = 80;
+
+                if (distToWater > 0 && distToWater < maxEffectHeight && speed > 50) {
+                    // Calculate base intensity factors
+                    // Squared falloff for sharper boundary
+                    const ratio = distToWater / maxEffectHeight;
+                    const proximityFactor = (1 - ratio) * (1 - ratio); 
+                    
+                    // Speed Factor bands:
+                    // < 50: No wake (Stall) -> Handled by if-check
+                    // 50-80: Weak wake (Stall/Slow)
+                    // 80-120: Light wake (Slow flight)
+                    // 120-200: Medium wake (Cruising)
+                    // 200+: Heavy wake (Fast/Boost)
+                    let speedFactor = 0;
+                    
+                    if (speed < 80) {
+                        // 50-80: 0.1 to 0.3
+                        speedFactor = 0.1 + 0.2 * ((speed - 50) / 30);
+                    } else if (speed < 120) {
+                        // 80-120: 0.3 to 0.6
+                        speedFactor = 0.3 + 0.3 * ((speed - 80) / 40);
+                    } else if (speed < 200) {
+                        // 120-200: 0.6 to 1.0
+                        speedFactor = 0.6 + 0.4 * ((speed - 120) / 80);
+                    } else {
+                        // 200+: 1.0 scaling up to ~2.5 at 500 speed
+                        speedFactor = 1.0 + 1.5 * Math.min(1, (speed - 200) / 300);
+                    }
+
+                    // Combined intensity
+                    const finalIntensity = speedFactor * proximityFactor;
+
+                    // Probability check to avoid over-spawning, scaled by intensity
+                    // Intense wakes spawn more continually
+                    if (finalIntensity > 0.05 && Math.random() < (0.2 + finalIntensity * 0.3)) {
+                        spawnRoosterTailParticles(player.x, waterBiome.y1, player.vx, finalIntensity); 
+                    }
+                }
+            }
+        }
     }
 
+    push();
     textSize(12);
     textAlign(CENTER);
     stroke(0);
@@ -298,6 +372,7 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     textSize(12);
     if (!player || !player.username) {
         console.warn("Invalid player or missing username:", player);
+        pop();
         return;  // skip drawing text if no username
     }
     if (player.party) {
@@ -306,6 +381,7 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     // Ensure no stroke is applied to player text (prevents white outlines from leaking UI state)
     noStroke();
     text(player.username, drawX, drawY - 15);
+    pop();
 }
 
 function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
@@ -362,6 +438,7 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
             pop();
 
             // Draw username
+            push();
             fill(player.party.r, player.party.g, player.party.b);
             textAlign(CENTER);
             textSize(12);
@@ -370,6 +447,7 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
             // Calculate and display distance
             let distance = Math.sqrt((memberX - pX) ** 2 + (memberY - pY) ** 2);
             text(distance.toFixed(0) + "m", indicatorX, indicatorY + 25);
+            pop();
         } else {
             // Draw party indicator above player if on screen
             push();
@@ -383,13 +461,15 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
 }
 
 function displayProjectiles(centerX = 0, centerY = -400) {
+    push();
+    rectMode(CENTER);
     for (let i in projectiles) {
-        rectMode(CENTER);
         const projectile = projectiles[i];
         const drawX = windowWidth / 2 + (projectile.x - centerX);
         const drawY = windowHeight / 2 + (projectile.y - centerY);
         displayProjectile(projectile, drawX, drawY);
     }
+    pop();
 }
 
 function displayProjectile(projectile, drawX = 0, drawY = -400) {
@@ -400,6 +480,7 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
         spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, projectileSizeMultiplier);
     }
 
+    push();
     textSize(12);
     textAlign(CENTER);
     strokeWeight(1);
@@ -408,7 +489,6 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
 
     const s = projectile.size; // size scale
 
-    push();
     translate(drawX, drawY);
     rotate(projectile.angle); // assumes angle in radians
 
@@ -776,6 +856,7 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
         }
     }
 
+    push();
     textSize(12);
     textAlign(CENTER);
     if (crate.type === 'money') {
@@ -815,7 +896,6 @@ function displayCrate(crate, centerX = 0, centerY = -400) {
         }
     }
 
-    push();
     strokeWeight(1);
     translate(drawX, drawY);
     rotate(crate.angle); // assumes angle in radians
@@ -1181,17 +1261,21 @@ function drawGunCursor(player, drawX, drawY) {
     const cursorX = drawX + Math.cos(gun.angle) * cursorOffset;
     const cursorY = drawY + Math.sin(gun.angle) * cursorOffset;
 
+    push();
     stroke(255, 255, 255);
     noFill();
 
     // Draw crosshair at gun's aiming position
     line(cursorX - cursorSize / 2, cursorY, cursorX + cursorSize / 2, cursorY);
     line(cursorX, cursorY - cursorSize / 2, cursorX, cursorY + cursorSize / 2);
+    pop();
 }
 
 function drawGunHeat(player, drawX, drawY) {
     const heatRatio1 = Math.max(0, Math.min(1, player.gun1.heat / player.gun1.maxHeat));
     const heatRatio2 = Math.max(0, Math.min(1, player.gun2.heat / player.gun2.maxHeat));
+    
+    push();
     stroke(255);
     noFill();
     if (player.selectedGun === 1) {
@@ -1203,6 +1287,7 @@ function drawGunHeat(player, drawX, drawY) {
     fill(200, 100, 0)
     rect(drawX - 50, drawY, 10, 50 * heatRatio1);
     rect(drawX + 50, drawY, 10, 50 * heatRatio2);
+    pop();
 }
 
 function drawGunArc(player, drawX, drawY, options = {}) {
@@ -1321,25 +1406,30 @@ function drawPlaneHull(player, drawX = 0, drawY = 0) {
 }
 
 function drawSpeed(player, drawX, drawY) {
+    push();
     // Defensive noStroke to avoid outlines from previous UI drawing state
     noStroke();
     fill(255);
     text(Math.sqrt(player.vx ** 2 + player.vy ** 2).toFixed(0), drawX, drawY - 50);
+    pop();
 }
 
 function drawCompass(controlledPlayer) {
     let dist = Math.abs(controlledPlayer.x);
     if (dist >= 1000) {
+        push();
         textSize(32);
         textAlign(CENTER, CENTER);
         fill(255);
         let label = (dist / 1000).toFixed(1) + "km";
         if (controlledPlayer.x < -0.01) text(label + " west of center", windowWidth / 2, 30);
         else if (controlledPlayer.x > 0.01) text(label + " east of center", windowWidth / 2, 30);
+        pop();
     }
 }
 
 function displayMessages(player, drawX, drawY) {
+    push();
     stroke(0);
     fill(255);
     textSize(12);
@@ -1368,9 +1458,11 @@ function displayMessages(player, drawX, drawY) {
         text(current_chat, drawX, drawY + 20);
         textStyle(NORMAL);
     }
+    pop();
 }
 
 function displayChat() {
+    push();
     stroke(0);
     fill(255);
     textAlign(LEFT);
@@ -1380,10 +1472,12 @@ function displayChat() {
         text("[" + message.username + "] " + message.message, 20, windowHeight - ((20 * i) + 10));
         if (i > 13) break;
     }
+    pop();
 }
 
 function displayNoticeMessages() {
     if (notice_messages.length > 0) {
+        push();
         for (let i in notice_messages) {
             rectMode(CORNER);
             textAlign(LEFT, CENTER);
@@ -1426,6 +1520,7 @@ function displayNoticeMessages() {
                 notice_messages.splice(0, 1);
             }
         }
+        pop();
     }
 }
 
@@ -1458,6 +1553,7 @@ function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
         // Set constants for inventory display.
         const radius = 100; // World unit radius for inventory items.
         const slotSize = 40; // Display size for each item.
+        push();
         rectMode(CENTER);
         inventoryRegions = computeInventoryRegions(sortedInventory, radius, slotSize, playerScreenX, playerScreenY, sortedToOriginalIndex);
         // Loop through computed regions and draw each inventory item.
@@ -1468,6 +1564,7 @@ function displayInventory(controlledPlayer, playerScreenX, playerScreenY) {
             // Draw the inventory item using a helper function (assumes drawItem is defined).
             drawItem(region.item, region.x, region.y, region.size);
         }
+        pop();
         
         // Draw comparison popup if hovering over an item
         drawComponentComparisonPopup(controlledPlayer, inventoryRegions, false);
@@ -1910,21 +2007,36 @@ function displaySellAllButton(controlledPlayer) {
 
 
 function displayAppInfo() {
+    push();
     fill(255, 255, 255);
     noStroke();
     textSize(16);
     textAlign(CENTER);
     text("Ping: " + Math.round(avgPing), windowWidth - 50, windowHeight - 40);
     text("V Alpha", windowWidth - 50, windowHeight - 20);
+    pop();
 }
 
 // Particle System Functions
 function updateParticles() {
+    // Optimize: Decrease update quality if too many particles AND optimization is enabled
+    // If > 400 particles, use simplified physics and reduced checks
+    const lowQuality = settings.optimizedParticles && particles.length > 400;
+
     // Update all particles and remove dead ones
+    // Iterate backwards.
     for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].update();
+        particles[i].update(1, lowQuality);
         if (particles[i].isDead) {
-            particles.splice(i, 1);
+            // Optimization: Swap with last element and pop (O(1)) instead of splice (O(N))
+            // This changes draw order, but in particle systems this is usually acceptable,
+            // especially in optimized mode where performance is priority.
+            if (lowQuality) {
+                particles[i] = particles[particles.length - 1];
+                particles.pop();
+            } else {
+                particles.splice(i, 1);
+            }
         }
     }
 }
@@ -1932,17 +2044,23 @@ function updateParticles() {
 function drawParticles(centerX = 0, centerY = -400) {
     if (!particles || particles.length === 0) return;
 
+    // Optimize: Decrease render quality if too many particles AND optimization is enabled
+    const lowQuality = settings.optimizedParticles && particles.length > 400;
+
+    push();
     // Calculate camera offset from center position
     const cameraX = centerX - windowWidth / 2;
     const cameraY = centerY - windowHeight / 2;
 
     // Draw all particles
     particles.forEach(particle => {
-        particle.draw(cameraX, cameraY);
+        particle.draw(cameraX, cameraY, lowQuality);
     });
+    pop();
 }
 
 function displayClouds(centerX, centerY) {
+    push();
     const screenCenterX = windowWidth / 2;
     const screenCenterY = windowHeight / 2;
 
@@ -1976,9 +2094,17 @@ function displayClouds(centerX, centerY) {
         fill(cloud.r, cloud.g, cloud.b, cloud.alpha);
         circle(drawX, drawY, drawSize);
     }
+    pop();
 }
 
 function spawnParticle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type = 'default') {
+    // Optimization: Throttling in optimized mode
+    // If optimized mode is ON and particle count is somewhat high (>100),
+    // randomly skip spawning 50% of new particles to prevent overload.
+    if (settings.optimizedParticles && particles.length > 100) {
+        if (Math.random() < 0.5) return; 
+    }
+
     // Add a new particle to the global particles array
     particles.push(new Particle(x, y, z, vx, vy, vz, r, g, b, size, lifetime, type));
 }
@@ -2150,6 +2276,61 @@ function spawnTrailParticles(x, y, angle, throttle, engine = null, player = null
     const lifetime = 15 + Math.random() * 10; // Shorter lifetime
 
     spawnParticle(trailX + spreadX, trailY + spreadY, 0, vx, vy, 0, r, g, b, size, lifetime);
+}
+
+function spawnRoosterTailParticles(x, y, vx, intensity) {
+    // "Wake" logic - simple surface interaction
+    // Generate V-shape wake on surface.
+    
+    // Size Reference: Plane is very small (~12px long). 
+    // Particles must be tiny (~1px) to look realistic.
+    
+    // Frequency: High intensity = continuous stream
+    // Spawns 1-3 particles per frame based on intensity
+    const particleCount = Math.floor(1 + intensity * 1.5);
+
+    // Determine Spawn X: Should be just slightly behind the plane's center logic (~tail).
+    // User requested "almost directly below" so we minimize the offset.
+    // Reducing from 15 to 4 pixels behind center.
+    const spawnOffsetX = (vx > 0 ? 1 : -1) * 4;
+
+    for (let k = 0; k < particleCount; k++) {
+        // Outward Expansion (Z-axis) creates the V-shape
+        // Random direction (+/-) for Z to cover both sides
+        const sideDir = (Math.random() < 0.5 ? -1 : 1);
+        
+        // Expansion rate scales with speed/intensity
+        // REDUCED aggressiveness: narrower V-shape
+        const expansionSpeed = (0.1 + intensity * 0.25);
+        
+        // Jitter Calculation
+        // "Very small random direction and velocity" that scales with intensity
+        const jitterStrength = 0.05 + intensity * 0.2; 
+        
+        const jitterX = (Math.random() - 0.5) * jitterStrength;
+        const jitterY = (Math.random() - 0.5) * jitterStrength;
+        const jitterZ = (Math.random() - 0.5) * jitterStrength;
+
+        // Vertical: Flat on water + jitter
+        const vy = jitterY;
+        
+        // Forward: Stationary + jitter
+        const particleVx = jitterX;
+        
+        // Depth: Expansion + jitter
+        const vz = sideDir * expansionSpeed + jitterZ;
+
+        // Size: Dependent on speed (intensity).
+        // Low speed (<80) = Tiny/Insignificant.
+        // High speed (200+) = Large/Significant.
+        // Using power curve so size ramps up dramatically at higher speeds.
+        const size = (0.4 + Math.random() * 0.6) * (0.2 + Math.pow(intensity, 1.5));
+        
+        // Lifetime: Wake lingers.
+        const lifetime = 100 + Math.random() * 50; 
+
+        spawnParticle(x - spawnOffsetX, y, 0, particleVx, vy, vz, 245, 250, 255, size, lifetime, 'foam');
+    }
 }
 
 function spawnWaterFoamParticles(x, y, velocity = 0, sizeMultiplier = 1) {

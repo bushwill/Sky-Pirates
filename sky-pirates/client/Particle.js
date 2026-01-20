@@ -34,88 +34,109 @@ class Particle {
         this.isDead = false;
     }
     
-    update(deltaTime = 1) {
+    update(deltaTime = 1, lowQuality = false) {
         // Apply physics based on particle type
         if (this.type === 'water') {
             // Apply gentle gravity to water particles
-            this.vy += 0.2 * deltaTime; // Much gentler gravity (was 0.8)
+            this.vy += 0.2 * deltaTime; 
             
-            // Apply light drag/air resistance
-            const dragFactor = 0.995; // Much less drag (was 0.98)
-            this.vx *= Math.pow(dragFactor, deltaTime);
-            this.vy *= Math.pow(dragFactor, deltaTime);
-            this.vz *= Math.pow(dragFactor, deltaTime);
+            // Linear drag approx for low quality optimization
+            if (lowQuality) {
+                const drag = 1 - 0.005 * deltaTime;
+                this.vx *= drag; this.vy *= drag; this.vz *= drag;
+            } else {
+                const dragFactor = 0.995; 
+                this.vx *= Math.pow(dragFactor, deltaTime);
+                this.vy *= Math.pow(dragFactor, deltaTime);
+                this.vz *= Math.pow(dragFactor, deltaTime);
+            }
             
-            // Check what biome the particle is currently in
-            const currentBiome = getBiomeAtPosition(this.x, this.y);
-            
-            // Water particles should disappear when hitting water biome
-            if (currentBiome === 'water' && !this.isDying) {
-                // Water particle hit water biome - start shrinking immediately
-                this.isDying = true;
-                this.deathTimer = 15; // Medium speed disappearance into water
-                return; // Skip normal lifetime processing
+            // Optimization: Skip biome checks periodically in low quality mode
+            if (!lowQuality || Math.random() < 0.1) {
+                const currentBiome = getBiomeAtPosition(this.x, this.y);
+                if (currentBiome === 'water' && !this.isDying) {
+                    this.isDying = true;
+                    this.deathTimer = 15; 
+                    return; 
+                }
             }
         } else if (this.type === 'foam') {
-            // Check what biome the foam particle is currently in
-            const currentBiome = getBiomeAtPosition(this.x, this.y);
+            // Optimization: Skip biome checks periodically in low quality mode
+            // Default to 'water' behavior if we skip check (assume we are still in water)
+            let currentBiome = 'water';
+            if (!lowQuality || Math.random() < 0.1) {
+                currentBiome = getBiomeAtPosition(this.x, this.y);
+            }
             
             if (currentBiome === 'water') {
                 // In water: apply buoyancy to float and start dissolving
-                this.vy += -0.3 * deltaTime; // Strong buoyancy force upward
+                this.vy += -0.05 * deltaTime; 
                 
                 // Heavy drag to simulate water resistance
-                const waterDragFactor = 0.85;
-                this.vx *= Math.pow(waterDragFactor, deltaTime);
-                this.vy *= Math.pow(waterDragFactor, deltaTime);
-                this.vz *= Math.pow(waterDragFactor, deltaTime);
+                const waterDragFactor = 0.80;
+                if (lowQuality) {
+                    const drag = 1 - (1 - waterDragFactor) * deltaTime;
+                    this.vx *= drag; this.vy *= drag; this.vz *= drag;
+                } else {
+                    this.vx *= Math.pow(waterDragFactor, deltaTime);
+                    this.vy *= Math.pow(waterDragFactor, deltaTime);
+                    this.vz *= Math.pow(waterDragFactor, deltaTime);
+                }
                 
                 // Foam dissolves faster when in water
                 if (!this.isDying) {
                     this.isDying = true;
-                    this.deathTimer = 60; // 60 frames = ~2 seconds to dissolve
+                    // Slightly longer life for wake trails
+                    this.deathTimer = 100; 
                 }
             } else {
                 // In air: normal gravity applies
                 this.vy += 0.4 * deltaTime; // Normal gravity when not in water
                 
-                // Light air resistance
                 const airDragFactor = 0.98;
-                this.vx *= Math.pow(airDragFactor, deltaTime);
-                this.vy *= Math.pow(airDragFactor, deltaTime);
-                this.vz *= Math.pow(airDragFactor, deltaTime);
+                if (lowQuality) {
+                   const drag = 1 - 0.02 * deltaTime;
+                   this.vx *= drag; this.vy *= drag; this.vz *= drag;
+                } else {
+                   this.vx *= Math.pow(airDragFactor, deltaTime);
+                   this.vy *= Math.pow(airDragFactor, deltaTime);
+                   this.vz *= Math.pow(airDragFactor, deltaTime);
+                }
             }
         } else if (this.type === 'flame') {
-            // Check if flame hits water - convert to foam
-            const currentBiome = getBiomeAtPosition(this.x, this.y);
-            if (currentBiome === 'water') {
-                // Convert flame to foam particle
-                this.type = 'foam';
-                this.r = 255;
-                this.g = 255;
-                this.b = 255;
-                this.lifetime = 60 + Math.random() * 60; // 2-4 seconds
-                this.maxLifetime = this.lifetime;
-                // Scale down to foam size (flames are 2-5px, foam should be 0.8-1.6px)
-                this.size = 0.8 + Math.random() * 0.8;
-                this.originalSize = this.size;
-                // Reset death animation state
-                this.isDying = false;
-                this.isDead = false;
-                this.deathTimer = 0;
-                // Keep velocity but reduce it
-                this.vx *= 0.5;
-                this.vy *= 0.5;
-                this.vz *= 0.5;
-                return; // Skip rest of flame physics
+            // Optimization: Skip biome checks to convert flame to foam in low quality logic
+            if (!lowQuality && Math.random() < 0.2) {
+                const currentBiome = getBiomeAtPosition(this.x, this.y);
+                if (currentBiome === 'water') {
+                    // Convert flame to foam particle
+                    this.type = 'foam';
+                    this.r = 255;
+                    this.g = 255;
+                    this.b = 255;
+                    this.lifetime = 60 + Math.random() * 60; // 2-4 seconds
+                    this.maxLifetime = this.lifetime;
+                    this.size = 0.8 + Math.random() * 0.8;
+                    this.originalSize = this.size;
+                    this.isDying = false;
+                    this.isDead = false;
+                    this.deathTimer = 0;
+                    this.vx *= 0.5;
+                    this.vy *= 0.5;
+                    this.vz *= 0.5;
+                    return; // Skip rest of flame physics
+                }
             }
             
             // Flame particles - no upward movement
-            // Light air resistance
             const flameDragFactor = 0.98;
-            this.vx *= Math.pow(flameDragFactor, deltaTime);
-            this.vy *= Math.pow(flameDragFactor, deltaTime);
-            this.vz *= Math.pow(flameDragFactor, deltaTime);
+            if (lowQuality) {
+                const drag = 1 - 0.02 * deltaTime;
+                 this.vx *= drag; this.vy *= drag; this.vz *= drag;
+            } else {
+                this.vx *= Math.pow(flameDragFactor, deltaTime);
+                this.vy *= Math.pow(flameDragFactor, deltaTime);
+                this.vz *= Math.pow(flameDragFactor, deltaTime);
+            }
             
         } else if (this.type === 'smoke') {
             // Smoke rises very gently (50% of original)
@@ -125,9 +146,14 @@ class Particle {
             this.vx += (Math.random() - 0.5) * 0.1 * deltaTime;
             
             const smokeDragFactor = 0.95;
-            this.vx *= Math.pow(smokeDragFactor, deltaTime);
-            this.vy *= Math.pow(smokeDragFactor, deltaTime);
-            this.vz *= Math.pow(smokeDragFactor, deltaTime);
+            if (lowQuality) {
+                const drag = 1 - 0.05 * deltaTime;
+                 this.vx *= drag; this.vy *= drag; this.vz *= drag;
+            } else {
+                this.vx *= Math.pow(smokeDragFactor, deltaTime);
+                this.vy *= Math.pow(smokeDragFactor, deltaTime);
+                this.vz *= Math.pow(smokeDragFactor, deltaTime);
+            }
             
             // Smoke fades as it ages (alpha decreases)
             const ageRatio = 1 - (this.lifetime / this.maxLifetime);
@@ -142,9 +168,14 @@ class Particle {
             
             // Medium drag - sparks lose energy but not instantly
             const sparkDragFactor = 0.95;
-            this.vx *= Math.pow(sparkDragFactor, deltaTime);
-            this.vy *= Math.pow(sparkDragFactor, deltaTime);
-            this.vz *= Math.pow(sparkDragFactor, deltaTime);
+            if (lowQuality) {
+                const drag = 1 - 0.05 * deltaTime;
+                 this.vx *= drag; this.vy *= drag; this.vz *= drag;
+            } else {
+                this.vx *= Math.pow(sparkDragFactor, deltaTime);
+                this.vy *= Math.pow(sparkDragFactor, deltaTime);
+                this.vz *= Math.pow(sparkDragFactor, deltaTime);
+            }
         }
         
         // Update position based on velocity
@@ -168,9 +199,11 @@ class Particle {
             // Use appropriate death duration based on particle type and death cause
             let deathDuration = this.deathDuration;
             if (this.type === 'water') {
-                const currentBiome = getBiomeAtPosition(this.x, this.y);
-                if (currentBiome === 'water') {
-                    deathDuration = 15; // Faster disappearance when hitting water
+                if (!lowQuality) { // Skip check in low quality
+                   const currentBiome = getBiomeAtPosition(this.x, this.y);
+                   if (currentBiome === 'water') {
+                       deathDuration = 15; // Faster disappearance when hitting water
+                   }
                 }
             }
             
@@ -184,13 +217,34 @@ class Particle {
         }
     }
     
-    draw(cameraX = 0, cameraY = 0) {
+    draw(cameraX = 0, cameraY = 0, lowQuality = false) {
         if (this.isDead || this.size <= 0) return;
         
         // Calculate screen position relative to camera
         const screenX = this.x - cameraX;
         const screenY = this.y - cameraY;
         
+        // Optimization: Don't draw if off-screen (basic culling)
+        if (screenX < -50 || screenX > windowWidth + 50 || 
+            screenY < -50 || screenY > windowHeight + 50) return;
+
+        // Low Quality: Optimized rendering
+        if (lowQuality) {
+             noStroke();
+             
+             // Simplier color logic for low quality
+             if (this.type === 'smoke' || this.type === 'default' && this.r===255) {
+                // Usually opaque white/grey for speed, unless it looks terrible
+                fill(this.r, this.g, this.b, 200); 
+             } else {
+                fill(this.r, this.g, this.b);
+             }
+             
+             // Keep circles as requested, just skip other fancy logic if any
+             circle(screenX, screenY, this.size);
+             return;
+        }
+
         // Simple circle rendering for all particle types
         if (this.type === 'flame') {
             // Debug: Check if flame colors are being corrupted

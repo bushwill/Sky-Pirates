@@ -162,9 +162,27 @@ export class Fish extends Animal {
                         for (const threat of cellThreats) {
                             const dx = this.x - threat.x;
                             const dy = this.y - threat.y;
-                            const distSq = dx * dx + dy * dy;
-                            if (distSq < closestDistSq) {
-                                closestDistSq = distSq;
+                            let effectiveDistSq = dx * dx + dy * dy;
+                            
+                            const vx = threat.vx || 0;
+                            const vy = threat.vy || 0;
+
+                            // Optimization: Dot product check.
+                            // Only calculate future position if threat is moving closer (dot > 0).
+                            // If dot <= 0, the threat is moving away or perpendicular, so current position is closest.
+                            if ((dx * vx + dy * vy) > 0) {
+                                // Lookahead 0.3s for fast moving threats
+                                const futureX = threat.x + vx * 0.3;
+                                const futureY = threat.y + vy * 0.3;
+                                const fdx = this.x - futureX;
+                                const fdy = this.y - futureY;
+                                const futureDistSq = fdx * fdx + fdy * fdy;
+                                
+                                if (futureDistSq < effectiveDistSq) effectiveDistSq = futureDistSq;
+                            }
+
+                            if (effectiveDistSq < closestDistSq) {
+                                closestDistSq = effectiveDistSq;
                                 closestThreat = threat;
                             }
                         }
@@ -173,7 +191,7 @@ export class Fish extends Animal {
             }
         }
 
-        const fleeDistance = 50;
+        const fleeDistance = 150; // Increased detection range
         if (closestThreat && closestDistSq < fleeDistance * fleeDistance) {
             // Flee
             const dx = this.x - closestThreat.x;

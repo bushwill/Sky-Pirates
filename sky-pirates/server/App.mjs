@@ -2232,6 +2232,9 @@ function handleIncomingMessage(ws, message) {
     case 'login':
       handleLogin(ws, message);
       break;
+    case 'check_session':
+      handleCheckSession(ws, message);
+      break;
     case 'update':
       handleUpdate(ws, message);
       break;
@@ -2461,6 +2464,16 @@ function handleTeleportToTwin(ws, message) {
   sendNoticeMessage(ws.currentUsername, `Teleported from ${currentRecoveryZone.id} to ${twinZone.id}!`, 'game');
 };
 
+function handleCheckSession(ws, { playerId }) {
+  if (!playerId) return;
+
+  const isSessionActive = players.some(p => p.playerId === playerId);
+  sendMessage(ws, {
+    type: 'session_status',
+    active: isSessionActive
+  });
+}
+
 function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty, playerId }) {
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
@@ -2468,6 +2481,13 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
 
     // Try to load saved state if playerId is provided
     if (playerId) {
+      // Check if this player ID is already in use by an active player
+      const activeSession = players.find(p => p.playerId === playerId);
+      if (activeSession) {
+        sendMessage(ws, { type: 'login_failed', message: 'Game save is being used by another player on the same device.' });
+        return;
+      }
+
       const savedState = loadPlayerState(playerId);
       if (savedState) {
         // Restore player from saved state (username-independent)

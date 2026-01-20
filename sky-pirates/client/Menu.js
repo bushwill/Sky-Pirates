@@ -1,3 +1,15 @@
+const PAUSE_JOKES = {
+    "What did the crew see when they looked in the toilet?": "The Captain's log.",
+    "What does the pirate say when he turns 80?": "Aye matey!",
+    "Why did the pirate have a paper towel roll on his head?": "He had a Bounty on him.",
+    "What is a pirate's favourite drink?": "Boo-tea.",
+    "Why do pirates carry swords?": "Because swords can't walk.",
+    "What do you call a pirate that pees on people?": "Arr Kelly.",
+    "How do you turn a pirate furious?": "Remove the p.",
+    "What do you call a pirate with two eyes, two hands and two legs?": "A beginner.",
+    "What has 8 legs, 8 arms, and 8 eyes?": "8 pirates.",
+};
+
 class MenuManager {
     constructor(colorPicker) {
         this.screens = {};
@@ -234,8 +246,14 @@ class LoginMenuScreen extends MenuScreen {
         // Customizable headers for login vs pause (signed-in) views
         this.loginHeader = "What be yar bird's nomenclature, matey?";
         this.loginSubheader = "[Translated] What's your plane's name?";
-        this.pauseHeader = "";
-        this.pauseSubheader = "There's no greater love in a sailor's heart than his vessel.";
+        
+        // Random pause subheaders
+        const jokeKeys = Object.keys(PAUSE_JOKES);
+        const randomKey = jokeKeys[Math.floor(Math.random() * jokeKeys.length)];
+        
+        this.pauseHeader = randomKey;
+        this.pauseSubheader = PAUSE_JOKES[randomKey];
+        
         this.usernameField = new MenuInputField("Name:", 150, 220, 240, 40);
         this.colorPicker = colorPicker;
         this.loginMsg = '';
@@ -269,6 +287,7 @@ class LoginMenuScreen extends MenuScreen {
         );
         // selected: -1 for login button, 0-weaponNames.length-1 for gun1Options, weaponNames.length... for gun2Options
         this.selected = 0;
+        this.isSessionActive = false;
 
         if (this.colorPicker) {
             this.colorPicker.value(this.color);
@@ -339,7 +358,7 @@ class LoginMenuScreen extends MenuScreen {
     if (signedIn) {
         this.loginButton.label = "Change Party";
     } else {
-        this.loginButton.label = this.hasSavedState ? "Resume" : "Log In";
+        this.loginButton.label = this.hasSavedState ? "Resume Game" : "Log In";
     }
     this.loginButton.selected = (this.selected === -1);
     this.loginButton.draw();
@@ -361,7 +380,7 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         // --- Draw weapon lists ---
-        // If the player is already signed in or resuming, hide weapon selection (can't change weapons)
+        // If the player is already signed in, or if resuming is available, hide weapon selection
         if (!signedIn && !this.hasSavedState) {
             let listSpacing = 54;
             let listYOffset = y + 360; // Position well below error message area
@@ -413,6 +432,10 @@ class LoginMenuScreen extends MenuScreen {
         }
     }
 
+    setSessionActive(active) {
+        this.isSessionActive = active;
+    }
+    
     navigate(dir) {
         // selected: -1 for login button, 0-gun1Options.length-1 for gun1Options, gun1Options.length... for gun2Options
         let total = this.gun1Options.length + this.gun2Options.length + 1;
@@ -604,6 +627,12 @@ class SettingsMenuScreen extends MenuScreen {
             () => this.toggleShake()
         );
         
+        // Optimized particles toggle option
+        this.particlesToggle = new MenuOption(
+            settings.optimizedParticles ? "Particles: Optimized" : "Particles: High Quality",
+            () => this.toggleParticles()
+        );
+        
         // Reset progress button
         this.resetProgressButton = new MenuOption("Reset Progress", () => this.resetProgress());
         
@@ -626,6 +655,16 @@ class SettingsMenuScreen extends MenuScreen {
     toggleShake() {
         settings.screenShake = !settings.screenShake;
         this.shakeToggle.label = settings.screenShake ? "Screen Shake: On" : "Screen Shake: Off";
+        
+        // Save settings to cookies
+        if (typeof saveSettings === 'function') {
+            saveSettings(settings);
+        }
+    }
+    
+    toggleParticles() {
+        settings.optimizedParticles = !settings.optimizedParticles;
+        this.particlesToggle.label = settings.optimizedParticles ? "Particles: Optimized" : "Particles: High Quality";
         
         // Save settings to cookies
         if (typeof saveSettings === 'function') {
@@ -688,15 +727,28 @@ class SettingsMenuScreen extends MenuScreen {
         textAlign(CENTER, TOP);
         text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60);
 
+        // Draw particles toggle
+        optionY += optionSpacing;
+        this.particlesToggle.setPosition(x + w / 2 - 150, optionY);
+        this.particlesToggle.setSize(300, 50);
+        this.particlesToggle.selected = (this.selected === 2);
+        this.particlesToggle.draw();
+        
+        // Draw particles description
+        textSize(14);
+        fill(100);
+        textAlign(CENTER, TOP);
+        text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60);
+
         // Only show reset progress button when not signed in
-        let resetButtonIndex = 2;
-        let backButtonIndex = 3;
+        let resetButtonIndex = 3;
+        let backButtonIndex = 4;
         if (!signedIn) {
             // Draw reset progress button
             optionY += optionSpacing;
             this.resetProgressButton.setPosition(x + w / 2 - 150, optionY);
             this.resetProgressButton.setSize(300, 50);
-            this.resetProgressButton.selected = (this.selected === 2);
+            this.resetProgressButton.selected = (this.selected === 3);
             this.resetProgressButton.draw();
             
             // Draw reset description
@@ -706,7 +758,7 @@ class SettingsMenuScreen extends MenuScreen {
             text("Delete saved game and start fresh", x + w / 2, optionY + 60);
         } else {
             // If signed in, skip the reset button
-            backButtonIndex = 2;
+            backButtonIndex = 3;
         }
 
         // Draw back button
@@ -719,7 +771,7 @@ class SettingsMenuScreen extends MenuScreen {
 
     navigate(dir) {
         // Determine max options based on signedIn state
-        const maxOptions = signedIn ? 3 : 4; // Camera, Shake, [Reset if !signedIn], Back
+        const maxOptions = signedIn ? 4 : 5; // Camera, Shake, Particles, [Reset if !signedIn], Back
         this.selected = (this.selected + dir + maxOptions) % maxOptions;
     }
 
@@ -729,12 +781,14 @@ class SettingsMenuScreen extends MenuScreen {
         } else if (this.selected === 1) {
             this.shakeToggle.callback();
         } else if (this.selected === 2) {
+            this.particlesToggle.callback();
+        } else if (this.selected === 3) {
             if (!signedIn) {
                 this.resetProgressButton.callback();
             } else {
                 this.backButton.callback();
             }
-        } else if (this.selected === 3) {
+        } else if (this.selected === 4) {
             this.backButton.callback();
         }
     }
@@ -751,16 +805,22 @@ class SettingsMenuScreen extends MenuScreen {
             this.shakeToggle.callback();
             return;
         }
+
+        if (this.particlesToggle.mousePressed(mx, my)) {
+            this.selected = 2;
+            this.particlesToggle.callback();
+            return;
+        }
         
         // Only handle reset button click if not signed in
         if (!signedIn && this.resetProgressButton.mousePressed(mx, my)) {
-            this.selected = 2;
+            this.selected = 3;
             this.resetProgressButton.callback();
             return;
         }
         
         if (this.backButton.mousePressed(mx, my)) {
-            this.selected = signedIn ? 2 : 3;
+            this.selected = signedIn ? 3 : 4;
             this.backButton.callback();
             return;
         }
