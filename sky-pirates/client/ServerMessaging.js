@@ -32,9 +32,9 @@ function connectWebSocket() {
         }
         
         // Check session status if we have a saved ID
-        const savedId = getCookie('skyPiratesPlayerId');
-        if (savedId) {
-            checkSessionStatus(savedId);
+        const savedClientId = getCookie('skyPiratesClientId');
+        if (savedClientId) {
+            checkSessionStatus(savedClientId);
         }
     };
 
@@ -131,10 +131,89 @@ function connectWebSocket() {
 function handleDecodedMessage(decodedMessage) {
     switch (decodedMessage.type) {
         case 'session_status':
+            if (decodedMessage.account) {
+                 // Account identified by server
+                 isAccountSession = true;
+                 if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                     const loginScreen = menuManager.screens['login'];
+                     loginScreen.isAccountSession = true;
+                     if (decodedMessage.account.username) {
+                        loginScreen.accountName = decodedMessage.account.username;
+                     }
+                     // Force login message update to reflect account status immediately
+                     if (!loginScreen.loginMsg) {
+                         loginScreen.loginMsg = ""; // Trigger refresh if needed
+                     }
+                 }
+            } else {
+                 isAccountSession = false;
+                 if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                     menuManager.screens['login'].isAccountSession = false;
+                 }
+            }
+
             if (menuManager && menuManager.screens && menuManager.screens['login']) {
                 menuManager.screens['login'].setSessionActive(decodedMessage.active);
+                menuManager.screens['login'].setSaveExists(decodedMessage.saveExists);
             }
             break;
+
+        case 'register_success':
+            if (menuManager.screens['createAccount']) {
+                menuManager.screens['createAccount'].msg = "Success!";
+                setTimeout(() => {
+                    if (typeof isAccountSession !== 'undefined') isAccountSession = true;
+                    if (menuManager.screens['login']) {
+                        menuManager.screens['login'].isAccountSession = true;
+                        if (decodedMessage.username) {
+                             menuManager.screens['login'].accountName = decodedMessage.username;
+                        }
+                    }
+                    menuManager.show('login');
+                }, 1000);
+            }
+            break;
+
+        case 'register_failed':
+             if (menuManager.screens['createAccount']) {
+                menuManager.screens['createAccount'].msg = "Error: " + decodedMessage.message;
+             }
+             break;
+
+        case 'account_login_success':
+             if (typeof isAccountSession !== 'undefined') isAccountSession = true;
+             if (menuManager.screens['login']) {
+                 menuManager.screens['login'].isAccountSession = true;
+             }
+             if (decodedMessage.playerId) {
+                setCookie('skyPiratesClientId', decodedMessage.playerId, 30);
+             }
+             if (menuManager.screens['login'] && decodedMessage.username) {
+                  menuManager.screens['login'].accountName = decodedMessage.username;
+                  
+                  // Save credentials for auto-login
+                  if (window.pendingAccountLogin && window.pendingAccountLogin.username === decodedMessage.username) {
+                      setCookie('skypirates_account_name', window.pendingAccountLogin.username, 30);
+                      setCookie('skypirates_account_password', window.pendingAccountLogin.password, 30);
+                      window.pendingAccountLogin = null;
+                  }
+             }
+             if (menuManager.screens['loginAccount']) {
+                menuManager.screens['loginAccount'].msg = "Success!";
+                setTimeout(() => menuManager.show('login'), 1000);
+             }
+             
+             // Update save state awareness
+             if (menuManager.screens['login']) {
+                 menuManager.screens['login'].setSaveExists(decodedMessage.saveExists);
+             }
+             break;
+             
+        case 'account_login_failed':
+             if (menuManager.screens['loginAccount']) {
+                menuManager.screens['loginAccount'].msg = "Error: " + decodedMessage.message;
+             }
+             break;
 
         case 'map_data':
             mapData = decodedMessage.map;
@@ -145,10 +224,10 @@ function handleDecodedMessage(decodedMessage) {
             signedIn = true;
             signedInTime = millis();
             
-            // Store player ID in cookie for session persistence (expires in 30 days)
+            // Store client ID in cookie for session persistence (expires in 30 days)
             if (decodedMessage.playerId) {
-                setCookie('skyPiratesPlayerId', decodedMessage.playerId, 30);
-                console.log('Player ID saved to cookie:', decodedMessage.playerId);
+                setCookie('skyPiratesClientId', decodedMessage.playerId, 30);
+                console.log('Client ID saved to cookie:', decodedMessage.playerId);
             }
             
             // If server sent an 'updated' message it's a party/info update while already logged in
@@ -174,10 +253,10 @@ function handleDecodedMessage(decodedMessage) {
             break;
         
         case 'player_id_update':
-            // Update the player ID cookie when progress is reset
+            // Update the client ID cookie when progress is reset/migrated
             if (decodedMessage.playerId) {
-                setCookie('skyPiratesPlayerId', decodedMessage.playerId, 30);
-                console.log('New player ID saved to cookie after reset:', decodedMessage.playerId);
+                setCookie('skyPiratesClientId', decodedMessage.playerId, 30);
+                console.log('New client ID saved to cookie after reset:', decodedMessage.playerId);
             }
             break;
             
@@ -376,12 +455,15 @@ function handleDecodedMessage(decodedMessage) {
             r = 0; g = 0; b = 0;
             chatting = false;
             current_chat = "";
+            isAccountSession = false; // Reset global
             // Reset all keys to prevent stuck inputs
             keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
             // Show login menu with reset message
             if (menuManager && menuManager.screens && menuManager.screens['login']) {
                 menuManager.show('login');
                 menuManager.screens['login'].loginMsg = decodedMessage.message || "Logged out successfully.";
+                menuManager.screens['login'].isAccountSession = false; // Reset instance state
+                menuManager.screens['login'].accountName = null;
             }
             break;
 
@@ -526,12 +608,29 @@ function getMapData() {
 }
 
 // Accept username and color params from menu, not HTML inputs
-function checkSessionStatus(playerId) {
+function checkSessionStatus(clientId) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     
+    const accountName = getCookie('skypirates_account_name');
+    const password = getCookie('skypirates_account_password');
+
     // Send check_session request
     const message = {
         type: 'check_session',
+        playerId: clientId,
+        username: accountName || undefined,
+        password: password || undefined
+    };
+    
+    const encoded = msgpack.encode(message);
+    ws.send(encoded);
+}
+
+function sendResetAccountProgress(playerId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    const message = {
+        type: 'reset_account_progress',
         playerId
     };
     
@@ -577,8 +676,11 @@ function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clear
     x = 0;
     y = 0;
 
-    // Get player ID from cookie if it exists
-    const playerId = getCookie('skyPiratesPlayerId');
+    // Get client ID from cookie if it exists
+    const clientId = getCookie('skyPiratesClientId');
+    
+    // Get account credentials if they exist (for verification)
+    const accountPassword = getCookie('skypirates_account_password');
 
     const message = {
         type: 'login',
@@ -590,34 +692,60 @@ function loginPlayer(name, colorObj, weaponChoices = null, partyName = "", clear
         selectedGun2,
         partyName: partyName.trim(),
         clearParty: !!clearParty,
-        playerId: playerId || null, // Send player ID if available
+        playerId: clientId || null, // Send client ID if available
+        password: accountPassword || null
     };
 
     const encodedMessage = msgpack.encode(message);
     ws.send(encodedMessage);
 }
 
-// Cookie helper functions
-function setCookie(name, value, days) {
-    let expires = "";
-    if (days) {
-        const date = new Date();
-        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-        expires = "; expires=" + date.toUTCString();
+function getOrInitPlayerId() {
+    let id = getCookie('skyPiratesClientId');
+    if (!id) {
+        // Simple fallback UUID generator
+        id = 'user_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        try {
+            if (crypto && crypto.randomUUID) {
+                id = crypto.randomUUID();
+            }
+        } catch (e) {
+            console.warn("crypto.randomUUID not available, using fallback ID");
+        }
+        setCookie('skyPiratesClientId', id, 30);
     }
-    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Strict";
+    return id;
 }
 
-function getCookie(name) {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-    }
-    return null;
+function sendRegisterAccount(username, password) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const playerId = getOrInitPlayerId();
+    const message = {
+        type: 'register_account',
+        username,
+        password,
+        playerId
+    };
+    ws.send(msgpack.encode(message));
 }
+
+function sendLoginAccount(username, password) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const playerId = getOrInitPlayerId();
+    // Cache credentials temporarily to save to cookie upon success
+    window.pendingAccountLogin = { username, password };
+    const message = {
+        type: 'login_account',
+        username,
+        password,
+        playerId
+    };
+    ws.send(msgpack.encode(message));
+}
+
+// Cookie helper functions
+// REMOVED DUPLICATE DEFINITIONS
+
 
 // Function to manually retry connection (can be called from UI)
 function retryConnection() {
@@ -650,7 +778,7 @@ function getConnectionStatus() {
 function setCookie(name, value, days = 90) {
     const expires = new Date();
     expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/;SameSite=Strict`;
 }
 
 function getCookie(name) {
@@ -669,6 +797,9 @@ function getCookie(name) {
 }
 
 function deleteCookie(name) {
+    // Delete with strict attributes
+    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Strict`;
+    // Delete with just path (legacy fallback)
     document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
 }
 

@@ -102,6 +102,15 @@ export function deletePlayerState(playerId) {
   }
 }
 
+export function playerStateExists(playerId) {
+    try {
+        const filePath = path.join(SAVE_DIR, `${playerId}.json`);
+        return fs.existsSync(filePath);
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Serialize a component (engine, chassis, wings, gun) to plain object
  */

@@ -240,6 +240,142 @@ class MenuInputField {
     }
 }
 
+class AccountAuthMenuScreen extends MenuScreen {
+    constructor(mode = 'login') {
+        super(mode === 'login' ? "Account Login" : "Create Account");
+        this.mode = mode; // 'login' or 'create'
+        this.usernameField = new MenuInputField("Username:", 0, 0, 240, 40);
+        this.passwordField = new MenuInputField("Password:", 0, 0, 240, 40, true);
+        if (mode === 'create') {
+            this.confirmPasswordField = new MenuInputField("Confirm Password:", 0, 0, 240, 40, true);
+        }
+        
+        this.submitButton = new MenuOption(mode === 'login' ? "Log In" : "Create", () => this.submit());
+        this.backButton = new MenuOption("Back", () => menuManager.show('login'));
+        
+        this.msg = "";
+        this.selected = 0;
+    }
+
+    submit() {
+        const username = this.usernameField.value.trim();
+        const password = this.passwordField.value.trim();
+        
+        if (!username || !password) {
+            this.msg = "Please enter username and password.";
+            return;
+        }
+
+        if (this.mode === 'create') {
+            const confirm = this.confirmPasswordField.value.trim();
+            if (password !== confirm) {
+                 this.msg = "Passwords do not match!";
+                 return;
+            }
+        }
+
+        this.msg = "Processing...";
+        if (this.mode === 'create') {
+            sendRegisterAccount(username, password);
+        } else {
+            sendLoginAccount(username, password);
+        }
+    }
+
+    draw(x, y, w, h) {
+        rectMode(CORNER);
+        fill(255, 255, 255, 200);
+        noStroke();
+        rect(x, y, w, h, 30); // Background panel
+
+        fill(0);
+        textSize(32);
+        textAlign(CENTER, TOP);
+        text(this.title, x + w / 2, y + 40);
+
+        // Fields
+        let contentX = x + w / 2 - 120;
+        let contentY = y + 120;
+
+        this.usernameField.x = contentX;
+        this.usernameField.y = contentY;
+        this.usernameField.draw();
+
+        contentY += 60;
+        this.passwordField.x = contentX;
+        this.passwordField.y = contentY;
+        this.passwordField.draw();
+
+        if (this.mode === 'create' && this.confirmPasswordField) {
+             contentY += 60;
+             this.confirmPasswordField.x = contentX;
+             this.confirmPasswordField.y = contentY;
+             this.confirmPasswordField.draw();
+        }
+
+        // Message
+        contentY += 60;
+        textSize(16);
+        fill(this.msg.startsWith("Success") ? [0,150,0] : [200,0,0]);
+        textAlign(CENTER, TOP);
+        text(this.msg, x + w / 2, contentY);
+
+        // Buttons
+        contentY += 40;
+        this.submitButton.setPosition(x + w / 2 - 100, contentY);
+        this.submitButton.setSize(200, 40);
+        this.submitButton.selected = (this.selected === 0);
+        this.submitButton.draw();
+
+        contentY += 50;
+        this.backButton.setPosition(x + w / 2 - 100, contentY);
+        this.backButton.setSize(200, 40);
+        this.backButton.selected = (this.selected === 1);
+        this.backButton.draw();
+    }
+
+    navigate(dir) {
+        this.selected = (this.selected + dir + 2) % 2;
+    }
+
+    choose() {
+        if (this.selected === 0) this.submitButton.callback();
+        else this.backButton.callback();
+    }
+
+    mousePressed(mx, my) {
+        if (this.usernameField.mousePressed(mx, my)) return;
+        if (this.passwordField.mousePressed(mx, my)) return;
+        if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.mousePressed(mx, my)) return;
+
+        if (this.submitButton.mousePressed(mx, my)) {
+            this.selected = 0;
+            this.submitButton.callback();
+            return;
+        }
+        if (this.backButton.mousePressed(mx, my)) {
+            this.selected = 1;
+            this.backButton.callback();
+            return;
+        }
+    }
+
+    keyPressed(k) {
+         if (this.usernameField.focused) this.usernameField.keyPressed(k);
+         else if (this.passwordField.focused) this.passwordField.keyPressed(k);
+         else if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused) this.confirmPasswordField.keyPressed(k);
+         else if (k === 'Enter') this.choose();
+         else if (k === 'ArrowUp') this.navigate(-1);
+         else if (k === 'ArrowDown') this.navigate(1);
+    }
+    
+    keyTyped(k) {
+         if (this.usernameField.focused) this.usernameField.keyTyped(k);
+         else if (this.passwordField.focused) this.passwordField.keyTyped(k);
+         else if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused) this.confirmPasswordField.keyTyped(k);
+    }
+}
+
 class LoginMenuScreen extends MenuScreen {
     constructor(colorPicker) {
         super("Login");
@@ -271,6 +407,11 @@ class LoginMenuScreen extends MenuScreen {
         // Party name input field
         this.partyField = new MenuInputField("Party (optional):", 150, 270, 240, 40);
 
+        // Account management buttons
+        this.createAccountBtn = new MenuOption("Create Account", () => menuManager.show('createAccount'));
+        this.loginAccountBtn = new MenuOption("Account Login", () => menuManager.show('loginAccount'));
+        this.logoutBtn = new MenuOption("Log Out", () => this.logout());
+
         // Simple string list of weapon names (shared for both guns)
         this.weaponNames = [
             "Machine Gun",
@@ -288,7 +429,12 @@ class LoginMenuScreen extends MenuScreen {
         // selected: -1 for login button, 0-weaponNames.length-1 for gun1Options, weaponNames.length... for gun2Options
         this.selected = 0;
         this.isSessionActive = false;
-
+        this.serverSaveExists = true; // Assume true until server says otherwise
+        this.isAccountSession = false; // Add explicit instance property for account state
+        this.accountName = null; // Add explicit instance property for account name
+        // Side menu data
+        this.leftMenuList = ["Tip: Press M for Map", "Tip: Press I for Inventory", "Tip: Press B for Shop"];
+        this.rightMenuList = ["Online Players:", "Loading..."]; 
         if (this.colorPicker) {
             this.colorPicker.value(this.color);
             this.colorPicker.input(() => {
@@ -302,6 +448,58 @@ class LoginMenuScreen extends MenuScreen {
 
     draw(x, y, w, h) {
         rectMode(CORNER);
+
+        // Update local state from global if needed (legacy compatibility) but prefer instance state
+        if (typeof isAccountSession !== 'undefined' && isAccountSession && !this.isAccountSession) {
+             this.isAccountSession = true;
+        }
+
+        // Draw Side Menus
+        let sideW = Math.max(200, width * 0.2);
+        let gap = 20;
+
+        // Left Panel
+        let leftX = x - gap - sideW;
+        if (leftX > -sideW * 0.5) { 
+            fill(255, 255, 255, 200);
+            noStroke();
+            rect(leftX, y, sideW, h, 30);
+
+            fill(0);
+            textSize(24);
+            textAlign(CENTER, TOP);
+            text("Game Info", leftX + sideW / 2, y + 30);
+
+            textSize(16);
+            textAlign(CENTER, TOP);
+            if (this.leftMenuList) {
+                for (let i = 0; i < this.leftMenuList.length; i++) {
+                    text(this.leftMenuList[i], leftX + sideW / 2, y + 80 + i * 35);
+                }
+            }
+        }
+
+        // Right Panel
+        let rightX = x + w + gap;
+        if (rightX < width + sideW * 0.5) {
+            fill(255, 255, 255, 200);
+            noStroke();
+            rect(rightX, y, sideW, h, 30);
+
+            fill(0);
+            textSize(24);
+            textAlign(CENTER, TOP);
+            text(signedIn ? "Online" : "Community", rightX + sideW / 2, y + 30);
+
+            textSize(16);
+            textAlign(CENTER, TOP);
+            if (this.rightMenuList) {
+                for (let i = 0; i < this.rightMenuList.length; i++) {
+                    text(this.rightMenuList[i], rightX + sideW / 2, y + 80 + i * 35);
+                }
+            }
+        }
+
         fill(255, 255, 255, 200);
         noStroke();
         rect(x, y, w, h, 30);
@@ -349,16 +547,16 @@ class LoginMenuScreen extends MenuScreen {
         this.partyField.y = y + 220;
         this.partyField.draw();
 
-        // --- Draw login button to the right of party field ---
-        let loginBtnX = x + w / 2 + 120 + 10; // Right of party field with 10px spacing
-        let loginBtnY = y + 220; // Same Y as party field
+        // Login button - updated to match new position (right of party field)
+        let loginBtnX = x + w / 2 + 120 + 10;
+        let loginBtnY = y + 220;
     this.loginButton.setPosition(loginBtnX, loginBtnY);
     this.loginButton.setSize(120, 40);
     // Change label when signed in: allow changing party mid-match
     if (signedIn) {
         this.loginButton.label = "Change Party";
     } else {
-        this.loginButton.label = this.hasSavedState ? "Resume Game" : "Log In";
+        this.loginButton.label = this.hasSavedState ? "Continue" : "Start";
     }
     this.loginButton.selected = (this.selected === -1);
     this.loginButton.draw();
@@ -371,17 +569,37 @@ class LoginMenuScreen extends MenuScreen {
         this.settingsButton.selected = false; // Not part of navigation
         this.settingsButton.draw();
 
-        // Error message - positioned where login button used to be
-        if (this.loginMsg) {
+        // Error message / status text
+        // If logged in via account, and in PAUSE menu or Lobby, show "Logged in as" instead of generic messages,
+        // unless there is a specific error/status message (like "Updating party...")
+        
+        let showLoginMsg = true;
+
+        if (signedIn && this.isAccountSession && this.accountName) {
+            // In pause menu for account users: replace loginMsg with account info
+            // But if we are "Updating party...", we might want to show that momentarily?
+            // The user requested "loginmsg shouldn't appear in the pause menu anymore"
+            // So we prioritize account text.
+            showLoginMsg = false;
+            
+            textAlign(CENTER, CENTER);
+            textSize(14);
+            fill(80); 
+            text("Logged in as: " + this.accountName, x + w / 2, y + 280);
+        }
+
+        if (showLoginMsg && this.loginMsg) {
             textAlign(CENTER, CENTER);
             fill(0); 
             textSize(16);
-            text(this.loginMsg, x + w / 2, y + 280); // Where login button used to be (y + 270 + 10 for spacing)
+            text(this.loginMsg, x + w / 2, y + 280); 
         }
 
         // --- Draw weapon lists ---
-        // If the player is already signed in, or if resuming is available, hide weapon selection
-        if (!signedIn && !this.hasSavedState) {
+        // If the player is already signed in, or if resuming is available (AND verified by server), hide weapon selection
+        // Exception: If server hasn't responded yet (serverSaveExists is true/undefined), trust cookie for momentary flicker prevention,
+        // but if server strictly says false, show weapons.
+        if (!signedIn && (!this.hasSavedState || this.serverSaveExists === false)) {
             let listSpacing = 54;
             let listYOffset = y + 360; // Position well below error message area
             let gunListW = 180, gunListH = 44;
@@ -430,10 +648,55 @@ class LoginMenuScreen extends MenuScreen {
                 opt.draw();
             }
         }
+        
+        // Drawn account management buttons or logout button
+        if (!signedIn) {
+            let btnY = y + h - 60;
+            // Check global 'isAccountSession' (assume undefined = guest)
+            
+            if (this.isAccountSession) {
+                 if (this.accountName) {
+                     textSize(14);
+                     textAlign(CENTER, BOTTOM);
+                     fill(80); // Dark Gray
+                     text("Logged in as: " + this.accountName, x + w/2, btnY - 5);
+                 }
+
+                 this.logoutBtn.setPosition(x + w/2 - 75, btnY);
+                 this.logoutBtn.setSize(150, 40);
+                 this.logoutBtn.draw();
+            } else {
+                 this.createAccountBtn.setPosition(x + w/2 - 160, btnY);
+                 this.createAccountBtn.setSize(150, 40);
+                 this.createAccountBtn.draw();
+
+                 this.loginAccountBtn.setPosition(x + w/2 + 10, btnY);
+                 this.loginAccountBtn.setSize(150, 40);
+                 this.loginAccountBtn.draw();
+            }
+        }
     }
 
     setSessionActive(active) {
         this.isSessionActive = active;
+    }
+
+    setSaveExists(exists) {
+        this.serverSaveExists = exists;
+        // If the server confirms no save exists, update label and clear "hasSavedState" illusion
+        if (exists === false && !this.isSessionActive) {
+             this.hasSavedState = false;
+             // Also force label update immediately if not signed in
+             if (!signedIn) {
+                 this.loginButton.label = "Start";
+             }
+        } else if (exists === true) {
+             // Server says save exists
+             this.hasSavedState = true;
+             if (!signedIn) {
+                 this.loginButton.label = "Continue";
+             }
+        }
     }
     
     navigate(dir) {
@@ -492,6 +755,25 @@ class LoginMenuScreen extends MenuScreen {
             return;
         }
 
+        // Account Buttons logic
+        if (!signedIn) {
+            if (this.isAccountSession) {
+                 if (this.logoutBtn.mousePressed(mx, my)) {
+                     this.logoutBtn.callback();
+                     return;
+                 }
+            } else {
+                 if (this.createAccountBtn.mousePressed(mx, my)) {
+                      this.createAccountBtn.callback();
+                      return;
+                 }
+                 if (this.loginAccountBtn.mousePressed(mx, my)) {
+                      this.loginAccountBtn.callback();
+                      return;
+                 }
+            }
+        }
+
         // Gun1 options
         for (let i = 0; i < this.gun1Options.length; i++) {
             let opt = this.gun1Options[i];
@@ -542,8 +824,8 @@ class LoginMenuScreen extends MenuScreen {
         if (typeof loadUserPreferences === 'function') {
             const prefs = loadUserPreferences();
             
-            // Check for saved state via player ID cookie
-            this.hasSavedState = typeof getCookie === 'function' && !!getCookie('skyPiratesPlayerId');
+            // Check for saved state via client ID cookie
+            this.hasSavedState = typeof getCookie === 'function' && !!getCookie('skyPiratesClientId');
 
             if (prefs.name) {
                 this.usernameField.value = prefs.name;
@@ -574,6 +856,12 @@ class LoginMenuScreen extends MenuScreen {
             this.loginMsg = "Enter a username!";
             return;
         }
+        
+        // Prevent empty account state from lingering if previously logged in logic failed to clear
+        if (!this.isAccountSession) {
+             this.accountName = null;
+        }
+
         username = name;
         let c = this.colorPicker ? this.colorPicker.value() : this.color;
         [r, g, b] = [red(c), green(c), blue(c)];
@@ -608,6 +896,15 @@ class LoginMenuScreen extends MenuScreen {
         // Re-use loginPlayer to update the party on the server side; preserve existing username and color
         loginPlayer(username, { r, g, b }, { gun1: selectedGun1, gun2: selectedGun2 }, partyName, false);
         this.loginMsg = "Updating party...";
+    }
+
+    logout() {
+        if (confirm("Are you sure you want to log out? This will return you to a new guest session.")) {
+            deleteCookie('skyPiratesClientId');
+            deleteCookie('skypirates_account_name');
+            deleteCookie('skypirates_account_password');
+            location.reload();
+        }
     }
 }
 
@@ -673,10 +970,29 @@ class SettingsMenuScreen extends MenuScreen {
     }
 
     resetProgress() {
-        // This should only be called when not signed in
+        // This should only be called when not signed in (guest mode)
+        // OR via settings if implemented for account
         if (confirm("Are you sure you want to reset your progress? This will delete your saved game state and you'll start fresh.")) {
-            // Delete the player ID cookie
-            document.cookie = 'skyPiratesPlayerId=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict';
+            
+            // If logged in via account, resetting progress means deleting the SERVER save but keeping the account
+            if (this.isAccountSession) {
+                const playerId = getCookie('skyPiratesClientId');
+                if (playerId && ws && ws.readyState === WebSocket.OPEN) {
+                    // Send reset command to server to wipe the save file but keep the session active
+                    sendResetAccountProgress(playerId);
+                    
+                    alert("Account progress reset! You can now start a new game.");
+                    
+                    // Update UI state to reflect no save
+                    this.hasSavedState = false;
+                    this.serverSaveExists = false;
+                    this.loginButton.label = "Start";
+                    return; 
+                }
+            }
+
+            // GUEST MODE: Delete the client ID cookie to lose the link
+            deleteCookie('skyPiratesClientId');
             
             // Update login screen state if it exists
             if (typeof menuManager !== 'undefined' && menuManager.screens && menuManager.screens['login']) {

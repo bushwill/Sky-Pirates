@@ -1090,18 +1090,18 @@ function getComponentStats(component, equippedComponent = null) {
     if (component.type === 'engine') {
         return [
             { label: 'Max Power', value: round1(component.maxPower), equipped: equippedComponent ? round1(equippedComponent.maxPower) : null },
-            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Heat Use', value: round1(component.heatEfficiency * 100), equipped: equippedComponent ? round1(equippedComponent.heatEfficiency * 100) : null, lowerIsBetter: true },
             { label: 'Max Heat', value: round1(component.maxHeat), equipped: equippedComponent ? round1(equippedComponent.maxHeat) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },    
             { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
         ];
     } else if (component.type === 'chassis') {
         return [
             { label: 'Max Hull', value: round1(component.maxHull), equipped: equippedComponent ? round1(equippedComponent.maxHull) : null },
             { label: 'Top Speed', value: round1(component.topSpeed), equipped: equippedComponent ? round1(equippedComponent.topSpeed) : null },
-            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Heat Dispersion', value: round1(component.heatDispersion), equipped: equippedComponent ? round1(equippedComponent.heatDispersion) : null },
             { label: 'Buoyancy', value: round1(component.buoyancy), equipped: equippedComponent ? round1(equippedComponent.buoyancy) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
         ];
     } else if (component.type === 'wings') {
@@ -1109,9 +1109,9 @@ function getComponentStats(component, equippedComponent = null) {
             { label: 'Max Speed', value: round1(component.maxSpeed), equipped: equippedComponent ? round1(equippedComponent.maxSpeed) : null },
             { label: 'Base Turn Speed', value: round1(component.baseTurnSpeed * 100), equipped: equippedComponent ? round1(equippedComponent.baseTurnSpeed * 100) : null },
             { label: 'Min Turn Speed', value: round1(component.minTurnSpeed * 100), equipped: equippedComponent ? round1(equippedComponent.minTurnSpeed * 100) : null },
-            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Lift Efficiency', value: round1(component.liftEfficiency * 100), equipped: equippedComponent ? round1(equippedComponent.liftEfficiency * 100) : null },
             { label: 'Min Lift Speed', value: round1(component.minLiftSpeed), equipped: equippedComponent ? round1(equippedComponent.minLiftSpeed) : null, lowerIsBetter: true },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
         ];
     } else if (component.type === 'gun') {
@@ -1137,11 +1137,11 @@ function getComponentStats(component, equippedComponent = null) {
             { label: 'Range', value: round1(component.projectileRange), equipped: equippedComponent ? round1(equippedComponent.projectileRange) : null },
             { label: 'Lifetime', value: round1(component.projectileLifetime) + 'ms', numericValue: round1(component.projectileLifetime), equipped: equippedComponent ? round1(equippedComponent.projectileLifetime) : null },
             { label: 'Cooldown', value: round1(component.cooldownTime) + 'ms', numericValue: round1(component.cooldownTime), equipped: equippedComponent ? round1(equippedComponent.cooldownTime) : null, lowerIsBetter: true },
-            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Max Heat', value: round1(component.maxHeat), equipped: equippedComponent ? round1(equippedComponent.maxHeat) : null },
             { label: 'Heat Use', value: round1(component.heatEfficiency), equipped: equippedComponent ? round1(equippedComponent.heatEfficiency) : null, lowerIsBetter: true },
             { label: 'Heat Dispersion', value: round1(component.heatDispersion), equipped: equippedComponent ? round1(equippedComponent.heatDispersion) : null },
             { label: 'Projectile Speed', value: round1(component.projectileSpeed), equipped: equippedComponent ? round1(equippedComponent.projectileSpeed) : null },
+            { label: 'Weight', value: round1(component.weight), equipped: equippedComponent ? round1(equippedComponent.weight) : null, lowerIsBetter: true },
             { label: 'Value', value: formattedValue, numericValue: roundedValue, equipped: equippedComponent ? Math.round(equippedComponent.value) : null, lowerIsBetter: true }
         ];
     }

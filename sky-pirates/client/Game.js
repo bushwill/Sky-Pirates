@@ -49,6 +49,9 @@ let shopOpen = false; // Track if shop is open or closed
 let chat_messages = [];
 let notice_messages = [];
 
+// Account state
+let isAccountSession = false;
+
 // Player state
 let username;
 let r, g, b;
@@ -98,7 +101,7 @@ let menuVisible = false; // Whether the menu overlay is visible during gameplay 
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
-    connectWebSocket();
+    
     rectMode(CENTER);
     stroke(0);
     textAlign(CENTER);
@@ -127,11 +130,16 @@ function setup() {
 
     // Add screens
     menuManager.addScreen('login', new LoginMenuScreen(colorPicker));
+    menuManager.addScreen('createAccount', new AccountAuthMenuScreen('create'));
+    menuManager.addScreen('loginAccount', new AccountAuthMenuScreen('login'));
     menuManager.addScreen('settings', new SettingsMenuScreen());
     // ... add your other menus here
 
     // Start at login
     menuManager.show('login');
+
+    // Connect AFTER UI is ready to ensure session status updates are handled correctly
+    connectWebSocket();
 }
 
 function draw() {
@@ -147,7 +155,7 @@ function draw() {
         }
 
         // Calculate login menu dimensions
-        let mw = width * 0.6;
+        let mw = Math.max(500, width * 0.45); // Reduced width
         let mh = height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
@@ -206,7 +214,7 @@ function draw() {
                 handleGameDisplay(controlledPlayer);
                 // Draw menu overlay if toggled during gameplay
                 if (menuVisible) {
-                    let mw = width * 0.6;
+                    let mw = Math.max(500, width * 0.45); // Reduced width
                     let mh = height * 0.8;
                     let mx = (width - mw) / 2;
                     let my = (height - mh) / 2;

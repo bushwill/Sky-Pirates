@@ -17,7 +17,8 @@ import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
 import { createEnemyGun, createGun, getRandomGunType } from './WeaponList.mjs';
 import { Shop } from './Shop.mjs';
-import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState } from './PlayerStateManager.mjs';
+import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState, playerStateExists } from './PlayerStateManager.mjs';
+import { clientManager } from './ClientManager.mjs';
 
 const admin_name = 'Shluck'
 
@@ -2259,6 +2260,15 @@ function handleIncomingMessage(ws, message) {
     case 'login':
       handleLogin(ws, message);
       break;
+    case 'register_account':
+      handleRegisterAccount(ws, message);
+      break;
+    case 'login_account':
+      handleAccountLogin(ws, message);
+      break;
+    case 'reset_account_progress':
+      handleResetAccountProgress(ws, message);
+      break;
     case 'check_session':
       handleCheckSession(ws, message);
       break;
@@ -2491,31 +2501,190 @@ function handleTeleportToTwin(ws, message) {
   sendNoticeMessage(ws.currentUsername, `Teleported from ${currentRecoveryZone.id} to ${twinZone.id}!`, 'game');
 };
 
-function handleCheckSession(ws, { playerId }) {
+function handleCheckSession(ws, { playerId, username, password }) {
   if (!playerId) return;
 
-  const isSessionActive = players.some(p => p.playerId === playerId);
+  let targetPlayerId = null;
+  let accountInfo = null;
+
+  // 1. Account Auto-Login Attempt
+  if (username && password) {
+      // Validate credentials
+      const accountPlayerId = clientManager.verifyAccount(username, password);
+      
+      if (!accountPlayerId) {
+          // Invalid credentials - Do not auto-login
+          sendMessage(ws, { type: 'session_status', active: false, saveExists: false });
+          return;
+      }
+      
+      // Check if ClientID matches the account link (Client Verification)
+      const client = clientManager.getClient(playerId);
+      if (!client || client.accountName !== username) {
+          // Client ID does not belong to this account (orphaned cookie or hijack attempt)
+          sendMessage(ws, { type: 'session_status', active: false, saveExists: false });
+          return;
+      }
+
+      targetPlayerId = accountPlayerId;
+      accountInfo = { username: username };
+  } 
+  // 2. Guest Login Attempt
+  else {
+      // Check if this client is actually an account but missing credentials
+      const client = clientManager.getClient(playerId);
+      if (client && client.type === 'account') {
+           // Account-linked client MUST provide password. Fail auto-login.
+           sendMessage(ws, { type: 'session_status', active: false, saveExists: false });
+           return;
+      }
+      
+      // Pure guest
+      targetPlayerId = clientManager.getPlayerIdForClient(playerId);
+  }
+
+  if (!targetPlayerId) {
+       sendMessage(ws, { type: 'session_status', active: false, saveExists: false });
+       return;
+  }
+
+  const isSessionActive = players.some(p => p.playerId === targetPlayerId);
+  const saveExists = playerStateExists(targetPlayerId);
+
   sendMessage(ws, {
     type: 'session_status',
-    active: isSessionActive
+    active: isSessionActive,
+    saveExists: saveExists,
+    account: accountInfo
   });
 }
 
-function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty, playerId }) {
+function handleRegisterAccount(ws, { username, password, playerId }) {
+    // playerId here is the Client/Cookie UUID
+    if (!playerId || !username || !password) {
+        sendMessage(ws, { type: 'register_failed', message: 'Missing fields.' });
+        return;
+    }
+    
+    // Check if client is valid guest
+    // Ensure client exists (create if needed, though they should usually exist by now)
+    const client = clientManager.getClient(playerId);
+    if (!client) {
+         // Should technically happen only if playerId is missing
+         sendMessage(ws, { type: 'register_failed', message: 'Invalid client session.' });
+         return;
+    }
+    
+    // We link the CURRENT game save (resolved from client) to the NEW account
+    let gameSaveId = clientManager.getPlayerIdForClient(playerId);
+    
+    // If no existing game save to link, generate a new one for this account
+    if (!gameSaveId) {
+         gameSaveId = generatePlayerId();
+    }
+
+    const result = clientManager.createAccount(username, password, gameSaveId);
+    if (result.success) {
+        clientManager.assignClientToAccount(playerId, username);
+        sendMessage(ws, { type: 'register_success', username });
+    } else {
+        sendMessage(ws, { type: 'register_failed', message: result.message });
+    }
+}
+
+function handleAccountLogin(ws, { username, password, playerId }) {
+    // playerId is the CLIENT UUID of the device attempting login
+    if (!username || !password) return;
+    
+    // Ensure the client record exists before we try to assign it
+    // If it's a fresh visitor, they might not be in clients.json yet
+    if (playerId) {
+        clientManager.getClient(playerId);
+    }
+    
+    const accountPlayerId = clientManager.verifyAccount(username, password);
+    if (accountPlayerId) {
+        // Login successful.
+        if (playerId) {
+            clientManager.assignClientToAccount(playerId, username);
+            const saveExists = playerStateExists(accountPlayerId);
+            sendMessage(ws, { type: 'account_login_success', username, playerId: playerId, saveExists }); 
+        } else {
+            sendMessage(ws, { type: 'account_login_failed', message: 'No device session found.' });
+        }
+    } else {
+        sendMessage(ws, { type: 'account_login_failed', message: 'Invalid credentials.' });
+    }
+}
+
+function handleResetAccountProgress(ws, { playerId }) {
+  if (!playerId) return;
+
+  // Resolve target player ID from client manager
+  const targetPlayerId = clientManager.getPlayerIdForClient(playerId);
+  if (!targetPlayerId) return; // No save to delete
+
+  // Delete the save file from disk
+  deletePlayerState(targetPlayerId);
+  
+  // Also kick any active player with this ID (unlikely if in menu, but safe)
+  const activeSession = players.findIndex(p => p.playerId === targetPlayerId);
+  if (activeSession !== -1) {
+       players.splice(activeSession, 1);
+  }
+
+  // Check if there is an account associated and include it so client stays logged in
+  const account = clientManager.getAccountForClient(playerId);
+  
+  // Update client to reflect no save exists
+  const msg = { type: 'session_status', saveExists: false, active: false };
+  if (account) {
+      msg.account = account;
+  }
+  sendMessage(ws, msg);
+}
+
+function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty, playerId, password }) {
+  // playerId from client is the Client/Device UUID (Cookie)
+  let clientUUID = playerId;
+  
+  // Ensure we have a valid client record (creates guest if new)
+  // If clientUUID is null/undefined, we'll generate one, but temporarily use null
+  let client = clientUUID ? clientManager.getClient(clientUUID, clientUUID) : null;
+  
+  // Security Check: If the client ID is linked to an account, we MUST verify the password matches
+  if (client && client.type === 'account') {
+      const accountId = clientManager.verifyAccount(client.accountName, password);
+      // If password validation fails, or if verifyAccount returns null (wrong password)
+      if (!accountId) {
+          // Reject this login attempt on this Client ID.
+          // Force them to be treated as a NEW Guest (ignore the hijacking attempt)
+          console.log(`Security: Rejected account access for client ${clientUUID} (Invalid/Missing Password)`);
+          clientUUID = generatePlayerId(); // Generate fresh Client ID
+          client = clientManager.getClient(clientUUID, null); // Create new guest
+          // We will generate a new Save ID for this guest below
+      }
+  }
+  
+  // Resolve the actual game save ID (Player ID)
+  // If this is a new client with no save, targetPlayerId might be null/undefined initially
+  // but clientManager.getClient sets default if provided.
+  let targetPlayerId = client ? clientManager.getPlayerIdForClient(clientUUID) : null;
+
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
     let player;
 
-    // Try to load saved state if playerId is provided
-    if (playerId) {
-      // Check if this player ID is already in use by an active player
-      const activeSession = players.find(p => p.playerId === playerId);
+    // Try to load saved state if targetPlayerId is resolved
+    if (targetPlayerId) {
+      // Check if this game save is already in use by an active player
+      const activeSession = players.find(p => p.playerId === targetPlayerId);
       if (activeSession) {
-        sendMessage(ws, { type: 'login_failed', message: 'Game save is being used by another player on the same device.' });
+        sendMessage(ws, { type: 'login_failed', message: 'Game save is being used by another player.' });
         return;
       }
 
-      const savedState = loadPlayerState(playerId);
+      const savedState = loadPlayerState(targetPlayerId);
       if (savedState) {
         // Restore player from saved state (username-independent)
         player = Player.fromSavedState(savedState, startMillis);
@@ -2528,8 +2697,29 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
     // Create new player if no saved state found
     if (!player) {
       player = new Player('air', username, r, g, b, 0, -400, startMillis, selectedGun1, selectedGun2);
-      player.playerId = generatePlayerId(); // Generate new ID for new players
+      player.playerId = generatePlayerId(); // Generate new unique ID for the SAVE FILE
       sendNoticeMessageAll(username + " joined!", "server");
+      
+      // If we didn't have a clientUUID, generate a DISTINCT one for the device
+      if (!clientUUID) {
+          clientUUID = generatePlayerId(); // Generates a UUID
+      }
+      
+      // Ensure client is registered and linked to this new save
+      clientManager.getClient(clientUUID, player.playerId);
+      
+      // If the client already existed but pointed to a missing/invalid save, update it to the new one
+      if (clientUUID && clientManager.getClient(clientUUID).playerId !== player.playerId) {
+           clientManager.updateClientSaveId(clientUUID, player.playerId);
+      }
+      
+      // If this client is logged into an account, update the account's save ID to match this new file
+      if (client && client.type === 'account' && client.accountName) {
+           clientManager.updateAccountSaveId(client.accountName, player.playerId);
+      }
+
+      // Update targetPlayerId for consistency
+      targetPlayerId = player.playerId;
     }
 
     players.push(player);
@@ -2549,12 +2739,13 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       party.addPlayer(player);
     }
 
-    // Send player ID to client so it can be stored in cookie
-    sendMessage(ws, { type: 'login_success', username, playerId: player.playerId, map: mapData });
+    // Send Client ID (Cookie UUID) back to client to store in cookie
+    // This ensures the client "device" is remembered.
+    sendMessage(ws, { type: 'login_success', username, playerId: clientUUID, map: mapData });
 
-    // Send welcome message AFTER login_success so client is ready to receive it
-    if (playerId && loadPlayerState(playerId)) {
-      sendNoticeMessage(username, `Loaded game state: ${playerId.substring(0, 8)}...`, 'game');
+    // Send welcome message
+    if (targetPlayerId && loadPlayerState(targetPlayerId)) {
+      sendNoticeMessage(username, `Loaded game state: ${targetPlayerId.substring(0, 8)}...`, 'game');
     } else {
       sendNoticeMessage(username, "Hi!", 'game');
     }

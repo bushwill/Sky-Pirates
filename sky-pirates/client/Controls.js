@@ -1,7 +1,7 @@
 function mousePressed() {
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
     if (menuVisible && menuManager.current && menuManager.current.mousePressed) {
-        let mw = width * 0.6;
+        let mw = Math.max(500, width * 0.45); // Reduced width to match drawing logic
         let mh = height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
@@ -9,7 +9,7 @@ function mousePressed() {
         return;
     }
     if (!signedIn && menuManager.current && menuManager.current.mousePressed) {
-        let mw = width * 0.6;
+        let mw = Math.max(500, width * 0.45); // Reduced width to match drawing logic
         let mh = height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
