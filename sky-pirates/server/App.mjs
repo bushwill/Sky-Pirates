@@ -3120,9 +3120,9 @@ function sendMessage(ws, data) {
     data.timeSent = Date.now();
     const encodedData = msgpack.encode(data);
     
-    // Diagnostic: Check if we are sending a massive packet (e.g., > 100KB)
-    if (encodedData.length > 100000) {
-      console.warn(`[Network] sending massive packet: ${data.type} size: ${Math.round(encodedData.length / 1024)}KB`);
+    // Diagnostic: Check if we are sending a massive packet (lower threshold to 20KB)
+    if (encodedData.length > 20000) {
+      console.warn(`[Network] sending large packet: ${data.type} size: ${Math.round(encodedData.length / 1024)}KB`);
     }
 
     const buffer = new Uint8Array(4 + encodedData.length);
@@ -3563,8 +3563,24 @@ function checkCommand(command, player) {
   }
 }
 
-setInterval(() => {
-  console.time('InactivityCheck');
+
+// Wrapper helper for timing logs
+function measuredInterval(name, callback, ms, delay = 0) {
+    setTimeout(() => {
+        setInterval(() => {
+            const start = process.hrtime();
+            callback();
+            const diff = process.hrtime(start);
+            const duration = (diff[0] * 1e9 + diff[1]) / 1e6;
+            if (duration > 1) { // Only log if takes more than 1ms to reduce noise
+                console.log(`[Timer] ${name} took ${duration.toFixed(3)}ms`);
+            }
+        }, ms);
+    }, delay);
+}
+
+// Inactivity Check (Offset: 0s)
+measuredInterval('InactivityCheck', () => {
   const now = millis();
   const inactivePlayers = players.filter(player => now - player.lastActivity >= INACTIVITY_THRESHOLD);
 
@@ -3587,8 +3603,7 @@ setInterval(() => {
 
   // Remove inactive players from the array
   players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
-  console.timeEnd('InactivityCheck');
-}, 60000);
+}, 60000, 0);
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
 setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
@@ -3597,13 +3612,14 @@ setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
-setInterval(() => { 
-  if (players.length > 0) {
-    console.time('CheckParties');
-    checkParties();
-    console.timeEnd('CheckParties');
-  }
-}, 60000);
+
+// CheckParties (Offset: 20s)
+measuredInterval('CheckParties', () => {
+    if (players.length > 0) {
+        checkParties();
+    }
+}, 60000, 20000);
+
 setInterval(() => { 
   const start = process.hrtime();
   updateShops(); 
@@ -3611,15 +3627,16 @@ setInterval(() => {
   const ms = (diff[0] * 1e9 + diff[1]) / 1e6;
   if (ms > 10) console.log(`Slow updateShops: ${ms.toFixed(3)}ms`);
 }, 1000); // Check shop refresh every second
+
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
-setInterval(() => { 
+
+// SendAchievements (Offset: 40s)
+measuredInterval('SendAchievements', () => {
   if (players.length > 0) {
-    console.time('SendAchievements');
     // Only send if data changed? For now, just measure size.
     players.forEach(p => sendPlayerAchievements(p)); 
-    console.timeEnd('SendAchievements');
   }
-}, 60000); // Send achievement updates every minute
+}, 60000, 40000); // Send achievement updates every minute
 
 setInterval(() => {
   const mem = process.memoryUsage();
