@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Directory to store player state files
-const SAVE_DIR = path.join(__dirname, 'player_saves');
+const SAVE_DIR = path.join(__dirname, 'database', 'game_saves');
 
 // Ensure save directory exists
 if (!fs.existsSync(SAVE_DIR)) {

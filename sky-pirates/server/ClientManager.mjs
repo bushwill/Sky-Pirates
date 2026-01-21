@@ -4,38 +4,74 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, 'clients.json');
+const CLIENTS_DIR = path.join(__dirname, 'database', 'client_list', 'clients');
+const ACCOUNTS_DIR = path.join(__dirname, 'database', 'client_list', 'accounts');
 
 class ClientManager {
     constructor() {
         this.clients = {};
         this.accounts = {};
-        this.load();
+        this.loadAll();
     }
 
-    load() {
-        if (fs.existsSync(DATA_FILE)) {
-            try {
-                const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-                this.clients = data.clients || {};
-                this.accounts = data.accounts || {};
-            } catch (err) {
-                console.error("Error loading clients.json:", err);
-                this.clients = {};
-                this.accounts = {};
-            }
+    loadAll() {
+        // Ensure directories exist
+        if (!fs.existsSync(CLIENTS_DIR)) fs.mkdirSync(CLIENTS_DIR, { recursive: true });
+        if (!fs.existsSync(ACCOUNTS_DIR)) fs.mkdirSync(ACCOUNTS_DIR, { recursive: true });
+
+        // Load Clients
+        try {
+            const clientFiles = fs.readdirSync(CLIENTS_DIR);
+            clientFiles.forEach(file => {
+                if (file.endsWith('.json')) {
+                    const id = file.replace('.json', '');
+                    const data = JSON.parse(fs.readFileSync(path.join(CLIENTS_DIR, file), 'utf8'));
+                    this.clients[id] = data;
+                }
+            });
+        } catch (err) {
+            console.error("Error loading clients:", err);
+        }
+
+        // Load Accounts
+        try {
+            const accountFiles = fs.readdirSync(ACCOUNTS_DIR);
+            accountFiles.forEach(file => {
+                if (file.endsWith('.json')) {
+                    const username = file.replace('.json', '');
+                    const data = JSON.parse(fs.readFileSync(path.join(ACCOUNTS_DIR, file), 'utf8'));
+                    this.accounts[username] = data;
+                }
+            });
+        } catch (err) {
+            console.error("Error loading accounts:", err);
         }
     }
-
+    
+    // Obsolete single-file save
     save() {
+        // No-op for legacy calls, now we save individually
+    }
+    
+    saveClient(clientId) {
+        if (!this.clients[clientId]) return;
         try {
-            const data = {
-                clients: this.clients,
-                accounts: this.accounts
-            };
-            fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+            const filePath = path.join(CLIENTS_DIR, `${clientId}.json`);
+            fs.writeFileSync(filePath, JSON.stringify(this.clients[clientId], null, 2), 'utf8');
         } catch (err) {
-            console.error("Error saving clients.json:", err);
+            console.error(`Error saving client ${clientId}:`, err);
+        }
+    }
+    
+    saveAccount(username) {
+        if (!this.accounts[username]) return;
+        try {
+            // Sanitize username for filename if needed, but assuming simple alphanumeric for now
+            const safeName = username.replace(/[^a-z0-9]/gi, '_'); 
+            const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
+            fs.writeFileSync(filePath, JSON.stringify(this.accounts[username], null, 2), 'utf8');
+        } catch (err) {
+            console.error(`Error saving account ${username}:`, err);
         }
     }
 
@@ -55,7 +91,7 @@ class ClientManager {
                 created: Date.now(),
                 lastSeen: Date.now()
             };
-            this.save();
+            this.saveClient(clientId);
         } else {
             // Update last seen
             this.clients[clientId].lastSeen = Date.now();
@@ -64,7 +100,7 @@ class ClientManager {
             if (defaultPlayerId && !this.clients[clientId].playerId && this.clients[clientId].type === 'guest') {
                 this.clients[clientId].playerId = defaultPlayerId;
             }
-            this.save();
+            this.saveClient(clientId);
         }
         return this.clients[clientId];
     }
@@ -95,7 +131,7 @@ class ClientManager {
     updateAccountSaveId(username, newPlayerId) {
         if (this.accounts[username]) {
             this.accounts[username].playerId = newPlayerId;
-            this.save();
+            this.saveAccount(username);
             return true;
         }
         return false;
@@ -109,7 +145,7 @@ class ClientManager {
     updateClientSaveId(clientId, newPlayerId) {
         if (this.clients[clientId]) {
             this.clients[clientId].playerId = newPlayerId;
-            this.save();
+            this.saveClient(clientId);
             return true;
         }
         return false;
@@ -125,7 +161,7 @@ class ClientManager {
             playerId: playerId,
             created: Date.now()
         };
-        this.save();
+        this.saveAccount(username);
         return { success: true, message: "Account created." };
     }
 
@@ -154,7 +190,7 @@ class ClientManager {
             this.clients[clientId].accountName = username;
             // When assigned, the client uses the account's player ID usually,
             // but we might keep the local playerId ref for fallback or history.
-            this.save();
+            this.saveClient(clientId);
             return true;
         }
         return false;

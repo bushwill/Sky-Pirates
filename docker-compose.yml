@@ -29,7 +29,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./sky-pirates/server:/server
+      - ./sky-pirates/server/database:/usr/src/app/database
     deploy:
       resources:
         limits:
