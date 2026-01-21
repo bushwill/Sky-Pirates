@@ -254,6 +254,23 @@ function drawEnemyTargetIndicators(controlledPlayer, centerX = 0, centerY = -400
     }
 }
 
+function drawPlayerIcon(player, angle) {
+    const r = player.r || 150;
+    const g = player.g || 150;
+    const b = player.b || 150;
+    const ang = angle !== undefined ? angle : player.angle;
+
+    push();
+    rotate(ang);
+    
+    noStroke();
+    fill(r, g, b);
+    stroke(0);
+    triangle(-5, -3, -5, 3, 7, 0);
+    
+    pop();
+}
+
 function displayPlayers(centerX = 0, centerY = -400) {
     push();
     for (let i in players) {
@@ -362,10 +379,11 @@ function displayPlayer(player, drawX = 0, drawY = -400) {
     textAlign(CENTER);
     stroke(0);
     fill(player.r, player.g, player.b);
+    
+    // Position handling must be done by caller or wrapping push/pop
     push();
     translate(drawX, drawY);
-    rotate(player.angle); // assumes angle in radians
-    triangle(-5, -3, -5, 3, 7, 0);
+    drawPlayerIcon(player);
     pop();
 
     fill(255);
@@ -431,10 +449,7 @@ function drawPartyIndicator(controlledPlayer, centerX = 0, centerY = -400) {
             // Draw party indicator triangle
             push();
             translate(indicatorX, indicatorY);
-            rotate(player.angle);
-            fill(player.party.r, player.party.g, player.party.b);
-            stroke(0);
-            triangle(-5, -3, -5, 3, 7, 0);
+            drawPlayerIcon(player);
             pop();
 
             // Draw username

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { deletePlayerState } from './PlayerStateManager.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,9 +101,68 @@ class ClientManager {
             if (defaultPlayerId && !this.clients[clientId].playerId && this.clients[clientId].type === 'guest') {
                 this.clients[clientId].playerId = defaultPlayerId;
             }
+            
+            // Ensure achievements object exists
+            if (!this.clients[clientId].achievements) {
+                this.clients[clientId].achievements = {};
+            }
+            
             this.saveClient(clientId);
         }
         return this.clients[clientId];
+    }
+
+    getAccount(username) {
+        if (!this.accounts[username]) return null;
+        if (!this.accounts[username].achievements) {
+            this.accounts[username].achievements = {};
+        }
+        return this.accounts[username];
+    }
+
+    /**
+     * Retrieves achievement data for a client (delegates to Account if linked)
+     */
+    getAchievementsForClient(clientId) {
+        const client = this.clients[clientId];
+        if (!client) return {};
+
+        if (client.type === 'account' && client.accountName) {
+            const account = this.getAccount(client.accountName);
+            return account ? (account.achievements || {}) : {};
+        }
+        return client.achievements || {};
+    }
+
+    /**
+     * Updates an achievement for a client (delegates to Account if linked)
+     */
+    updateAchievement(clientId, achievementId, achievementData) {
+        const client = this.clients[clientId];
+        if (!client) return; 
+
+        let target = client;
+        let isAccount = false;
+        let saveKey = clientId;
+
+        if (client.type === 'account' && client.accountName) {
+            const account = this.getAccount(client.accountName);
+            if (account) {
+                 target = account;
+                 isAccount = true;
+                 saveKey = client.accountName;
+            }
+        }
+
+        if (!target.achievements) target.achievements = {};
+        
+        target.achievements[achievementId] = achievementData;
+
+        if (isAccount) {
+            this.saveAccount(saveKey);
+        } else {
+            this.saveClient(saveKey);
+        }
     }
 
     /**
@@ -191,9 +251,60 @@ class ClientManager {
             // When assigned, the client uses the account's player ID usually,
             // but we might keep the local playerId ref for fallback or history.
             this.saveClient(clientId);
+            
+            // Clean up stale clients for this account (prevents duplicate build-up from resets)
+            this.cleanupStaleClients(username, clientId);
+            
             return true;
         }
         return false;
+    }
+
+    /**
+     * Removes other client records for the same account that haven't been seen recently.
+     * Prevents "zombie" clients from accumulating if cookies are cleared.
+     * @param {string} username 
+     * @param {string} currentClientId - The ID of the client currently logging in (don't delete this!)
+     */
+    cleanupStaleClients(username, currentClientId) {
+        const STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+        const now = Date.now();
+
+        Object.keys(this.clients).forEach(otherClientId => {
+            if (otherClientId === currentClientId) return; // Skip self
+
+            const client = this.clients[otherClientId];
+            if (client.accountName === username) {
+                // It's a match. Check if it's stale.
+                if ((now - client.lastSeen) > STALE_THRESHOLD) {
+                    console.log(`Cleaning up stale client ${otherClientId} for account ${username}`);
+                    
+                    // Cleanup linked save file if it exists and is distinct from the account's current save logic
+                    // (NOTE: In 'account' mode, the save is usually linked to the account's playerID, so we shouldn't delete the save unless it's an orphan)
+                    // But if this was a transient guest session that got linked, it might have its own ID.
+                    // For safety, ONLY delete the save if it is DIFFERENT from the account's active player ID
+                    // to avoid deleting the user's actual progress.
+                    
+                    const accountPlayerId = this.accounts[username].playerId;
+                    if (client.playerId && client.playerId !== accountPlayerId) {
+                        console.log(`Deleting orphaned save ${client.playerId} from stale client`);
+                        deletePlayerState(client.playerId);
+                    }
+
+                    // Delete from memory
+                    delete this.clients[otherClientId];
+                    // Delete from disk
+                    try {
+                        const filePath = path.join(CLIENTS_DIR, `${otherClientId}.json`);
+                        if (fs.existsSync(filePath)) {
+                            fs.unlinkSync(filePath);
+                        }
+                    } catch (err) {
+                        console.error(`Failed to delete stale client file ${otherClientId}:`, err);
+                    }
+                }
+            }
+        });
     }
     
     /**

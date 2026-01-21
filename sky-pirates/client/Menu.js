@@ -435,6 +435,15 @@ class LoginMenuScreen extends MenuScreen {
         // Side menu data
         this.leftMenuList = ["Tip: Press M for Map", "Tip: Press I for Inventory", "Tip: Press B for Shop"];
         this.rightMenuList = ["Online Players:", "Loading..."]; 
+        this.achievements = [];
+        this.achievementScroll = 0;
+        this.hoveredAchievement = null;
+        this.playerScroll = 0;
+        
+        // Define panel bounds for scrolling interaction
+        this.leftPanelBounds = { x: 0, y: 0, w: 0, h: 0 };
+        this.rightPanelBounds = { x: 0, y: 0, w: 0, h: 0 };
+
         if (this.colorPicker) {
             this.colorPicker.value(this.color);
             this.colorPicker.input(() => {
@@ -464,19 +473,11 @@ class LoginMenuScreen extends MenuScreen {
             fill(255, 255, 255, 200);
             noStroke();
             rect(leftX, y, sideW, h, 30);
+            
+            // Store bounds for scrolling
+            this.leftPanelBounds = { x: leftX, y: y, w: sideW, h: h };
 
-            fill(0);
-            textSize(24);
-            textAlign(CENTER, TOP);
-            text("Game Info", leftX + sideW / 2, y + 30);
-
-            textSize(16);
-            textAlign(CENTER, TOP);
-            if (this.leftMenuList) {
-                for (let i = 0; i < this.leftMenuList.length; i++) {
-                    text(this.leftMenuList[i], leftX + sideW / 2, y + 80 + i * 35);
-                }
-            }
+            this.drawPlayerList(leftX, y, sideW, h);
         }
 
         // Right Panel
@@ -485,19 +486,12 @@ class LoginMenuScreen extends MenuScreen {
             fill(255, 255, 255, 200);
             noStroke();
             rect(rightX, y, sideW, h, 30);
+            
+            // Store bounds for scrolling
+            this.rightPanelBounds = { x: rightX, y: y, w: sideW, h: h };
 
-            fill(0);
-            textSize(24);
-            textAlign(CENTER, TOP);
-            text(signedIn ? "Online" : "Community", rightX + sideW / 2, y + 30);
-
-            textSize(16);
-            textAlign(CENTER, TOP);
-            if (this.rightMenuList) {
-                for (let i = 0; i < this.rightMenuList.length; i++) {
-                    text(this.rightMenuList[i], rightX + sideW / 2, y + 80 + i * 35);
-                }
-            }
+            // Always draw achievements instead of community/online list
+            this.drawAchievements(rightX, y, sideW, h);
         }
 
         fill(255, 255, 255, 200);
@@ -674,6 +668,283 @@ class LoginMenuScreen extends MenuScreen {
                  this.loginAccountBtn.setSize(150, 40);
                  this.loginAccountBtn.draw();
             }
+        }
+        
+        // Draw tooltip if needed (after everything else to stay on top)
+        if (this.hoveredAchievement) {
+            this.drawAchievementTooltip(this.hoveredAchievement);
+        }
+    }
+
+    drawPlayerList(x, y, w, h) {
+        fill(0);
+        textSize(24);
+        textAlign(CENTER, TOP);
+        
+        let onlineCount = (typeof players !== 'undefined') ? players.length : 0;
+        text("Community", x + w/2, y + 25);
+        textSize(16);
+        fill(100);
+        text(onlineCount + " Online", x + w/2, y + 55);
+        
+        // List area
+        let listX = x + 20;
+        let listY = y + 80;
+        let listW = w - 40;
+        let listH = h - 100;
+        
+        // Show "Connecting..." only if we haven't received initial data yet.
+        // Once received, if players is empty, it means 0 players online.
+        if (!this.hasReceivedPlayerData && (typeof players === 'undefined' || players.length === 0)) {
+            textSize(16);
+            fill(100);
+            text("Connecting...", x + w/2, listY + 50);
+            return;
+        }
+
+        if (typeof players !== 'undefined' && players.length === 0) {
+            textSize(16);
+            fill(100);
+            text("No pilots online.", x + w/2, listY + 50);
+            return;
+        }
+
+        let itemHeight = 50;
+        let totalHeight = players.length * itemHeight;
+        
+        // Scroll handling
+        if (totalHeight > listH) {
+            this.playerScroll = constrain(this.playerScroll, -totalHeight + listH, 0);
+        } else {
+            this.playerScroll = 0;
+        }
+
+        if (typeof drawingContext !== 'undefined') {
+             drawingContext.save();
+             drawingContext.beginPath();
+             drawingContext.rect(listX, listY, listW, listH);
+             drawingContext.clip();
+        }
+
+        let currentY = listY + this.playerScroll;
+        
+        // Use a consistent sort order (e.g., username) to stop jitter
+        // But players array order might be stable enough from server
+        // Let's iterate
+        for (let p of players) {
+             // Only draw if visible
+             if (currentY + itemHeight > listY && currentY < listY + listH) {
+                 fill(245, 245, 245, 200);
+                 stroke(200);
+                 rect(listX, currentY, listW, 40, 5);
+                 
+                 // Draw Plane Icon using helper
+                 push();
+                 translate(listX + 25, currentY + 20);
+                 scale(1.5);
+                 // Override angle to point up (-PI/2)
+                 drawPlayerIcon(p, 0);
+                 pop();
+
+                 noStroke();
+                 fill(0);
+                 textAlign(LEFT, CENTER);
+                 textSize(16);
+                 text(p.username, listX + 50, currentY + 20);
+             }
+             currentY += itemHeight;
+        }
+
+        if (typeof drawingContext !== 'undefined') {
+             drawingContext.restore();
+        }
+    }
+
+    drawAchievements(x, y, w, h) {
+        fill(0);
+        textSize(24);
+        textAlign(CENTER, TOP);
+        text("Achievements", x + w/2, y + 30);
+        
+        // List area
+        let listX = x + 20;
+        let listY = y + 70;
+        let listW = w - 40;
+        let listH = h - 90;
+        
+        if (!this.achievements || this.achievements.length === 0) {
+            textSize(16);
+            fill(100);
+            text("No achievements yet.", x + w/2, listY + 50);
+            return;
+        }
+
+        let itemHeight = 50;
+        let totalHeight = this.achievements.length * itemHeight;
+        
+        // Scroll handling
+        if (totalHeight > listH) {
+            this.achievementScroll = constrain(this.achievementScroll, -totalHeight + listH, 0);
+        } else {
+            this.achievementScroll = 0;
+        }
+
+        // Use strict clipping if available, otherwise just draw
+        if (typeof drawingContext !== 'undefined') {
+             drawingContext.save();
+             drawingContext.beginPath();
+             drawingContext.rect(listX, listY, listW, listH);
+             drawingContext.clip();
+        }
+
+        let currentY = listY + this.achievementScroll;
+        let mouseInList = mouseX > listX && mouseX < listX + listW && mouseY > listY && mouseY < listY + listH;
+        this.hoveredAchievement = null; // Reset for this frame
+
+        for (let ach of this.achievements) {
+             // Only draw if visible
+             if (currentY + itemHeight > listY && currentY < listY + listH) {
+                 fill(ach.completed ? [220, 255, 220, 240] : [200, 200, 200, 240]);
+                 stroke(0);
+                 rect(listX, currentY, listW, 40, 5);
+                 
+                 noStroke();
+                 fill(0);
+                 textAlign(LEFT, CENTER);
+                 textSize(16);
+                 
+                 // Defensive defaults
+                 let safeProgress = typeof ach.progress === 'number' ? ach.progress : 0;
+                 let safeMax = (typeof ach.maxProgress === 'number' && ach.maxProgress > 0) ? ach.maxProgress : 1;
+                 
+                 let showProgress = !ach.completed && safeMax > 1;
+
+                 if (showProgress) {
+                     text(ach.title, listX + 10, currentY + 14);
+                     
+                     // Draw Progress Bar background
+                     let barX = listX + 10;
+                     let barY = currentY + 28;
+                     let barW = listW - 20;
+                     let barH = 6;
+                     
+                     fill(255, 255, 255, 150);
+                     rect(barX, barY, barW, barH, 3);
+                     
+                     // Draw Progress Fill
+                     let progPct = constrain(safeProgress / safeMax, 0, 1);
+                     if (isNaN(progPct)) progPct = 0;
+                     
+                     fill(0, 180, 0);
+                     rect(barX, barY, barW * progPct, barH, 3);
+
+                     // Progress Text
+                     textAlign(RIGHT, CENTER);
+                     textSize(11);
+                     fill(80);
+                     text(`${safeProgress} / ${safeMax}`, listX + listW - 10, currentY + 14);
+
+                 } else {
+                     text(ach.title, listX + 10, currentY + 20);
+                 }
+                 
+                 if (ach.completed) {
+                     fill(0, 150, 0);
+                     textAlign(RIGHT, CENTER);
+                     textSize(16);
+                     text("✔", listX + listW - 10, currentY + 20);
+                 }
+                 
+                 // Hover check
+                 if (mouseInList && mouseY > currentY && mouseY < currentY + 40) {
+                     this.hoveredAchievement = ach;
+                 }
+             }
+             currentY += itemHeight;
+        }
+
+        if (typeof drawingContext !== 'undefined') {
+             drawingContext.restore();
+        }
+    }
+    
+    drawAchievementTooltip(ach) {
+        push();
+        textSize(12); // measuring font size
+        let textW = textWidth(ach.description) + 30;
+        if (textW < 220) textW = 220;
+        
+        let textH = 50; 
+        
+        let showUnlockedDate = ach.completed && ach.unlockedAt;
+        let nextMilestone = null;
+        if (ach.milestones && ach.milestones.length > 0) {
+            nextMilestone = ach.milestones.find(m => !m.unlocked);
+        }
+
+        if (showUnlockedDate) textH += 20;
+        if (nextMilestone) textH += 20;
+
+        let tx = mouseX + 15;
+        let ty = mouseY + 15;
+        
+        // Bounds check
+        if (tx + textW > width) tx = mouseX - textW - 5;
+        if (ty + textH > height) ty = mouseY - textH - 5;
+        
+        // Draw background
+        fill(255, 255, 235);
+        stroke(0);
+        rect(tx, ty, textW, textH, 5);
+        
+        fill(0);
+        noStroke();
+        textAlign(LEFT, TOP);
+        
+        // Title
+        textSize(16);
+        textStyle(BOLD);
+        text(ach.title, tx + 10, ty + 10);
+        
+        // Description
+        textStyle(NORMAL);
+        textSize(12);
+        text(ach.description, tx + 10, ty + 30);
+        
+        let lineY = ty + 48;
+        
+        if (showUnlockedDate) {
+             fill(0, 100, 0);
+             text("Completed: " + new Date(ach.unlockedAt).toLocaleDateString(), tx + 10, lineY);
+             lineY += 20;
+        }
+        
+        if (nextMilestone) {
+             fill(0, 0, 150);
+             text(`Next: ${nextMilestone.title} (${ach.progress} / ${nextMilestone.target})`, tx + 10, lineY);
+        }
+        pop();
+    }
+
+    mouseWheel(event) {
+        let delta = event.deltaY || event.delta || 0;
+        
+        // Check bounds for right panel (achievements)
+        if (signedIn && this.achievements && this.achievements.length > 0) {
+            // If mouse is over right panel
+            if (mouseX > this.rightPanelBounds.x && mouseX < this.rightPanelBounds.x + this.rightPanelBounds.w &&
+                mouseY > this.rightPanelBounds.y && mouseY < this.rightPanelBounds.y + this.rightPanelBounds.h) {
+                this.achievementScroll -= delta;
+                return;
+            }
+        }
+        
+        // Check bounds for left panel (players)
+        // Draw is called when !signedIn OR signedIn (now logic changed to always draw left panel if fit?)
+        // Left panel is drawn in draw() if space permits.
+        if (mouseX > this.leftPanelBounds.x && mouseX < this.leftPanelBounds.x + this.leftPanelBounds.w &&
+            mouseY > this.leftPanelBounds.y && mouseY < this.leftPanelBounds.y + this.leftPanelBounds.h) {
+             this.playerScroll -= delta;
         }
     }
 
@@ -974,32 +1245,26 @@ class SettingsMenuScreen extends MenuScreen {
         // OR via settings if implemented for account
         if (confirm("Are you sure you want to reset your progress? This will delete your saved game state and you'll start fresh.")) {
             
-            // If logged in via account, resetting progress means deleting the SERVER save but keeping the account
-            if (this.isAccountSession) {
-                const playerId = getCookie('skyPiratesClientId');
-                if (playerId && ws && ws.readyState === WebSocket.OPEN) {
-                    // Send reset command to server to wipe the save file but keep the session active
-                    sendResetAccountProgress(playerId);
-                    
-                    alert("Account progress reset! You can now start a new game.");
-                    
-                    // Update UI state to reflect no save
-                    this.hasSavedState = false;
-                    this.serverSaveExists = false;
-                    this.loginButton.label = "Start";
-                    return; 
-                }
-            }
-
-            // GUEST MODE: Delete the client ID cookie to lose the link
-            deleteCookie('skyPiratesClientId');
+            const playerId = getCookie('skyPiratesClientId');
             
-            // Update login screen state if it exists
-            if (typeof menuManager !== 'undefined' && menuManager.screens && menuManager.screens['login']) {
+            if (playerId && ws && ws.readyState === WebSocket.OPEN) {
+                // Send reset command to server to wipe the save file
+                // This works for both Guest and Account sessions, preserving the client ID/Cookie
+                sendResetAccountProgress(playerId);
+                
+                alert("Progress reset! You can now start a new game.");
+                
+                // Update UI state to reflect no save
+                this.hasSavedState = false;
+                this.serverSaveExists = false;
+                this.loginButton.label = "Start";
+                return; 
+            }
+            
+            // Fallback if no cookie exists (shouldn't happen if they have progress, but safe cleanup)
+             if (typeof menuManager !== 'undefined' && menuManager.screens && menuManager.screens['login']) {
                 menuManager.screens['login'].loadSavedPreferences();
             }
-            
-            alert("Progress reset! You'll start a new game on your next login.");
         }
     }
 

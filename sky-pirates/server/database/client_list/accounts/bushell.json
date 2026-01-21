@@ -1,5 +1,129 @@
 {
   "password": "1234",
-  "playerId": "af18acf5-8c85-470e-9bab-8b52f31bb5f3",
-  "created": 1768965045093
+  "playerId": "d909aa19-271d-451a-9fe1-c9f25663704f",
+  "created": 1769022976894,
+  "achievements": {
+    "first_login": {
+      "completed": true,
+      "unlockedAt": 1769023953680
+    },
+    "enemy_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 1,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
+        }
+      ]
+    },
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 211,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    },
+    "distance_flown": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 11399.499845804057,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 250000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 2500000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 7500000
+        }
+      ]
+    },
+    "player_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 0,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 23,
+      "milestones": [
+        {
+          "target": 50
+        }
+      ]
+    }
+  }
 }

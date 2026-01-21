@@ -33,6 +33,14 @@ export class Player extends Plane {
     // Player ID for session persistence
     this.playerId = null;
     
+    // Achievements tracking
+    this.achievements = {};
+    
+    // Stats tracking
+    this.lastX = x;
+    this.lastY = y;
+    this.sessionDistance = 0;
+
     // Update plane value and weight after setting selected guns
     this.updatePlane();
   }
@@ -76,6 +84,13 @@ export class Player extends Plane {
     player.biome = state.biome || 'air';
     player.selectedGun = state.selectedGun || 1;
     player.playerId = state.playerId;
+    // Restore achievements
+    player.achievements = state.achievements || {};
+    
+    // Stats tracking setup
+    player.lastX = player.x;
+    player.lastY = player.y;
+    player.sessionDistance = 0;
 
     // Restore components
     if (state.chassis) player.chassis = deserializeComponent(state.chassis);

@@ -174,3 +174,10 @@ function handleKeyUp(event) {
     // No-op: key up is handled via p5 keyReleased if needed; this function kept for compatibility but does nothing.
     return;
 }
+
+function mouseWheel(event) {
+    if ((menuVisible || !signedIn) && menuManager && menuManager.current && menuManager.current.mouseWheel) {
+        menuManager.current.mouseWheel(event);
+        return false;
+    }
+}

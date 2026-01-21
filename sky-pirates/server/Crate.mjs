@@ -37,6 +37,11 @@ export class Crate{
             this.cargo.position = player.inventory.length + 1; // Set the position in the inventory
             player.inventory.push(this.cargo); // Add component/weapon to player's inventory
         }
+
+        if (player.achievements && player.achievements['crate_hunter']) {
+            player.achievements['crate_hunter'].increment(player, 1);
+        }
+
         player.detachCrate(this); // Detach the crate from the player
     }
 } 

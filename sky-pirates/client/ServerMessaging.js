@@ -209,6 +209,13 @@ function handleDecodedMessage(decodedMessage) {
              }
              break;
              
+        case 'achievements_update':
+            // Update achievements list in the login menu (or wherever we store client state)
+            if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                menuManager.screens['login'].achievements = decodedMessage.achievements;
+            }
+            break;
+
         case 'account_login_failed':
              if (menuManager.screens['loginAccount']) {
                 menuManager.screens['loginAccount'].msg = "Error: " + decodedMessage.message;
@@ -292,6 +299,11 @@ function handleDecodedMessage(decodedMessage) {
                 }
                 
                 players = newPlayers;
+
+                // Update community data status for Login Menu
+                if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].hasReceivedPlayerData = true;
+                }
                 
                 // Restore visual state
                 players.forEach(p => {
@@ -402,9 +414,8 @@ function handleDecodedMessage(decodedMessage) {
                 deathCameraY = 0;
             }
             
-            // Set respawn delay (2 seconds)
-            respawnDelay = true;
-            respawnDelayEnd = millis() + 2000;
+            // INSTANTLY go to menu, no respawn delay
+            respawnDelay = false;
             
             signedIn = false;
             helpWindow = false;
@@ -417,7 +428,12 @@ function handleDecodedMessage(decodedMessage) {
             keys = { w: false, a: false, s: false, d: false, c: false, r: false, f: false, p: false, mouse: false };
             // Clear cached credentials since player was destroyed
             clearLoginCache();
-            // Login menu will be shown after respawn delay ends
+            
+            // Show login screen immediately
+            if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                menuManager.show('login');
+                menuManager.screens['login'].loginMsg = "Your plane was destroyed! Insufficient funds to respawn.";
+            }
             break;
 
         case 'player_downed':

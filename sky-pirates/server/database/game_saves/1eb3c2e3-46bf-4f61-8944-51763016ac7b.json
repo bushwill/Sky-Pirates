@@ -1,0 +1,96 @@
+{
+  "playerId": "1eb3c2e3-46bf-4f61-8944-51763016ac7b",
+  "username": "bushwill",
+  "r": 0,
+  "g": 51,
+  "b": 255,
+  "x": 0,
+  "y": -200,
+  "money": 100,
+  "biome": "recovery",
+  "selectedGun": 1,
+  "lastRecoveryZone": {
+    "type": "recovery",
+    "x1": -800,
+    "x2": 800,
+    "y1": -600,
+    "y2": 200,
+    "id": "spawn",
+    "twin": null
+  },
+  "chassis": {
+    "type": "chassis",
+    "name": "Pirate Standard Chassis Lvl 1",
+    "weight": 1.5244488359017923,
+    "value": 20.32598447869056,
+    "topSpeed": 182.93386030821506,
+    "maxHull": 91.46693015410753,
+    "heatDispersion": 12.703740299181602,
+    "buoyancy": 2.54074805983632
+  },
+  "engine": {
+    "type": "engine",
+    "name": "Pirate Standard Engine Lvl 1",
+    "weight": 1.0008193719602545,
+    "value": 20.01638743920509,
+    "maxPower": 350.28678018608906,
+    "minPower": 0,
+    "heatEfficiency": 0.06004916231761527,
+    "maxHeat": 80.06554975682036
+  },
+  "wings": {
+    "type": "wings",
+    "name": "Pirate Standard Wings Lvl 1",
+    "weight": 0.5225142201616921,
+    "value": 20.900568806467685,
+    "baseTurnSpeed": 1.8810511925820916,
+    "minTurnSpeed": 0.15675426604850765,
+    "maxSpeed": 156.75426604850765,
+    "liftEfficiency": 0.5225142201616921,
+    "minLiftSpeed": 52.251422016169215,
+    "liftAngle": 0.41038170886404296,
+    "airBrake": true,
+    "airBrakeStrength": 2.0900568806467685
+  },
+  "gun1": {
+    "type": "gun",
+    "name": "Machine Gun Lvl 1",
+    "weight": 0.4794078523246186,
+    "value": 47.940785232461856,
+    "maxHeat": 110.26380603466227,
+    "heatEfficiency": 4.698196952781262,
+    "damage": 20.13512979763398,
+    "cooldownTime": 139.0282771741394,
+    "projectileSpeed": 1466.9880281133328,
+    "projectileSize": 1.1026380603466226,
+    "maxAngle": 0.1506104186936282,
+    "heatDispersion": 16.77927483136165,
+    "projectileRange": 1500
+  },
+  "gun2": {
+    "type": "gun",
+    "name": "Cannon Lvl 1",
+    "weight": 1.9904269481970198,
+    "value": 135.71092828616042,
+    "maxHeat": 142.9488444614223,
+    "heatEfficiency": 22.166118286739536,
+    "damage": 47.04645513920228,
+    "cooldownTime": 506.65413226833226,
+    "projectileSpeed": 2985.6404222955293,
+    "projectileSize": 2.080900900387793,
+    "maxAngle": 0.13619464544805576,
+    "heatDispersion": 15.832941633385383,
+    "projectileRange": 1500
+  },
+  "inventory": [],
+  "achievements": {
+    "first_login": {
+      "id": "first_login",
+      "title": "Rookie Pilot",
+      "description": "Log in to the game for the first time.",
+      "completed": true,
+      "unlockedAt": 1769024876564
+    }
+  },
+  "savedAt": 1769025436317
+}

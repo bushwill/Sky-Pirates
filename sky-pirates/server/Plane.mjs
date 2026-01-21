@@ -146,6 +146,9 @@ export class Plane {
 
   // Called when this entity takes damage from a projectile
   onDamaged(projectile) {
+    if (projectile && projectile.owner) {
+        this.lastAttackerUsername = projectile.owner;
+    }
     // Apply damage to hull (supports both plane chassis.hull and direct hull property)
     if (typeof this.hull === 'number') {
       this.hull -= projectile.damage;

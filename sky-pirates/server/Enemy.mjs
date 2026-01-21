@@ -12,6 +12,13 @@ export class EnemyPlane extends Plane {
     this.target = target;
   }
 
+  onDamaged(projectile) {
+      if (projectile && projectile.owner) {
+          this.lastAttackerUsername = projectile.owner;
+      }
+      super.onDamaged(projectile);
+  }
+
   updateAI() {
     console.log("Can't update ai of unspecified enemy");
   }
@@ -57,6 +64,9 @@ export class EnemyBoat {
 
   // Called when this entity takes damage from a projectile
   onDamaged(projectile) {
+    if (projectile && projectile.owner) {
+        this.lastAttackerUsername = projectile.owner;
+    }
     // Apply damage to hull
     if (typeof this.hull === 'number') {
       this.hull -= projectile.damage;

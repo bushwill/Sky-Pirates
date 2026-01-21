@@ -19,6 +19,7 @@ import { createEnemyGun, createGun, getRandomGunType } from './WeaponList.mjs';
 import { Shop } from './Shop.mjs';
 import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState, playerStateExists } from './PlayerStateManager.mjs';
 import { clientManager } from './ClientManager.mjs';
+import { syncPlayerAchievements, getAchievementDataForClient } from './Achievements.mjs';
 
 const admin_name = 'Shluck'
 
@@ -354,6 +355,59 @@ function updatePlayer(player) {
   checkSpawnEnemyPlane(player);
   const deltaTime = 0.01 * timeSpeed;
 
+  // Map Boundary Check - 10 Second Death Logic
+  const boundaryX = mapData.sizeX;
+  const boundarySky = -mapData.skyHeight;
+  const boundarySea = mapData.oceanDepth;
+  
+  // Check if outside: Right, Left, Top, Bottom
+  // Note: Y is negative up (likely), skyHeight is positive in mapData but map polygon uses -skyHeight
+  // Checking Map.mjs: { x: -this.sizeX, y: -this.skyHeight } to { x: this.sizeX, y: this.oceanDepth }
+  const isOutside = (player.x > boundaryX) || (player.x < -boundaryX) ||
+                    (player.y < boundarySky) || (player.y > boundarySea);
+
+  if (isOutside) {
+      if (!player.outOfBoundsSnapshot) {
+          // Check hull on chassis first if it exists, otherwise fall back to player.hull
+          const currentHull = (player.chassis && typeof player.chassis.hull === 'number') ? player.chassis.hull : player.hull;
+          
+          player.outOfBoundsSnapshot = currentHull;
+          // Send warning - logic depends on snapshot being null initially
+          sendNoticeMessage(player.username, "WARNING: Leaving Playable Area! Taking Hull Damage!", 'urgent');
+      }
+      
+      const damageTick = (player.outOfBoundsSnapshot / 10) * deltaTime;
+      
+      // Apply damage to correct property
+      if (player.chassis && typeof player.chassis.hull === 'number') {
+          if (player.chassis.hull > 0) {
+              player.chassis.hull -= damageTick;
+              if (player.chassis.hull < 0) player.chassis.hull = 0;
+          }
+          // Check death
+          if (player.chassis.hull <= 0) {
+              player.chassis.hull = 0;
+              handleDeath(player); 
+          }
+      } else {
+          // Fallback if hull is on player object
+          if (player.hull > 0) {
+              player.hull -= damageTick;
+              if (player.hull < 0) player.hull = 0;
+          }
+           if (player.hull <= 0) {
+              player.hull = 0;
+              handleDeath(player); 
+          }
+      }
+      
+  } else {
+      if (player.outOfBoundsSnapshot) {
+          player.outOfBoundsSnapshot = null;
+          sendNoticeMessage(player.username, "Back in Playable Area.", 'game');
+      }
+  }
+
   if (player.biome === 'recovery') {
     applyRecoveryJello(player, deltaTime);
 
@@ -385,6 +439,36 @@ function updatePlane(plane) {
   if (!validatePlaneCoordinates(plane)) return;
   const deltaTime = 0.01 * timeSpeed;
   const speed = getSpeed(plane);
+
+  // Stats Tracking (only for Player instances)
+  if (plane.playerId) { // Simple check if it's a Player
+       // Top Speed
+       if (plane.achievements && plane.achievements['top_speed']) {
+           const updateUI = plane.achievements['top_speed'].increment(plane, speed);
+           if (updateUI) sendPlayerAchievements(plane);
+       }
+       
+       // Distance Travelled
+       if (plane.achievements && plane.achievements['distance_flown']) {
+           // Calculate distance moved this frame (ignoring teleport jumps)
+           // Use lastX/lastY to measure
+           if (typeof plane.lastX !== 'undefined' && typeof plane.lastY !== 'undefined') {
+               const dx = plane.x - plane.lastX;
+               const dy = plane.y - plane.lastY;
+               const distSq = dx*dx + dy*dy;
+               
+               // Threshold to ignore teleports (e.g. > 500 units/frame is likely a teleport/respawn)
+               if (distSq < 250000 && distSq > 0) {
+                   const dist = Math.sqrt(distSq);
+                   // Assuming 1 unit = 1 meter for simplicity
+                   const updateUI = plane.achievements['distance_flown'].increment(plane, dist);
+                   if (updateUI) sendPlayerAchievements(plane);
+               }
+           }
+           plane.lastX = plane.x;
+           plane.lastY = plane.y;
+       }
+  }
 
   if (!plane.keys['r']) {
     applyTurning(plane, speed, deltaTime);
@@ -522,6 +606,15 @@ function updateProjectile(projectile) {
   for (const animal of animals) {
     if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
       animal.x, animal.y, animal.size)) {
+
+      if (projectile.owner) {
+          const killer = players.find(p => p.username === projectile.owner);
+          if (killer && killer.achievements && killer.achievements['fish_killer']) {
+              if (animal.type === 'fish') {
+                killer.achievements['fish_killer'].increment(killer, 1);
+              }
+          }
+      }
 
       const velocity = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
       const event = new GameEvent('animal_explosion', animal.x, animal.y, projectile.angle, velocity);
@@ -1794,6 +1887,15 @@ function handleDeath(entity) {
   if (playerIndex !== -1) {
     sendNoticeMessageAll(`${entity.username} has been killed!`, 'server');
 
+    // PvP Killer Achievement
+    if (entity.lastAttackerUsername) {
+        const attacker = players.find(p => p.username === entity.lastAttackerUsername);
+        if (attacker && attacker !== entity && attacker.achievements && attacker.achievements['player_killer']) {
+            attacker.achievements['player_killer'].increment(attacker, 1);
+            sendPlayerAchievements(attacker);
+        }
+    }
+
     // Delete the player's saved state so they start fresh on next login
     if (entity.playerId) {
       deletePlayerState(entity.playerId);
@@ -1816,6 +1918,21 @@ function handleDeath(entity) {
   // Remove enemy plane without messages or websockets
   if (enemyIndex !== -1) {
     const enemy = enemies[enemyIndex];
+
+    // Achievement: Enemy Killer
+    if (enemy.lastAttackerUsername) {
+        const attacker = players.find(p => p.username === enemy.lastAttackerUsername);
+        if (attacker && attacker.achievements && attacker.achievements['enemy_killer']) {
+            attacker.achievements['enemy_killer'].increment(attacker, 1);
+            // Re-send specific achievement update to client to reflect progress bar immediately?
+            // "increment" saves to DB, but doesn't auto-send websocket update unless we add it.
+            // Let's send it.
+            
+            // Only send individual update if not completed (completed sends notification likely)
+            // Actually let's just send the full update to keep UI in sync
+            sendPlayerAchievements(attacker);
+        }
+    }
 
     // Create explosion event for enemy
     // For boats, spawn explosion above water surface
@@ -2557,6 +2674,26 @@ function handleCheckSession(ws, { playerId, username, password }) {
     saveExists: saveExists,
     account: accountInfo
   });
+
+  // Load and send achievements from Client/Account storage
+  let achievementData = [];
+  
+  // If player is already spawned, use the live object (which should have synced with client store on spawn)
+  const livePlayer = players.find(p => p.playerId === targetPlayerId);
+  
+  if (livePlayer) {
+      achievementData = getAchievementDataForClient(livePlayer);
+  } else {
+      // If not spawned, load directly from Client Manager using the Connect ID
+      const clientAchievements = clientManager.getAchievementsForClient(playerId);
+      const tempPlayer = { achievements: {} };
+      syncPlayerAchievements(tempPlayer, clientAchievements);
+      achievementData = getAchievementDataForClient(tempPlayer);
+  }
+
+  if (achievementData.length > 0) {
+      sendMessage(ws, { type: 'achievements_update', achievements: achievementData });
+  }
 }
 
 function handleRegisterAccount(ws, { username, password, playerId }) {
@@ -2609,6 +2746,27 @@ function handleAccountLogin(ws, { username, password, playerId }) {
             clientManager.assignClientToAccount(playerId, username);
             const saveExists = playerStateExists(accountPlayerId);
             sendMessage(ws, { type: 'account_login_success', username, playerId: playerId, saveExists }); 
+
+            // Send achievements for the logged-in account (or client if not fully linked yet, but verifyAccount confirms link)
+            let achievementData = [];
+            
+            // If the account has an active player
+            const livePlayer = players.find(p => p.playerId === accountPlayerId);
+            
+            if (livePlayer) {
+                achievementData = getAchievementDataForClient(livePlayer);
+            } else {
+                // Load from client manager (which handles delegation to Account)
+                // Note: 'playerId' here is the Client UUID. Since we just logged in, clientManager maps this ID to the account.
+                const clientAchievements = clientManager.getAchievementsForClient(playerId);
+                const tempPlayer = { achievements: {} };
+                syncPlayerAchievements(tempPlayer, clientAchievements);
+                achievementData = getAchievementDataForClient(tempPlayer);
+            }
+
+            if (achievementData.length > 0) {
+                sendMessage(ws, { type: 'achievements_update', achievements: achievementData });
+            }
         } else {
             sendMessage(ws, { type: 'account_login_failed', message: 'No device session found.' });
         }
@@ -2725,6 +2883,23 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
     players.push(player);
     playerSockets.set(username, ws);
     ws.currentUsername = username; // Set username in socket context
+    
+    // Attach Client/Device ID to the in-game player object for achievement tracking
+    player.clientId = clientUUID;
+
+    // Sync achievements from CLIENT storage, not game save
+    const clientAchievements = clientManager.getAchievementsForClient(clientUUID);
+    syncPlayerAchievements(player, clientAchievements);
+    
+    // Attempt to unlock First Login achievement
+    let achievementsModified = false;
+    if (player.achievements && player.achievements['first_login']) {
+        if (player.achievements['first_login'].complete(player)) {
+            achievementsModified = true;
+        }
+    }
+    // Always send initial state
+    sendPlayerAchievements(player);
 
     // Handle party joining
     if (partyName && partyName.trim()) {
@@ -2743,14 +2918,6 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
     // This ensures the client "device" is remembered.
     sendMessage(ws, { type: 'login_success', username, playerId: clientUUID, map: mapData });
 
-    // Send welcome message
-    if (targetPlayerId && loadPlayerState(targetPlayerId)) {
-      sendNoticeMessage(username, `Loaded game state: ${targetPlayerId.substring(0, 8)}...`, 'game');
-    } else {
-      sendNoticeMessage(username, "Hi!", 'game');
-    }
-
-    sendNoticeMessage(username, "Current players: " + players.length, 'server');
     logPlayerJoin(username);
     if (player.username === admin_name) {
       sendNoticeMessage(username, "You are the admin.", 'server');
@@ -2835,7 +3002,7 @@ function handleUpdate(ws, { username, keys, t_x, t_y, chat_message, sequence }) 
 }
 
 // Message types are: urgent, game, server, pickup
-function sendNoticeMessage(username, message, type) {
+export function sendNoticeMessage(username, message, type) {
   const playerSocket = playerSockets.get(username);
   if (playerSocket) {
     sendMessage(playerSocket, {
@@ -2848,6 +3015,18 @@ function sendNoticeMessage(username, message, type) {
     return;
   }
 }
+
+export function sendPlayerAchievements(player) {
+    const ws = playerSockets.get(player.username);
+    if (ws) {
+        const data = getAchievementDataForClient(player);
+        sendMessage(ws, {
+            type: 'achievements_update',
+            achievements: data
+        });
+    }
+}
+
 
 function sendNoticeMessageAll(message, type) {
   playerSockets.forEach((playerSocket, username) => {
@@ -3076,6 +3255,7 @@ function checkCommand(command, player) {
   let spawnfleet_command = /^\/spawnfleet$/;
   let spawnfish_command = /^\/spawnfish$/;
   let fleets_command = /^\/fleets$/;
+  let resetachievements_command = /^\/resetachievements$/;
   let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
   let enemytest_command = /^\/enemytest\s+(\d+)$/;
@@ -3287,6 +3467,21 @@ function checkCommand(command, player) {
     }
   }
 
+  match = command.match(resetachievements_command);
+  if (match) {
+      if (player.privileges) {
+          // Reset by re-initializing the achievements map with fresh instances
+          syncPlayerAchievements(player, {}); 
+          
+          // Force save the empty state to disk immediately
+          Object.values(player.achievements).forEach(ach => ach.save(player));
+          
+          // Push update to client immediately
+          sendPlayerAchievements(player);
+          sendNoticeMessage(player.username, "Achievements have been reset.", 'server');
+      }
+  }
+
   match = command.match(tp_command);
   if (match) {
     match = command.match(tp_command);
@@ -3396,3 +3591,4 @@ setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up 
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
 setInterval(() => { updateShops() }, 1000); // Check shop refresh every second
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
+setInterval(() => { if (players.length > 0) players.forEach(p => sendPlayerAchievements(p)); }, 60000); // Send achievement updates every minute

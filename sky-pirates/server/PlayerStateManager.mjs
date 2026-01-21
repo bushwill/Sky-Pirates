@@ -48,6 +48,8 @@ export function savePlayerState(playerId, player) {
       gun2: serializeComponent(player.gun2),
       // Serialize inventory
       inventory: player.inventory.map(item => serializeComponent(item)),
+      // Achievements
+      achievements: player.achievements || {},
       // Timestamp
       savedAt: Date.now()
     };
