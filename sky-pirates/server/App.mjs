@@ -2254,11 +2254,7 @@ function spawnFleetBoat() {
 }
 
 function checkParties() {
-  parties.forEach((party) => {
-    if (party.players.length > 0) {
-      parties = parties.filter((p) => p.players.length > 0); // Remove empty parties
-    }
-  });
+  parties = parties.filter((p) => p.players.length > 0); // Remove empty parties
   // If you need usernames, use party.getPlayerUsernames()
 }
 
@@ -3591,4 +3587,3 @@ setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up 
 setInterval(() => { if (players.length > 0) checkParties() }, 60000);
 setInterval(() => { updateShops() }, 1000); // Check shop refresh every second
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
-setInterval(() => { if (players.length > 0) players.forEach(p => sendPlayerAchievements(p)); }, 60000); // Send achievement updates every minute
