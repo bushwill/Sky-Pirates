@@ -3598,7 +3598,13 @@ setInterval(() => {
     console.timeEnd('CheckParties');
   }
 }, 60000);
-setInterval(() => { updateShops() }, 1000); // Check shop refresh every second
+setInterval(() => { 
+  const start = process.hrtime();
+  updateShops(); 
+  const diff = process.hrtime(start);
+  const ms = (diff[0] * 1e9 + diff[1]) / 1e6;
+  if (ms > 10) console.log(`Slow updateShops: ${ms.toFixed(3)}ms`);
+}, 1000); // Check shop refresh every second
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
 setInterval(() => { 
   if (players.length > 0) {
@@ -3607,7 +3613,11 @@ setInterval(() => {
     console.timeEnd('SendAchievements');
   }
 }, 60000); // Send achievement updates every minute
+
 setInterval(() => {
   const mem = process.memoryUsage();
-  console.log(`Memory: Heap ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB (RSS: ${Math.round(mem.rss / 1024 / 1024)}MB)`);
-}, 60000);
+  if (mem.heapUsed > 200 * 1024 * 1024) {
+     console.warn(`High Memory Alert: ${Math.round(mem.heapUsed / 1024 / 1024)}MB`);
+  }
+  // console.log(\`Mem check: \${Math.round(mem.heapUsed / 1024 / 1024)}MB\`);
+}, 5000);
