@@ -81,6 +81,10 @@ const server = app.listen(port, () => {
   console.log(`Initialized ${enemies.filter(e => e.isFleetBoat).length} fleet boats`);
 });
 
+// Avoid timeouts from Nginx/LoadBalancers by keeping the TCP connection alive longer
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
 const wss = new WebSocketServer({
   server,
   perMessageDeflate: { zlibDeflateOptions: { level: 9 } }
@@ -2343,7 +2347,12 @@ wss.on('connection', (ws, request) => {
     handleIncomingMessage(ws, decodedMessage);
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    // Log abnormal closures to help debug 60s timeout issues
+    if (code !== 1000 && code !== 1001) {
+       console.log(`[WS] Abnormal Disconnect: ${ws.currentUsername || 'Anonymous'} | Code: ${code} | Reason: ${reason}`);
+    }
+
     if (ws.currentUsername) {
       let player = players.find((p) => p.username === ws.currentUsername);
       if (player) {
