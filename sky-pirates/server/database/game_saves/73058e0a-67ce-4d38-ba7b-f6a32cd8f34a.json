@@ -1,0 +1,265 @@
+{
+  "playerId": "73058e0a-67ce-4d38-ba7b-f6a32cd8f34a",
+  "username": "tipsy sailor",
+  "r": 187,
+  "g": 158,
+  "b": 255,
+  "x": -683.1360949031721,
+  "y": -452.50152965996415,
+  "money": 684,
+  "biome": "recovery",
+  "selectedGun": 1,
+  "lastRecoveryZone": {
+    "type": "recovery",
+    "x1": -800,
+    "x2": 800,
+    "y1": -600,
+    "y2": 200,
+    "id": "spawn",
+    "twin": null
+  },
+  "chassis": {
+    "type": "chassis",
+    "name": "Nova Standard Chassis Lvl 1",
+    "weight": 1.8556525542302542,
+    "value": 185.56525542302543,
+    "topSpeed": 231.95656927878179,
+    "maxHull": 92.78262771151272,
+    "heatDispersion": 16.236959849514726,
+    "buoyancy": 1.8556525542302542
+  },
+  "engine": {
+    "type": "engine",
+    "name": "Aero Standard Engine Lvl 1",
+    "weight": 0.8672634720834822,
+    "value": 86.72634720834822,
+    "maxPower": 433.6317360417411,
+    "minPower": 0,
+    "heatEfficiency": 0.05420396700521764,
+    "maxHeat": 108.40793401043527
+  },
+  "wings": {
+    "type": "wings",
+    "name": "Pirate Standard Wings Lvl 1",
+    "weight": 0.4607872713298334,
+    "value": 18.431490853193335,
+    "baseTurnSpeed": 1.6588341767874002,
+    "minTurnSpeed": 0.13823618139895,
+    "maxSpeed": 138.23618139895,
+    "liftEfficiency": 0.4607872713298334,
+    "minLiftSpeed": 46.07872713298334,
+    "liftAngle": 0.36190147661937283,
+    "airBrake": true,
+    "airBrakeStrength": 1.8431490853193335
+  },
+  "gun1": {
+    "type": "gun",
+    "name": "Machine Gun Lvl 1",
+    "weight": 0.46135265451096824,
+    "value": 46.13526545109682,
+    "maxHeat": 106.11111053752269,
+    "heatEfficiency": 4.521256014207489,
+    "damage": 19.376811489460668,
+    "cooldownTime": 133.79226980818078,
+    "projectileSpeed": 1411.7391228035629,
+    "projectileSize": 1.061111105375227,
+    "maxAngle": 0.14493821101258078,
+    "heatDispersion": 16.14734290788389,
+    "projectileRange": 1500
+  },
+  "gun2": {
+    "type": "gun",
+    "name": "Cannon Lvl 1",
+    "weight": 2.1873856659900146,
+    "value": 149.13993177204642,
+    "maxHeat": 157.09406146655556,
+    "heatEfficiency": 24.359522189434248,
+    "damage": 51.701843014309425,
+    "cooldownTime": 556.7890786156399,
+    "projectileSpeed": 3281.0784989850213,
+    "projectileSize": 2.2868122871713785,
+    "maxAngle": 0.1496715141982599,
+    "heatDispersion": 17.399658706738748,
+    "projectileRange": 1500
+  },
+  "inventory": [],
+  "achievements": {
+    "enemy_killer": {
+      "id": "enemy_killer",
+      "title": "Ace Pilot",
+      "description": "Destroy enemy planes.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 4,
+      "milestones": [
+        {
+          "target": 10,
+          "title": "Fighter",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 50,
+          "title": "Ace",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 500,
+          "title": "Legend",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 1500,
+          "title": "Mythic",
+          "unlocked": false,
+          "unlockedAt": null
+        }
+      ]
+    },
+    "player_killer": {
+      "id": "player_killer",
+      "title": "Sky Pirate",
+      "description": "Destroy other players.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 0,
+      "milestones": [
+        {
+          "target": 10,
+          "title": "Bandit",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 50,
+          "title": "Corsair",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 500,
+          "title": "Dread Pirate",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 1500,
+          "title": "Scourge",
+          "unlocked": false,
+          "unlockedAt": null
+        }
+      ]
+    },
+    "distance_flown": {
+      "id": "distance_flown",
+      "title": "Explorer",
+      "description": "Distance flown in the skies.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 187121.97954980333,
+      "milestones": [
+        {
+          "target": 50000,
+          "title": "Traveler",
+          "unlocked": true,
+          "unlockedAt": 1769033331680
+        },
+        {
+          "target": 250000,
+          "title": "Voyager",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 2500000,
+          "title": "Nomad",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 7500000,
+          "title": "Cartographer",
+          "unlocked": false,
+          "unlockedAt": null
+        }
+      ]
+    },
+    "top_speed": {
+      "id": "top_speed",
+      "title": "Speed Demon",
+      "description": "Reach high speeds.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 247,
+      "milestones": [
+        {
+          "target": 300,
+          "title": "Fast",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 500,
+          "title": "Really fast",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 800,
+          "title": "Insanely fast",
+          "unlocked": false,
+          "unlockedAt": null
+        },
+        {
+          "target": 1000,
+          "title": "How?",
+          "unlocked": false,
+          "unlockedAt": null
+        }
+      ]
+    },
+    "crate_hunter": {
+      "id": "crate_hunter",
+      "title": "Treasure Hunter",
+      "description": "Collect and open crates.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 32,
+      "milestones": [
+        {
+          "target": 50,
+          "title": "Scavenger"
+        },
+        {
+          "target": 250,
+          "title": "Collector"
+        },
+        {
+          "target": 2500,
+          "title": "Hoarder"
+        },
+        {
+          "target": 7500,
+          "title": "Tycoon"
+        }
+      ]
+    },
+    "fish_killer": {
+      "id": "fish_killer",
+      "title": "Needless Cruelty",
+      "description": "Kill fish.",
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 17,
+      "milestones": [
+        {
+          "target": 50,
+          "title": "Monster"
+        }
+      ]
+    }
+  },
+  "savedAt": 1769036054926
+}

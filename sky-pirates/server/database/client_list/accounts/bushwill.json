@@ -1,0 +1,117 @@
+{
+  "password": "Guest",
+  "playerId": "73058e0a-67ce-4d38-ba7b-f6a32cd8f34a",
+  "created": 1769031174765,
+  "achievements": {
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 247,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    },
+    "distance_flown": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 172697.13910826854,
+      "milestones": [
+        {
+          "unlocked": true,
+          "unlockedAt": 1769033331680,
+          "target": 50000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 250000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 2500000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 7500000
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 32,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 17,
+      "milestones": [
+        {
+          "target": 50
+        }
+      ]
+    },
+    "enemy_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 4,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
+        }
+      ]
+    }
+  }
+}
