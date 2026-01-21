@@ -3591,6 +3591,10 @@ function measuredInterval(name, callback, ms, delay = 0) {
 // Inactivity Check (Offset: 0s)
 measuredInterval('InactivityCheck', () => {
   const now = millis();
+  
+  // Optimization: Don't do heavy filtering if no players
+  if (players.length === 0) return;
+
   const inactivePlayers = players.filter(player => now - player.lastActivity >= INACTIVITY_THRESHOLD);
 
   // Properly kick each inactive player
@@ -3640,12 +3644,13 @@ setInterval(() => {
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
 
 // SendAchievements (Offset: 40s)
+// Optimization: Check rarely (every 5 mins), rely on event-based updates
 measuredInterval('SendAchievements', () => {
   if (players.length > 0) {
     // Only send if data changed? For now, just measure size.
-    players.forEach(p => sendPlayerAchievements(p)); 
+    // players.forEach(p => sendPlayerAchievements(p)); 
   }
-}, 60000, 40000); // Send achievement updates every minute
+}, 300000, 40000); // 5 minutes interval
 
 setInterval(() => {
   const mem = process.memoryUsage();
