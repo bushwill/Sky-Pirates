@@ -3553,6 +3553,7 @@ function checkCommand(command, player) {
 }
 
 setInterval(() => {
+  console.time('InactivityCheck');
   const now = millis();
   const inactivePlayers = players.filter(player => now - player.lastActivity >= INACTIVITY_THRESHOLD);
 
@@ -3575,6 +3576,7 @@ setInterval(() => {
 
   // Remove inactive players from the array
   players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
+  console.timeEnd('InactivityCheck');
 }, 60000);
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
@@ -3584,6 +3586,23 @@ setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
 setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
-setInterval(() => { if (players.length > 0) checkParties() }, 60000);
+setInterval(() => { 
+  if (players.length > 0) {
+    console.time('CheckParties');
+    checkParties();
+    console.timeEnd('CheckParties');
+  }
+}, 60000);
 setInterval(() => { updateShops() }, 1000); // Check shop refresh every second
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
+setInterval(() => { 
+  if (players.length > 0) {
+    console.time('SendAchievements');
+    players.forEach(p => sendPlayerAchievements(p)); 
+    console.timeEnd('SendAchievements');
+  }
+}, 60000); // Send achievement updates every minute
+setInterval(() => {
+  const mem = process.memoryUsage();
+  console.log(`Memory: Heap ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB (RSS: ${Math.round(mem.rss / 1024 / 1024)}MB)`);
+}, 60000);
