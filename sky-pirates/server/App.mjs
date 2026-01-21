@@ -3119,6 +3119,12 @@ function sendMessage(ws, data) {
   try {
     data.timeSent = Date.now();
     const encodedData = msgpack.encode(data);
+    
+    // Diagnostic: Check if we are sending a massive packet (e.g., > 100KB)
+    if (encodedData.length > 100000) {
+      console.warn(`[Network] sending massive packet: ${data.type} size: ${Math.round(encodedData.length / 1024)}KB`);
+    }
+
     const buffer = new Uint8Array(4 + encodedData.length);
     const view = new DataView(buffer.buffer);
     view.setUint32(0, encodedData.length, true); // Add length prefix in little-endian
@@ -3609,6 +3615,7 @@ setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 
 setInterval(() => { 
   if (players.length > 0) {
     console.time('SendAchievements');
+    // Only send if data changed? For now, just measure size.
     players.forEach(p => sendPlayerAchievements(p)); 
     console.timeEnd('SendAchievements');
   }
