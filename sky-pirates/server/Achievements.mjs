@@ -61,7 +61,11 @@ export class Achievement {
              this.unlockedAt = Date.now();
         }
 
-        this.save(player);
+        // Optimization: Don't save continuous stats on every frame unless a milestone was reached or completed
+        if (justUnlocked || this.completed || (this.id !== 'distance_flown' && this.id !== 'top_speed')) {
+             this.save(player);
+        }
+        
         if (this.id !== 'distance_flown') {
             sendPlayerAchievements(player);
         }

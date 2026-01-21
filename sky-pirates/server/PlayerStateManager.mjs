@@ -55,11 +55,14 @@ export function savePlayerState(playerId, player) {
     };
 
     const filePath = path.join(SAVE_DIR, `${playerId}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
-    console.log(`Saved player state for ${player.username} (ID: ${playerId})`);
+    // Use async write to prevent server thread blocking
+    fs.writeFile(filePath, JSON.stringify(state, null, 2), (err) => {
+        if (err) console.error(`Error saving player state for ID ${playerId}:`, err);
+        else console.log(`Saved player state for ${player.username} (ID: ${playerId})`);
+    });
     return true;
   } catch (error) {
-    console.error(`Error saving player state for ID ${playerId}:`, error);
+    console.error(`Error preparing player state for ID ${playerId}:`, error);
     return false;
   }
 }

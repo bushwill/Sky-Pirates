@@ -56,24 +56,24 @@ class ClientManager {
     
     saveClient(clientId) {
         if (!this.clients[clientId]) return;
-        try {
-            const filePath = path.join(CLIENTS_DIR, `${clientId}.json`);
-            fs.writeFileSync(filePath, JSON.stringify(this.clients[clientId], null, 2), 'utf8');
-        } catch (err) {
-            console.error(`Error saving client ${clientId}:`, err);
-        }
+        const filePath = path.join(CLIENTS_DIR, `${clientId}.json`);
+        const data = JSON.stringify(this.clients[clientId], null, 2);
+        
+        fs.writeFile(filePath, data, 'utf8', (err) => {
+            if (err) console.error(`Error saving client ${clientId}:`, err);
+        });
     }
     
     saveAccount(username) {
         if (!this.accounts[username]) return;
-        try {
-            // Sanitize username for filename if needed, but assuming simple alphanumeric for now
-            const safeName = username.replace(/[^a-z0-9]/gi, '_'); 
-            const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
-            fs.writeFileSync(filePath, JSON.stringify(this.accounts[username], null, 2), 'utf8');
-        } catch (err) {
-            console.error(`Error saving account ${username}:`, err);
-        }
+        // Sanitize username for filename if needed, but assuming simple alphanumeric for now
+        const safeName = username.replace(/[^a-z0-9]/gi, '_'); 
+        const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
+        const data = JSON.stringify(this.accounts[username], null, 2);
+        
+        fs.writeFile(filePath, data, 'utf8', (err) => {
+            if (err) console.error(`Error saving account ${username}:`, err);
+        });
     }
 
     /**
