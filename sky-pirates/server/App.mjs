@@ -261,7 +261,12 @@ function updateFleets() {
         console.log('Fleet respawn pause ended - beginning staggered refill');
       }
       if (fleetBoats.length < MAX_FLEET_BOATS && now - lastFleetSpawnTime > FLEET_SPAWN_COOLDOWN) {
-        if (spawnFleetBoat()) lastFleetSpawnTime = now;
+        console.time('FleetSpawn');
+        if (spawnFleetBoat()) {
+           lastFleetSpawnTime = now;
+           console.log('Spawned fleet boat');
+        }
+        console.timeEnd('FleetSpawn');
       }
     }
 
