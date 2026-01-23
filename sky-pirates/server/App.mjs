@@ -2746,6 +2746,10 @@ function handleRegisterAccount(ws, { username, password, playerId }) {
         
         clientManager.assignClientToAccount(playerId, username);
         sendMessage(ws, { type: 'register_success', username });
+        
+        // Auto-login the user immediately after registration to ensure cookies are set
+        // and session state is fully initialized on the client side.
+        handleAccountLogin(ws, { username, password, playerId });
     } else {
         sendMessage(ws, { type: 'register_failed', message: result.message });
     }

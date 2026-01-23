@@ -736,6 +736,8 @@ function getOrInitPlayerId() {
 function sendRegisterAccount(username, password) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const playerId = getOrInitPlayerId();
+    // Cache credentials to allow auto-login cookie saving upon success
+    window.pendingAccountLogin = { username, password };
     const message = {
         type: 'register_account',
         username,
