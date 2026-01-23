@@ -2675,7 +2675,7 @@ function handleCheckSession(ws, { playerId, username, password }) {
       }
       
       // Pure guest
-      targetPlayerId = clientManager.getPlayerIdForClient(playerId);
+      targetPlayerId = clientManager.getGameSaveIdForClient(playerId);
   }
 
   if (!targetPlayerId) {
