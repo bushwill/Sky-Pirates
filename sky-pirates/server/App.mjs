@@ -453,8 +453,11 @@ function updatePlane(plane) {
   if (plane.playerId) { // Simple check if it's a Player
        // Top Speed
        if (plane.achievements && plane.achievements['top_speed']) {
-           const updateUI = plane.achievements['top_speed'].increment(plane, speed);
-           if (updateUI) sendPlayerAchievements(plane);
+           // Do not track top speed in recovery zones (boosted speed)
+           if (plane.biome !== 'recovery') {
+               const updateUI = plane.achievements['top_speed'].increment(plane, speed);
+               if (updateUI) sendPlayerAchievements(plane);
+           }
        }
        
        // Distance Travelled
@@ -2145,6 +2148,11 @@ function findLargestGapForFleetBoat() {
   const exclusionMax = crateSpawnExclusionRadius * 2;
   exclusions.push({ x1: exclusionMin, x2: exclusionMax });
 
+  // Add Fleet-specific Central Exclusion (10km)
+  // Fleets should not spawn within 10,000 units of x=0
+  const fleetCenterExclusion = 10000;
+  exclusions.push({ x1: -fleetCenterExclusion, x2: fleetCenterExclusion });
+
   // Add all recovery zones with 500m buffer
   for (const zone of recoveryZones) {
     exclusions.push({ x1: zone.x1 - RECOVERY_ZONE_BUFFER, x2: zone.x2 + RECOVERY_ZONE_BUFFER });
@@ -3070,6 +3078,7 @@ function sendNoticeMessageAll(message, type) {
 }
 
 function handlePing(ws, message) {
+  if (!message) return; 
   const clientTime = message.clientTime; // Client's timestamp
 
   const response = {
