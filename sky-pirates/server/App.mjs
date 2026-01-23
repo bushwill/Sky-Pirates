@@ -2349,9 +2349,9 @@ wss.on('connection', (ws, request) => {
 
   ws.on('close', (code, reason) => {
     // Log abnormal closures to help debug 60s timeout issues
-    if (code !== 1000 && code !== 1001) {
+    /* if (code !== 1000 && code !== 1001) {
        console.log(`[WS] Abnormal Disconnect: ${ws.currentUsername || 'Anonymous'} | Code: ${code} | Reason: ${reason}`);
-    }
+    } */
 
     if (ws.currentUsername) {
       let player = players.find((p) => p.username === ws.currentUsername);
@@ -2722,8 +2722,11 @@ function handleRegisterAccount(ws, { username, password, playerId }) {
          return;
     }
     
+    // Grab guest achievements BEFORE we verify/link account
+    const guestAchievements = client.achievements || {};
+    
     // We link the CURRENT game save (resolved from client) to the NEW account
-    let gameSaveId = clientManager.getPlayerIdForClient(playerId);
+    let gameSaveId = clientManager.getGameSaveIdForClient(playerId);
     
     // If no existing game save to link, generate a new one for this account
     if (!gameSaveId) {
@@ -2732,6 +2735,15 @@ function handleRegisterAccount(ws, { username, password, playerId }) {
 
     const result = clientManager.createAccount(username, password, gameSaveId);
     if (result.success) {
+        // Init account with guest achievements
+        // Direct access via clientManager internal structure would be cleaner but we need a public method ideally
+        // We can use updateAchievement loop or just manual hack if within same process memory
+        const account = clientManager.getAccount(username);
+        if (account) {
+            account.achievements = { ...guestAchievements }; // Copy
+            clientManager.saveAccount(username);
+        }
+        
         clientManager.assignClientToAccount(playerId, username);
         sendMessage(ws, { type: 'register_success', username });
     } else {
@@ -2749,19 +2761,19 @@ function handleAccountLogin(ws, { username, password, playerId }) {
         clientManager.getClient(playerId);
     }
     
-    const accountPlayerId = clientManager.verifyAccount(username, password);
-    if (accountPlayerId) {
+    const accountGameSaveId = clientManager.verifyAccount(username, password);
+    if (accountGameSaveId) {
         // Login successful.
         if (playerId) {
             clientManager.assignClientToAccount(playerId, username);
-            const saveExists = playerStateExists(accountPlayerId);
+            const saveExists = playerStateExists(accountGameSaveId);
             sendMessage(ws, { type: 'account_login_success', username, playerId: playerId, saveExists }); 
 
             // Send achievements for the logged-in account (or client if not fully linked yet, but verifyAccount confirms link)
             let achievementData = [];
             
             // If the account has an active player
-            const livePlayer = players.find(p => p.playerId === accountPlayerId);
+            const livePlayer = players.find(p => p.playerId === accountGameSaveId);
             
             if (livePlayer) {
                 achievementData = getAchievementDataForClient(livePlayer);
@@ -2788,15 +2800,15 @@ function handleAccountLogin(ws, { username, password, playerId }) {
 function handleResetAccountProgress(ws, { playerId }) {
   if (!playerId) return;
 
-  // Resolve target player ID from client manager
-  const targetPlayerId = clientManager.getPlayerIdForClient(playerId);
-  if (!targetPlayerId) return; // No save to delete
+  // Resolve target game save ID from client manager
+  const targetGameSaveId = clientManager.getGameSaveIdForClient(playerId);
+  if (!targetGameSaveId) return; // No save to delete
 
   // Delete the save file from disk
-  deletePlayerState(targetPlayerId);
+  deletePlayerState(targetGameSaveId);
   
   // Also kick any active player with this ID (unlikely if in menu, but safe)
-  const activeSession = players.findIndex(p => p.playerId === targetPlayerId);
+  const activeSession = players.findIndex(p => p.playerId === targetGameSaveId);
   if (activeSession !== -1) {
        players.splice(activeSession, 1);
   }
@@ -2822,9 +2834,9 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
   
   // Security Check: If the client ID is linked to an account, we MUST verify the password matches
   if (client && client.type === 'account') {
-      const accountId = clientManager.verifyAccount(client.accountName, password);
+      const accountGameSaveId = clientManager.verifyAccount(client.accountName, password);
       // If password validation fails, or if verifyAccount returns null (wrong password)
-      if (!accountId) {
+      if (!accountGameSaveId) {
           // Reject this login attempt on this Client ID.
           // Force them to be treated as a NEW Guest (ignore the hijacking attempt)
           console.log(`Security: Rejected account access for client ${clientUUID} (Invalid/Missing Password)`);
@@ -2835,27 +2847,27 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
   }
   
   // Resolve the actual game save ID (Player ID)
-  // If this is a new client with no save, targetPlayerId might be null/undefined initially
-  // but clientManager.getClient sets default if provided.
-  let targetPlayerId = client ? clientManager.getPlayerIdForClient(clientUUID) : null;
+  let targetGameSaveId = client ? clientManager.getGameSaveIdForClient(clientUUID) : null;
 
   const existingPlayer = players.find((player) => player.username === username);
   if (!existingPlayer) {
     let player;
 
-    // Try to load saved state if targetPlayerId is resolved
-    if (targetPlayerId) {
+    // Try to load saved state if targetGameSaveId is resolved
+    if (targetGameSaveId) {
       // Check if this game save is already in use by an active player
-      const activeSession = players.find(p => p.playerId === targetPlayerId);
+      const activeSession = players.find(p => p.playerId === targetGameSaveId);
       if (activeSession) {
         sendMessage(ws, { type: 'login_failed', message: 'Game save is being used by another player.' });
         return;
       }
 
-      const savedState = loadPlayerState(targetPlayerId);
+      const savedState = loadPlayerState(targetGameSaveId);
       if (savedState) {
         // Restore player from saved state (username-independent)
         player = Player.fromSavedState(savedState, startMillis);
+        // Correctly restore the ID since we don't save it in file anymore
+        player.playerId = targetGameSaveId;
         // Update username to the current login username
         player.username = username;
         sendNoticeMessageAll(username + " rejoined!", "server");
@@ -2877,17 +2889,17 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       clientManager.getClient(clientUUID, player.playerId);
       
       // If the client already existed but pointed to a missing/invalid save, update it to the new one
-      if (clientUUID && clientManager.getClient(clientUUID).playerId !== player.playerId) {
-           clientManager.updateClientSaveId(clientUUID, player.playerId);
+      if (clientUUID && clientManager.getGameSaveIdForClient(clientUUID) !== player.playerId) {
+           clientManager.updateClientGameSaveId(clientUUID, player.playerId);
       }
       
       // If this client is logged into an account, update the account's save ID to match this new file
       if (client && client.type === 'account' && client.accountName) {
-           clientManager.updateAccountSaveId(client.accountName, player.playerId);
+           clientManager.updateAccountGameSaveId(client.accountName, player.playerId);
       }
 
-      // Update targetPlayerId for consistency
-      targetPlayerId = player.playerId;
+      // Update targetGameSaveId for consistency
+      targetGameSaveId = player.playerId;
     }
 
     players.push(player);
@@ -3130,9 +3142,9 @@ function sendMessage(ws, data) {
     const encodedData = msgpack.encode(data);
     
     // Diagnostic: Check if we are sending a massive packet (lower threshold to 20KB)
-    if (encodedData.length > 20000) {
+    /* if (encodedData.length > 20000) {
       console.warn(`[Network] sending large packet: ${data.type} size: ${Math.round(encodedData.length / 1024)}KB`);
-    }
+    } */
 
     const buffer = new Uint8Array(4 + encodedData.length);
     const view = new DataView(buffer.buffer);
@@ -3572,24 +3584,11 @@ function checkCommand(command, player) {
   }
 }
 
-
-// Wrapper helper for timing logs
-function measuredInterval(name, callback, ms, delay = 0) {
-    setTimeout(() => {
-        setInterval(() => {
-            const start = process.hrtime();
-            callback();
-            const diff = process.hrtime(start);
-            const duration = (diff[0] * 1e9 + diff[1]) / 1e6;
-            if (duration > 1) { // Only log if takes more than 1ms to reduce noise
-                console.log(`[Timer] ${name} took ${duration.toFixed(3)}ms`);
-            }
-        }, ms);
-    }, delay);
-}
+// Perform initial cleanup
+clientManager.performDatabaseCleanup();
 
 // Inactivity Check (Offset: 0s)
-measuredInterval('InactivityCheck', () => {
+setInterval(() => {
   const now = millis();
   
   // Optimization: Don't do heavy filtering if no players
@@ -3616,7 +3615,7 @@ measuredInterval('InactivityCheck', () => {
 
   // Remove inactive players from the array
   players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
-}, 60000, 0);
+}, 60000);
 
 setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
 setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
@@ -3627,35 +3626,23 @@ setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
 
 // CheckParties (Offset: 20s)
-measuredInterval('CheckParties', () => {
+setInterval(() => {
     if (players.length > 0) {
         checkParties();
     }
-}, 60000, 20000);
+}, 60000);
 
 setInterval(() => { 
-  const start = process.hrtime();
   updateShops(); 
-  const diff = process.hrtime(start);
-  const ms = (diff[0] * 1e9 + diff[1]) / 1e6;
-  if (ms > 10) console.log(`Slow updateShops: ${ms.toFixed(3)}ms`);
 }, 1000); // Check shop refresh every second
 
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
 
 // SendAchievements (Offset: 40s)
 // Optimization: Check rarely (every 5 mins), rely on event-based updates
-measuredInterval('SendAchievements', () => {
+setInterval(() => {
   if (players.length > 0) {
     // Only send if data changed? For now, just measure size.
     // players.forEach(p => sendPlayerAchievements(p)); 
   }
-}, 300000, 40000); // 5 minutes interval
-
-setInterval(() => {
-  const mem = process.memoryUsage();
-  if (mem.heapUsed > 200 * 1024 * 1024) {
-     console.warn(`High Memory Alert: ${Math.round(mem.heapUsed / 1024 / 1024)}MB`);
-  }
-  // console.log(\`Mem check: \${Math.round(mem.heapUsed / 1024 / 1024)}MB\`);
-}, 5000);
+}, 300000); // 5 minutes interval

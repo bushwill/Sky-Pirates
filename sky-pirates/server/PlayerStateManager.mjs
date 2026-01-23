@@ -15,6 +15,23 @@ if (!fs.existsSync(SAVE_DIR)) {
 }
 
 /**
+ * Returns a list of all existing game save IDs (filenames without extension)
+ * @returns {string[]}
+ */
+export function getAllSaveIds() {
+  try {
+    const files = fs.readdirSync(SAVE_DIR);
+    // Filter for .json files and strip extension
+    return files
+      .filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''));
+  } catch (err) {
+    console.error("Error listing game saves:", err);
+    return [];
+  }
+}
+
+/**
  * Generate a unique player ID
  */
 export function generatePlayerId() {
@@ -29,8 +46,7 @@ export function generatePlayerId() {
 export function savePlayerState(playerId, player) {
   try {
     const state = {
-      playerId,
-      username: player.username,
+      // Game State Only
       r: player.r,
       g: player.g,
       b: player.b,
@@ -48,8 +64,6 @@ export function savePlayerState(playerId, player) {
       gun2: serializeComponent(player.gun2),
       // Serialize inventory
       inventory: player.inventory.map(item => serializeComponent(item)),
-      // Achievements
-      achievements: player.achievements || {},
       // Timestamp
       savedAt: Date.now()
     };
@@ -58,7 +72,7 @@ export function savePlayerState(playerId, player) {
     // Use async write to prevent server thread blocking
     fs.writeFile(filePath, JSON.stringify(state, null, 2), (err) => {
         if (err) console.error(`Error saving player state for ID ${playerId}:`, err);
-        else console.log(`Saved player state for ${player.username} (ID: ${playerId})`);
+        // else console.log(`Saved player state for ${player.username} (ID: ${playerId})`);
     });
     return true;
   } catch (error) {
