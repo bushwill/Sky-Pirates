@@ -15,6 +15,13 @@ class ClientManager {
         this.loadAll();
     }
 
+    /**
+     * Normalizes a username to a consistent safe key (lowercase).
+     */
+    normalizeKey(username) {
+        return username ? username.toLowerCase() : '';
+    }
+
     loadAll() {
         // Ensure directories exist
         if (!fs.existsSync(CLIENTS_DIR)) fs.mkdirSync(CLIENTS_DIR, { recursive: true });
@@ -39,9 +46,21 @@ class ClientManager {
             const accountFiles = fs.readdirSync(ACCOUNTS_DIR);
             accountFiles.forEach(file => {
                 if (file.endsWith('.json')) {
-                    const username = file.replace('.json', '');
-                    const data = JSON.parse(fs.readFileSync(path.join(ACCOUNTS_DIR, file), 'utf8'));
-                    this.accounts[username] = data;
+                    const originalFilename = file.replace('.json', '');
+                    const key = this.normalizeKey(originalFilename);
+                    
+                    try {
+                        const data = JSON.parse(fs.readFileSync(path.join(ACCOUNTS_DIR, file), 'utf8'));
+                        
+                        // Ensure original display name is preserved if missing
+                        if (!data.username) {
+                            data.username = originalFilename;
+                        }
+                        
+                        this.accounts[key] = data;
+                    } catch (readErr) {
+                         console.error(`Error reading account file ${file}:`, readErr);
+                    }
                 }
             });
         } catch (err) {
@@ -64,15 +83,18 @@ class ClientManager {
         });
     }
     
-    saveAccount(username) {
-        if (!this.accounts[username]) return;
-        // Sanitize username for filename if needed, but assuming simple alphanumeric for now
-        const safeName = username.replace(/[^a-z0-9]/gi, '_'); 
+    saveAccount(usernameOrKey) {
+        const key = this.normalizeKey(usernameOrKey);
+        const account = this.accounts[key];
+        if (!account) return;
+        
+        // Use normalized key for filename to ensure case consistency on disk
+        const safeName = key.replace(/[^a-z0-9]/g, '_'); 
         const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
-        const data = JSON.stringify(this.accounts[username], null, 2);
+        const data = JSON.stringify(account, null, 2);
         
         fs.writeFile(filePath, data, 'utf8', (err) => {
-            if (err) console.error(`Error saving account ${username}:`, err);
+            if (err) console.error(`Error saving account ${account.username}:`, err);
         });
     }
 
@@ -114,11 +136,12 @@ class ClientManager {
     }
 
     getAccount(username) {
-        if (!this.accounts[username]) return null;
-        if (!this.accounts[username].achievements) {
-            this.accounts[username].achievements = {};
+        const key = this.normalizeKey(username);
+        const account = this.accounts[key];
+        if (account && !account.achievements) {
+            account.achievements = {};
         }
-        return this.accounts[username];
+        return account;
     }
 
     /**
@@ -165,34 +188,23 @@ class ClientManager {
             this.saveClient(saveKey);
         }
     }
-
-    /**
-     * Registers a new account.
-     * @param {string} username 
-     * @param {string} password 
-     * @param {string} playerId 
-     * @returns {object} { success: boolean, message: string }
-     */
-    getAccount(username) {
-        return this.accounts[username];
-    }
     
     getAccountForClient(clientId) {
         const client = this.clients[clientId];
         if (client && client.type === 'account' && client.accountName) {
              const account = this.accounts[client.accountName];
-             // Return the account object structure expected by App.js
              if (account) {
-                 return { username: client.accountName, ...account };
+                 return account;
              }
         }
         return null;
     }
     
     updateAccountGameSaveId(username, newGameSaveId) {
-        if (this.accounts[username]) {
-            this.accounts[username].gameSaveId = newGameSaveId;
-            this.saveAccount(username);
+        const key = this.normalizeKey(username);
+        if (this.accounts[key]) {
+            this.accounts[key].gameSaveId = newGameSaveId;
+            this.saveAccount(key);
             return true;
         }
         return false;
@@ -213,17 +225,19 @@ class ClientManager {
     }
 
     createAccount(username, password, gameSaveId) {
-        if (this.accounts[username]) {
+        const key = this.normalizeKey(username);
+        if (this.accounts[key]) {
             return { success: false, message: "Username already taken." };
         }
 
-        this.accounts[username] = {
-            password: password, // In production, hash this!
+        this.accounts[key] = {
+            username: username, // Store original display name
+            password: password, // Case-sensitive
             gameSaveId: gameSaveId,
             created: Date.now(),
             achievements: {}
         };
-        this.saveAccount(username);
+        this.saveAccount(key);
         return { success: true, message: "Account created." };
     }
 
@@ -234,7 +248,9 @@ class ClientManager {
      * @returns {string|null} The gameSaveId if successful, or null.
      */
     verifyAccount(username, password) {
-        const account = this.accounts[username];
+        const key = this.normalizeKey(username);
+        const account = this.accounts[key];
+        // Checks account existence (normalized) and password match (case sensitive)
         if (account && account.password === password) {
             return account.gameSaveId;
         }
@@ -247,14 +263,15 @@ class ClientManager {
      * @param {string} username 
      */
     assignClientToAccount(clientId, username) {
-        if (this.clients[clientId] && this.accounts[username]) {
+        const key = this.normalizeKey(username);
+        if (this.clients[clientId] && this.accounts[key]) {
             this.clients[clientId].type = 'account';
-            this.clients[clientId].accountName = username;
+            this.clients[clientId].accountName = key;
             // When assigned, the client link to 'gameSaveId' is ignored in favor of Account's
             this.saveClient(clientId);
             
             // Clean up stale clients for this account (prevents duplicate build-up from resets)
-            this.cleanupStaleClients(username, clientId);
+            this.cleanupStaleClients(key, clientId);
             
             return true;
         }

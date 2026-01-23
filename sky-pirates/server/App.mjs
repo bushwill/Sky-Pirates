@@ -2765,9 +2765,14 @@ function handleAccountLogin(ws, { username, password, playerId }) {
     if (accountGameSaveId) {
         // Login successful.
         if (playerId) {
-            clientManager.assignClientToAccount(playerId, username);
+            // Retrieve actual display name (e.g. "William" instead of "wILLIAM")
+            // verifyAccount uses normalized lookup, so we can now fetch proper casing
+            const account = clientManager.getAccount(username);
+            const displayUsername = (account && account.username) ? account.username : username;
+
+            clientManager.assignClientToAccount(playerId, displayUsername);
             const saveExists = playerStateExists(accountGameSaveId);
-            sendMessage(ws, { type: 'account_login_success', username, playerId: playerId, saveExists }); 
+            sendMessage(ws, { type: 'account_login_success', username: displayUsername, playerId: playerId, saveExists }); 
 
             // Send achievements for the logged-in account (or client if not fully linked yet, but verifyAccount confirms link)
             let achievementData = [];
