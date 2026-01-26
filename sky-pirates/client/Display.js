@@ -1980,7 +1980,7 @@ function displayTeleportButton(controlledPlayer) {
         
         textSize(12);
         fill(200, 200, 200);
-        text("Click to toggle", shopX, buttonY + 15);
+        text("Press B or click", shopX, buttonY + 15);
     } else {
         shopButtonRegion = null;
     }

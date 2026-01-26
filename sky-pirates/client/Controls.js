@@ -106,6 +106,12 @@ function keyPressed() {
                 return;
             }
 
+            // Shop toggle key
+            if (key === 'b' || key === 'B') {
+                handleShopToggleRequest();
+                return;
+            }
+
             // Help toggle
             if (key === 'h' || key === 'H') {
                 // Only toggle help when not typing chat

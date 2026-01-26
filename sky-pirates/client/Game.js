@@ -458,6 +458,15 @@ function handleTeleportRequest() {
     sendTeleportMessage();
 }
 
+function handleShopToggleRequest() {
+    const controlledPlayer = players.find(player => player.username === username);
+    if (!controlledPlayer || controlledPlayer.biome !== 'recovery') {
+        return; 
+    }
+    shopOpen = !shopOpen;
+    console.log(`Shop ${shopOpen ? 'opened' : 'closed'}`);
+}
+
 function handleTeleportButtonClick(mouseX, mouseY) {
     if (!teleportButtonRegion) return false;
 
