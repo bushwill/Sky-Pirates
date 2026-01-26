@@ -1,12 +1,13 @@
 {
+  "username": "bushwill",
   "password": "Guest",
-  "playerId": "73058e0a-67ce-4d38-ba7b-f6a32cd8f34a",
-  "created": 1769031174765,
+  "gameSaveId": "ebcd2577-8db3-4ac6-9391-30ce5b022501",
+  "created": 1769201440865,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 247,
+      "progress": 289,
       "milestones": [
         {
           "unlocked": false,
@@ -30,39 +31,14 @@
         }
       ]
     },
-    "distance_flown": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 172697.13910826854,
-      "milestones": [
-        {
-          "unlocked": true,
-          "unlockedAt": 1769033331680,
-          "target": 50000
-        },
-        {
-          "unlocked": false,
-          "unlockedAt": null,
-          "target": 250000
-        },
-        {
-          "unlocked": false,
-          "unlockedAt": null,
-          "target": 2500000
-        },
-        {
-          "unlocked": false,
-          "unlockedAt": null,
-          "target": 7500000
-        }
-      ]
-    },
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 32,
+      "progress": 90,
       "milestones": [
         {
+          "unlocked": true,
+          "unlockedAt": 1769465616172,
           "target": 50
         },
         {
@@ -76,20 +52,10 @@
         }
       ]
     },
-    "fish_killer": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 17,
-      "milestones": [
-        {
-          "target": 50
-        }
-      ]
-    },
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 4,
+      "progress": 7,
       "milestones": [
         {
           "unlocked": false,
@@ -110,6 +76,43 @@
           "unlocked": false,
           "unlockedAt": null,
           "target": 1500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 20,
+      "milestones": [
+        {
+          "target": 50
+        }
+      ]
+    },
+    "distance_flown": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 50001.26744749359,
+      "milestones": [
+        {
+          "unlocked": true,
+          "unlockedAt": 1769465823005,
+          "target": 50000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 250000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 2500000
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 7500000
         }
       ]
     }
