@@ -24,6 +24,7 @@ export class Achievement {
          this.unlockedAt = Date.now();
          
          this.save(player);
+         sendNoticeMessage(player.username, `Achievement Unlocked: ${this.title}!`, 'game');
          this.reward(player);
          sendPlayerAchievements(player);
          return true;
@@ -59,6 +60,7 @@ export class Achievement {
         if (this.milestones.length > 0 && allMet) {
              this.completed = true;
              this.unlockedAt = Date.now();
+             sendNoticeMessage(player.username, `Achievement Completed: ${this.title}!`, 'game');
         }
 
         // Optimization: Don't save continuous stats on every frame unless a milestone was reached or completed
@@ -182,6 +184,7 @@ export class TopSpeedAchievement extends Achievement {
              if (this.milestones.length > 0 && allMet) {
                  this.completed = true;
                  this.unlockedAt = Date.now();
+                 sendNoticeMessage(player.username, `Achievement Completed: ${this.title}!`, 'game');
              }
              
              this.save(player);
@@ -217,6 +220,36 @@ export class FishKillerAchievement extends Achievement {
     }
 }
 
+export class SkyAnglerAchievement extends Achievement {
+    constructor() {
+        super('sky_angler', 'Sky Angler', 'Shoot a fish while it is in the air.');
+    }
+}
+
+export class TwoBirdsOneStoneAchievement extends Achievement {
+    constructor() {
+        super('two_birds', 'Two Birds, One Stone', 'Shoot two midair fish with a single projectile.');
+    }
+}
+
+export class MileHighClubAchievement extends Achievement {
+    constructor() {
+        super('mile_high_club', 'Mile High Club', 'Reach an altitude of 2500m.');
+    }
+}
+
+export class PacifistRunAchievement extends Achievement {
+    constructor() {
+        super('pacifist_run', 'Pacifist Run', 'Reach the 100km mark without dealing any damage to enemies.');
+    }
+}
+
+export class SharpshooterAchievement extends Achievement {
+    constructor() {
+        super('sharpshooter', 'Sharpshooter', 'Hit a target from over 1000m away.');
+    }
+}
+
 // Global registry of achievement CLASSES, not instances
 export const ACHIEVEMENT_CLASSES = [
     EnemyKillerAchievement,
@@ -224,7 +257,12 @@ export const ACHIEVEMENT_CLASSES = [
     DistanceTravelledAchievement,
     TopSpeedAchievement,
     CrateHunterAchievement,
-    FishKillerAchievement
+    FishKillerAchievement,
+    SkyAnglerAchievement,
+    TwoBirdsOneStoneAchievement,
+    MileHighClubAchievement,
+    PacifistRunAchievement,
+    SharpshooterAchievement
 ];
 
 export function syncPlayerAchievements(player, rawAchievements = {}) {

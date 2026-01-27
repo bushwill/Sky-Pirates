@@ -275,12 +275,6 @@ function handleGameDisplay(controlledPlayer) {
     // 2. Draw Background (Sky + Sun)
     drawMapBackground(mapData, centerX);
     
-    textSize(12);
-    textAlign(CENTER);
-    rectMode(CENTER);
-    stroke(0)
-    displayChat();
-    
     // Check if respawn delay has ended
     if (respawnDelay && millis() >= respawnDelayEnd) {
         respawnDelay = false;
@@ -380,6 +374,7 @@ function handleGameDisplay(controlledPlayer) {
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
     }
+    displayChat();
     displayNoticeMessages();
     displayAppInfo();
 }

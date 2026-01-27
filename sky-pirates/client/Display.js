@@ -1493,26 +1493,45 @@ function displayMessages(player, drawX, drawY) {
                 chat_messages.push({ id: message[0], username: player.username, message: message[1] });
             }
         }
+        push();
+        stroke(0);
+        strokeWeight(1);
         textStyle(ITALIC);
+        textSize(12);
         fill(0, 0, 0);
-        rect(drawX, drawY + 20, current_chat.length * 5 + 10, 20);
+        rect(drawX, drawY + 20, current_chat.length * 7 + 10, 20);
         fill(255, 255, 255);
         text(current_chat, drawX, drawY + 20);
-        textStyle(NORMAL);
+        pop();
     }
     pop();
 }
 
 function displayChat() {
     push();
+    noTint(); // Reset any transparency
+    fill(255); // Solid white text
     stroke(0);
-    fill(255);
-    textAlign(LEFT);
-    chat_messages = chat_messages.filter((msg) => millis() - msg.id < 60 * 1000);
-    for (let i in chat_messages) {
-        const message = chat_messages[chat_messages.length - 1 - i];
-        text("[" + message.username + "] " + message.message, 20, windowHeight - ((20 * i) + 10));
-        if (i > 13) break;
+    strokeWeight(2); // Thick black outline for visibility without box
+    textSize(12);
+    textStyle(BOLD);
+    textAlign(LEFT, BASELINE);
+    
+    // Filter and limit messages older than one hour
+    chat_messages = chat_messages.filter((msg) => millis() - msg.id < 1 * 60 * 60 * 1000);
+    const maxMsgs = 16;
+    const lineHeight = 16;
+    
+    // We only display the latest 'maxMsgs'
+    let displayCount = Math.min(chat_messages.length, maxMsgs);
+    
+    if (displayCount > 0) {
+        for (let i = 0; i < displayCount; i++) {
+            const message = chat_messages[chat_messages.length - 1 - i];
+            // Render text from bottom up
+            let textY = windowHeight - 15 - (i * lineHeight);
+            text("[" + message.username + "] " + message.message, 20, textY);
+        }
     }
     pop();
 }

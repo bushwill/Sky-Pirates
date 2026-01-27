@@ -56,6 +56,7 @@ export function savePlayerState(playerId, player) {
       biome: player.biome,
       selectedGun: player.selectedGun,
       lastRecoveryZone: player.lastRecoveryZone,
+      pacifist: player.pacifist, // Save Pacifist status
       // Serialize components
       chassis: serializeComponent(player.chassis),
       engine: serializeComponent(player.engine),

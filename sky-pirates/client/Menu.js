@@ -48,7 +48,7 @@ class MenuScreen {
     constructor(title, options = []) {
         this.title = title;
         this.options = options;
-        this.selected = 0;
+        this.selected = -1;
     }
 
     addOption(label, callback) {
@@ -62,11 +62,15 @@ class MenuScreen {
         text(this.title, x + w / 2, y + spacing / 2);
 
         for (let i = 0; i < this.options.length; i++) {
-            if (i === this.selected) fill(0, 200, 255);
+            let ry = y + spacing * (i + 1);
+            let rh = spacing - 10;
+            let isHovered = mouseX > x && mouseX < x + w && mouseY > ry && mouseY < ry + rh;
+
+            if (i === this.selected || isHovered) fill(0, 200, 255);
             else fill(255);
-            rect(x, y + spacing * (i + 1), w, spacing - 10, 10);
+            rect(x, ry, w, rh, 10);
             fill(0);
-            text(this.options[i].label, x + w / 2, y + spacing * (i + 1) + (spacing - 10) / 2);
+            text(this.options[i].label, x + w / 2, ry + rh / 2);
         }
     }
 
@@ -109,8 +113,12 @@ class MenuOption {
     }
 
     draw() {
+        // Check hover
+        let isHovered = mouseX > this.x && mouseX < this.x + this.w && 
+                        mouseY > this.y && mouseY < this.y + this.h;
+
         // Draw background
-        fill(this.selected ? [0, 200, 255] : 255);
+        fill((this.selected || isHovered) ? [0, 200, 255] : 255);
         stroke(0);
         rect(this.x, this.y, this.w, this.h, 10);
 
@@ -143,9 +151,13 @@ class WeaponMenuOption extends MenuOption {
     }
 
     draw() {
+        // Check hover
+        let isHovered = mouseX > this.x && mouseX < this.x + this.w && 
+                        mouseY > this.y && mouseY < this.y + this.h;
+
         // Draw the base option background with different colors for different selection states
         let bgColor;
-        if (this.selected === true) {
+        if (this.selected === true || isHovered) {
             // Navigation highlight (light blue)
             bgColor = [100, 180, 255];
         } else if (this.selected === "weapon") {
@@ -254,7 +266,7 @@ class AccountAuthMenuScreen extends MenuScreen {
         this.backButton = new MenuOption("Back", () => menuManager.show('login'));
         
         this.msg = "";
-        this.selected = 0;
+        this.selected = -1;
     }
 
     submit() {
@@ -324,13 +336,11 @@ class AccountAuthMenuScreen extends MenuScreen {
         contentY += 40;
         this.submitButton.setPosition(x + w / 2 - 100, contentY);
         this.submitButton.setSize(200, 40);
-        this.submitButton.selected = (this.selected === 0);
         this.submitButton.draw();
 
         contentY += 50;
         this.backButton.setPosition(x + w / 2 - 100, contentY);
         this.backButton.setSize(200, 40);
-        this.backButton.selected = (this.selected === 1);
         this.backButton.draw();
     }
 
@@ -349,12 +359,10 @@ class AccountAuthMenuScreen extends MenuScreen {
         if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.mousePressed(mx, my)) return;
 
         if (this.submitButton.mousePressed(mx, my)) {
-            this.selected = 0;
             this.submitButton.callback();
             return;
         }
         if (this.backButton.mousePressed(mx, my)) {
-            this.selected = 1;
             this.backButton.callback();
             return;
         }
@@ -427,7 +435,7 @@ class LoginMenuScreen extends MenuScreen {
             (name, i) => new WeaponMenuOption(name, () => this.selectGun2(i), 0, 0, 180, 44)
         );
         // selected: -1 for login button, 0-weaponNames.length-1 for gun1Options, weaponNames.length... for gun2Options
-        this.selected = 0;
+        this.selected = -1;
         this.isSessionActive = false;
         this.serverSaveExists = true; // Assume true until server says otherwise
         this.isAccountSession = false; // Add explicit instance property for account state
@@ -448,6 +456,12 @@ class LoginMenuScreen extends MenuScreen {
             this.colorPicker.value(this.color);
             this.colorPicker.input(() => {
                 this.color = this.colorPicker.value();
+                // Save immediately on color change
+                if (typeof saveUserPreferences === 'function') {
+                    const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
+                    const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+                    saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
+                }
             });
         }
         
@@ -552,7 +566,6 @@ class LoginMenuScreen extends MenuScreen {
     } else {
         this.loginButton.label = this.hasSavedState ? "Continue" : "Start";
     }
-    this.loginButton.selected = (this.selected === -1);
     this.loginButton.draw();
         
         // --- Draw settings button in top-right corner ---
@@ -569,17 +582,17 @@ class LoginMenuScreen extends MenuScreen {
         
         let showLoginMsg = true;
 
-        if (signedIn && this.isAccountSession && this.accountName) {
-            // In pause menu for account users: replace loginMsg with account info
-            // But if we are "Updating party...", we might want to show that momentarily?
-            // The user requested "loginmsg shouldn't appear in the pause menu anymore"
-            // So we prioritize account text.
+        if (signedIn) {
             showLoginMsg = false;
-            
             textAlign(CENTER, CENTER);
             textSize(14);
-            fill(80); 
-            text("Logged in as: " + this.accountName, x + w / 2, y + 280);
+            fill(80);
+            
+            if (this.isAccountSession && this.accountName) {
+                text("Logged in as: " + this.accountName, x + w / 2, y + 280);
+            } else {
+                 text("Logged in as a guest", x + w / 2, y + 280);
+            }
         }
 
         if (showLoginMsg && this.loginMsg) {
@@ -660,6 +673,11 @@ class LoginMenuScreen extends MenuScreen {
                  this.logoutBtn.setSize(150, 40);
                  this.logoutBtn.draw();
             } else {
+                 textSize(14);
+                 textAlign(CENTER, BOTTOM);
+                 fill(80);
+                 text("Logged in as a guest", x + w/2, btnY - 5);
+
                  this.createAccountBtn.setPosition(x + w/2 - 160, btnY);
                  this.createAccountBtn.setSize(150, 40);
                  this.createAccountBtn.draw();
@@ -930,7 +948,7 @@ class LoginMenuScreen extends MenuScreen {
         let delta = event.deltaY || event.delta || 0;
         
         // Check bounds for right panel (achievements)
-        if (signedIn && this.achievements && this.achievements.length > 0) {
+        if (this.achievements && this.achievements.length > 0) {
             // If mouse is over right panel
             if (mouseX > this.rightPanelBounds.x && mouseX < this.rightPanelBounds.x + this.rightPanelBounds.w &&
                 mouseY > this.rightPanelBounds.y && mouseY < this.rightPanelBounds.y + this.rightPanelBounds.h) {
@@ -993,10 +1011,22 @@ class LoginMenuScreen extends MenuScreen {
 
     selectGun1(idx) {
         selectedGun1 = idx;
+        // Save immediately
+        if (typeof saveUserPreferences === 'function') {
+            const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
+            const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+            saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
+        }
     }
 
     selectGun2(idx) {
         selectedGun2 = idx;
+        // Save immediately
+        if (typeof saveUserPreferences === 'function') {
+            const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
+            const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+            saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
+        }
     }
 
     mousePressed(mx, my, x, y, w, h) {
@@ -1016,7 +1046,6 @@ class LoginMenuScreen extends MenuScreen {
         let loginBtnX = x + w / 2 + 120 + 10;
         let loginBtnY = y + 220;
         if (mx > loginBtnX && mx < loginBtnX + 120 && my > loginBtnY && my < loginBtnY + 40) {
-            this.selected = -1;
             // If signed in, change party action should only update party
             if (signedIn) {
                 this.changeParty();
@@ -1049,7 +1078,6 @@ class LoginMenuScreen extends MenuScreen {
         for (let i = 0; i < this.gun1Options.length; i++) {
             let opt = this.gun1Options[i];
             if (opt.mousePressed(mx, my)) {
-                this.selected = i;
                 this.selectGun1(i);
                 return;
             }
@@ -1059,7 +1087,6 @@ class LoginMenuScreen extends MenuScreen {
         for (let i = 0; i < this.gun2Options.length; i++) {
             let opt = this.gun2Options[i];
             if (opt.mousePressed(mx, my)) {
-                this.selected = i + this.gun1Options.length;
                 this.selectGun2(i);
                 return;
             }
@@ -1082,10 +1109,20 @@ class LoginMenuScreen extends MenuScreen {
     keyTyped(k) {
         if (this.usernameField.focused) {
             this.usernameField.keyTyped(k);
+            if (typeof saveUserPreferences === 'function') {
+                const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
+                const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+                saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
+            }
             return;
         }
         if (this.partyField.focused) {
             this.partyField.keyTyped(k);
+            if (typeof saveUserPreferences === 'function') {
+                const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
+                const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
+                saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
+            }
             return;
         }
     }
@@ -1207,7 +1244,7 @@ class SettingsMenuScreen extends MenuScreen {
         // Back button
         this.backButton = new MenuOption("Back", () => menuManager.show('login'));
         
-        this.selected = 0;
+        this.selected = -1;
     }
 
     toggleCamera() {
@@ -1285,7 +1322,6 @@ class SettingsMenuScreen extends MenuScreen {
         
         this.cameraToggle.setPosition(x + w / 2 - 150, optionY);
         this.cameraToggle.setSize(300, 50);
-        this.cameraToggle.selected = (this.selected === 0);
         this.cameraToggle.draw();
         
         // Draw camera description
@@ -1299,7 +1335,6 @@ class SettingsMenuScreen extends MenuScreen {
         optionY += optionSpacing;
         this.shakeToggle.setPosition(x + w / 2 - 150, optionY);
         this.shakeToggle.setSize(300, 50);
-        this.shakeToggle.selected = (this.selected === 1);
         this.shakeToggle.draw();
         
         // Draw shake description
@@ -1312,7 +1347,6 @@ class SettingsMenuScreen extends MenuScreen {
         optionY += optionSpacing;
         this.particlesToggle.setPosition(x + w / 2 - 150, optionY);
         this.particlesToggle.setSize(300, 50);
-        this.particlesToggle.selected = (this.selected === 2);
         this.particlesToggle.draw();
         
         // Draw particles description
@@ -1329,7 +1363,6 @@ class SettingsMenuScreen extends MenuScreen {
             optionY += optionSpacing;
             this.resetProgressButton.setPosition(x + w / 2 - 150, optionY);
             this.resetProgressButton.setSize(300, 50);
-            this.resetProgressButton.selected = (this.selected === 3);
             this.resetProgressButton.draw();
             
             // Draw reset description
@@ -1346,7 +1379,6 @@ class SettingsMenuScreen extends MenuScreen {
         optionY += optionSpacing;
         this.backButton.setPosition(x + w / 2 - 100, optionY);
         this.backButton.setSize(200, 50);
-        this.backButton.selected = (this.selected === backButtonIndex);
         this.backButton.draw();
     }
 
@@ -1376,32 +1408,27 @@ class SettingsMenuScreen extends MenuScreen {
 
     mousePressed(mx, my, x, y, w, h) {
         if (this.cameraToggle.mousePressed(mx, my)) {
-            this.selected = 0;
             this.cameraToggle.callback();
             return;
         }
         
         if (this.shakeToggle.mousePressed(mx, my)) {
-            this.selected = 1;
             this.shakeToggle.callback();
             return;
         }
 
         if (this.particlesToggle.mousePressed(mx, my)) {
-            this.selected = 2;
             this.particlesToggle.callback();
             return;
         }
         
         // Only handle reset button click if not signed in
         if (!signedIn && this.resetProgressButton.mousePressed(mx, my)) {
-            this.selected = 3;
             this.resetProgressButton.callback();
             return;
         }
         
         if (this.backButton.mousePressed(mx, my)) {
-            this.selected = signedIn ? 3 : 4;
             this.backButton.callback();
             return;
         }

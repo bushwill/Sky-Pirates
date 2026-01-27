@@ -23,6 +23,8 @@ export class Player extends Plane {
     this.startMillis = startMillis;
     this.privileges = false;
     this.maxCrates = 50;
+    this.pacifist = true; // Tracks if the player has dealt damage this life/session
+
     
     // Navy aggro tracking
     this.navyTargeted = false; // Whether this player is currently targeted by navy
@@ -330,6 +332,19 @@ function deserializeComponent(data) {
         data.value
       );
     } else if (data.type === 'gun') {
+      let projectileLifetime = data.projectileLifetime;
+      let projectileRange = data.projectileRange;
+
+      // Fix for legacy Firework Launchers (incorrect lifetime/range)
+      if (data.name && data.name.includes('Firework Launcher')) {
+         if (!projectileLifetime || projectileLifetime > 1000) {
+             projectileLifetime = 750;
+             // Recalculate range based on speed and new lifetime
+             // Range = Speed (m/s) * Lifetime (s)
+             projectileRange = data.projectileSpeed * (projectileLifetime / 1000);
+         }
+      }
+
       return new Gun(
         data.name,
         data.weight,
@@ -342,7 +357,8 @@ function deserializeComponent(data) {
         data.maxAngle * 2, // Multiply by 2 because Gun constructor divides by 2
         data.value,
         data.heatDispersion,
-        data.projectileRange
+        projectileRange,
+        projectileLifetime
       );
     }
   } catch (error) {

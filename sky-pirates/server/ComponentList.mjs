@@ -190,9 +190,9 @@ export function createAeroStandardChassis(level = 1, random = true) {
   const adjustedLevel = level - 1;
   const name = "Aero Standard Chassis Lvl " + level;
   const weight = randomFactor * 1.0;
-  const topSpeed = randomFactor * (180.0 + adjustedLevel * 10);
+  const topSpeed = randomFactor * (180.0 + adjustedLevel * 30);
   const maxHull = randomFactor * (80.0 + adjustedLevel * 10);
-  const heatDispersion = randomFactor * (20.0 + adjustedLevel * 3.0);
+  const heatDispersion = randomFactor * (20.0 + adjustedLevel * 5.0);
   const buoyancy = randomFactor * 3.0;
   const value = randomFactor * (80 + adjustedLevel * 200);
   return new Chassis(name, weight, topSpeed, maxHull, heatDispersion, buoyancy, value);

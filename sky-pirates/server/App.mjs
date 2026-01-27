@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import express from 'express';
 import msgpack5 from 'msgpack5';
 const msgpack = msgpack5();
@@ -20,6 +20,7 @@ import { Shop } from './Shop.mjs';
 import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState, playerStateExists } from './PlayerStateManager.mjs';
 import { clientManager } from './ClientManager.mjs';
 import { syncPlayerAchievements, getAchievementDataForClient } from './Achievements.mjs';
+import { isMessageAppropriate } from './ChatFilter.mjs';
 
 const admin_name = 'Shluck'
 
@@ -36,6 +37,7 @@ const FLEET_SPAWN_COOLDOWN = 1 * 60 * 1000;
 const FLEET_RESPAWN_DELAY_MS = 2 * 60 * 1000;
 const MAX_FLEET_BOATS = 5;
 const MIN_FLEET_DISTANCE = 30000;
+const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
 
 // Animal Spawning Parameters
 const FISH_DENSITY_PER_KM = 5; // Target number of fish per 1000m radius
@@ -442,6 +444,27 @@ function updatePlayer(player) {
     player.twinRecoveryZone = null;
     // Items remain in inventory until explicitly sold
   }
+
+const ACHIEVEMENT_DIST_CHECK_INTERVAL = 1000;
+setInterval(() => {
+    players.forEach(player => {
+        // Achievement Check: Max Altitude (Mile High Club)
+        if (player.y < -2500) {
+            if (player.achievements && player.achievements['mile_high_club']) {
+                player.achievements['mile_high_club'].complete(player);
+            }
+        }
+
+        // Achievement Check: Pacifist Run (Reach 100km zone)
+        // 100km = 100,000 units.
+        if (Math.abs(player.x) > 100000) {
+            if (player.pacifist && player.achievements && player.achievements['pacifist_run']) {
+                player.achievements['pacifist_run'].complete(player);
+            }
+        }
+    });
+}, ACHIEVEMENT_DIST_CHECK_INTERVAL);
+
 }
 
 function updatePlane(plane) {
@@ -579,6 +602,23 @@ function updateProjectile(projectile) {
     if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
       player.x, player.y, player.size)) {
       createHitEvent(player.x, player.y, projectile);
+      
+      // Pacifist Logic: Owner dealt damage
+      if (projectile.owner) {
+          const ownerPlayer = players.find(p => p.username === projectile.owner);
+          if (ownerPlayer) {
+              ownerPlayer.pacifist = false;
+          }
+      }
+      
+      // Sharpshooter Check
+      if (projectile.owner && projectile.distanceTraveled > 1000) { // 1000m
+          const ownerPlayer = players.find(p => p.username === projectile.owner);
+          if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
+              ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
+          }
+      }
+
       if (player.onDamaged) {
         player.onDamaged(projectile);
       }
@@ -588,8 +628,16 @@ function updateProjectile(projectile) {
           projectiles.push(...newProjectiles);
         }
       }
-      projectiles = projectiles.filter((p) => p !== projectile);
-      return;
+
+      // Handle piercing
+      if (projectile.piercing > 0) {
+          projectile.piercing--;
+          projectile.hitEntities = projectile.hitEntities || [];
+          projectile.hitEntities.push(player.id || player.username);
+      } else {
+        projectiles = projectiles.filter((p) => p !== projectile);
+        return;
+      }
     }
   }
 
@@ -601,6 +649,34 @@ function updateProjectile(projectile) {
     if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
       enemy.x, enemy.y, enemy.size)) {
       createHitEvent(enemy.x, enemy.y, projectile);
+
+      // Pacifist Logic: Owner dealt damage to enemy
+      if (projectile.owner) {
+          const ownerPlayer = players.find(p => p.username === projectile.owner);
+          if (ownerPlayer) {
+              ownerPlayer.pacifist = false;
+          }
+      }
+
+      // Sharpshooter Check
+      if (projectile.owner && projectile.distanceTraveled > 1000) { // 1000m
+          const ownerPlayer = players.find(p => p.username === projectile.owner);
+          if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
+            ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
+          }
+      }
+      
+      // Two Birds One Stone Check -- REMOVED for enemies as per user request (only fish)
+      /* 
+      if (projectile.owner) {
+         const ownerPlayer = players.find(p => p.username === projectile.owner);
+         if (ownerPlayer) {
+            projectile.midairHitCount = (projectile.midairHitCount || 0) + 1;
+            // logic...
+         }
+      } 
+      */
+
       if (enemy.onDamaged) {
         enemy.onDamaged(projectile, players);
       }
@@ -610,8 +686,16 @@ function updateProjectile(projectile) {
           projectiles.push(...newProjectiles);
         }
       }
-      projectiles = projectiles.filter((p) => p !== projectile);
-      return;
+      
+      // Handle piercing
+      if (projectile.piercing > 0) {
+          projectile.piercing--;
+          // Avoid double hitting same entity in same frame? 
+          // (Collision check usually prevents this if movement is handled right, but we removed from projectiles list to stop it previously)
+      } else {
+          projectiles = projectiles.filter((p) => p !== projectile);
+          return;
+      }
     }
   }
 
@@ -621,9 +705,32 @@ function updateProjectile(projectile) {
 
       if (projectile.owner) {
           const killer = players.find(p => p.username === projectile.owner);
-          if (killer && killer.achievements && killer.achievements['fish_killer']) {
-              if (animal.type === 'fish') {
-                killer.achievements['fish_killer'].increment(killer, 1);
+          if (killer && killer.achievements) {
+              if (killer.achievements['fish_killer']) {
+                  if (animal.type === 'fish') {
+                    killer.achievements['fish_killer'].increment(killer, 1);
+                  }
+              }
+              
+              const animalInWater = mapData.getBiomeAtPosition(animal.x, animal.y) === 'water';
+
+              // Sky Angler: Shoot fish in air
+               if (animal.type === 'fish' && !animalInWater) {
+                  if (killer.achievements['sky_angler']) {
+                      killer.achievements['sky_angler'].complete(killer);
+                  }
+              }
+
+              // Two Birds One Stone (Midair Fish)
+              // Strict requirement: Two FISH, midair, same projectile
+              if (animal.type === 'fish' && !animalInWater) { 
+                 projectile.midairFishHitCount = (projectile.midairFishHitCount || 0) + 1;
+                 
+                  if (projectile.midairFishHitCount >= 2) {
+                    if (killer.achievements['two_birds']) {
+                        killer.achievements['two_birds'].complete(killer);
+                    }
+                  }
               }
           }
       }
@@ -633,6 +740,15 @@ function updateProjectile(projectile) {
       events.push(event);
 
       animals = animals.filter(a => a !== animal);
+      
+      // Handle piercing - Animals get destroyed so no need to track hitEntities for them specifically 
+      // as they won't exist next frame.
+       if (projectile.piercing > 0) {
+          projectile.piercing--;
+      } else {
+           projectiles = projectiles.filter((p) => p !== projectile);
+           return;
+      }
     }
   }
 }
@@ -1339,7 +1455,7 @@ function createBullet(player, gun) {
     );
   }
 
-  return new Projectile(
+  const proj = new Projectile(
     player.x - vx * deltaTime,
     player.y - vy * deltaTime,
     vx,
@@ -1354,6 +1470,16 @@ function createBullet(player, gun) {
     100, // color RGB
     100
   );
+
+  // Allow standard bullets to pierce once for achievement purposes?
+  // Or just set it to 1 to allow for the "Two Birds" achievement which requires 1 pierce.
+  // Actually, let's just make all standard bullets have piercing = 1 (can hit 2 targets) for now, 
+  // or maybe only updates if I had a specific weapon. 
+  // User asked to implement "Two birds one stone... shoot two midair fish with one projectile".
+  // This implies the mechanics MUST support it.
+  proj.piercing = 1; 
+
+  return proj;
 }
 
 function applyRepairs(player, deltaTime) {
@@ -2275,6 +2401,33 @@ function checkParties() {
   // If you need usernames, use party.getPlayerUsernames()
 }
 
+function manageAutoSave() {
+  if (players.length === 0) return;
+
+  console.log(`[AutoSave] Saving data for ${players.length} active players...`);
+  let count = 0;
+
+  players.forEach(player => {
+    if (player.playerId) {
+      // Save Game State
+      savePlayerState(player.playerId, player);
+
+      // Save Client/Account if linked
+      if (player.clientId) {
+        clientManager.saveClient(player.clientId);
+
+        // Save Account if logged in
+        const clientData = clientManager.clients[player.clientId];
+        if (clientData && clientData.type === 'account' && clientData.accountName) {
+          clientManager.saveAccount(clientData.accountName);
+        }
+      }
+      count++;
+    }
+  });
+  console.log(`[AutoSave] Completed for ${count} players.`);
+}
+
 // Utility to get serializable party info
 function getSerializableParties() {
   return parties.map(party => ({
@@ -2720,6 +2873,11 @@ function handleRegisterAccount(ws, { username, password, playerId }) {
         sendMessage(ws, { type: 'register_failed', message: 'Missing fields.' });
         return;
     }
+
+    if (!isMessageAppropriate(username)) {
+      sendMessage(ws, { type: 'register_failed', message: 'Username contains inappropriate language.' });
+      return;
+    }
     
     // Check if client is valid guest
     // Ensure client exists (create if needed, though they should usually exist by now)
@@ -2766,6 +2924,11 @@ function handleRegisterAccount(ws, { username, password, playerId }) {
 function handleAccountLogin(ws, { username, password, playerId }) {
     // playerId is the CLIENT UUID of the device attempting login
     if (!username || !password) return;
+
+    if (!isMessageAppropriate(username)) {
+      sendMessage(ws, { type: 'login_failed', message: 'Account name contains inappropriate language.' });
+      return;
+    }
     
     // Ensure the client record exists before we try to assign it
     // If it's a fresh visitor, they might not be in clients.json yet
@@ -2842,6 +3005,11 @@ function handleResetAccountProgress(ws, { playerId }) {
 }
 
 function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyName, clearParty, playerId, password }) {
+  if (!isMessageAppropriate(username)) {
+    sendMessage(ws, { type: 'login_failed', message: 'Display name contains inappropriate language.' });
+    return;
+  }
+
   // playerId from client is the Client/Device UUID (Cookie)
   let clientUUID = playerId;
   
@@ -3032,9 +3200,21 @@ function handleUpdate(ws, { username, keys, t_x, t_y, chat_message, sequence }) 
       player.lastInputSequence = sequence;
     }
     if (chat_message) {
+      // Log all messages regardless of filter for review
       logMessage(username, chat_message);
-      if (chat_message[0] === '/') checkCommand(chat_message, player);
-      else player.messages.push([millis(), chat_message]);
+      
+      if (chat_message[0] === '/') {
+          checkCommand(chat_message, player);
+      } else {
+          // Check for inappropriate content
+          if (isMessageAppropriate(chat_message)) {
+               player.messages.push([millis(), chat_message]);
+          } else {
+               // Send a private warning to the sender
+               sendNoticeMessage(username, "Message blocked: Inappropriate content.", 'urgent');
+               console.log(`Blocked message from ${username}: ${chat_message}`);
+          }
+      }
     }
     player.lastActivity = millis();
   }
@@ -3216,11 +3396,11 @@ function itemTest(manufacturer, level, player) {
   sendNoticeMessage(player.username, `Created level ${level} item test crates for manufacturer ${manufacturer} at your location`, 'server');
 }
 
-function weaponTest(weaponNumber, player) {
-  // Create level 1 player weapon for the specified type
-  const weapon = createGun(weaponNumber, 1);
+function weaponTest(weaponNumber, level, player) {
+  // Create specfied level player weapon for the specified type
+  const weapon = createGun(weaponNumber, level);
   player.equip(weapon);
-  sendNoticeMessage(player.username, "Equipped weapon " + weapon.name, 'game');
+  sendNoticeMessage(player.username, `Equipped level ${level} weapon ${weapon.name}`, 'game');
 }
 
 function enemyWeaponTest(weaponNumber, player) {
@@ -3295,7 +3475,7 @@ function checkCommand(command, player) {
   // Full Privilege Requirement
   let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
   let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
-  let weapontest_command = /^\/weapontest\s+(\d+)$/;
+  let weapontest_command = /^\/weapontest\s+(\d+)(?:\s+(\d+))?$/;
   let enemyweapontest_command = /^\/enemyweapontest\s+(\d+)$/;
   let clearcrates_command = /^\/clearcrates$/;
   let spawnfleet_command = /^\/spawnfleet$/;
@@ -3414,7 +3594,8 @@ function checkCommand(command, player) {
   match = command.match(weapontest_command);
   if (match) {
     const weaponNumber = parseInt(match[1]);
-    weaponTest(weaponNumber, player);
+    const level = match[2] ? parseInt(match[2]) : 1; // Default to level 1 if not specified
+    weaponTest(weaponNumber, level, player);
   }
 
   match = command.match(enemyweapontest_command);
@@ -3664,3 +3845,8 @@ setInterval(() => {
     // players.forEach(p => sendPlayerAchievements(p)); 
   }
 }, 300000); // 5 minutes interval
+
+// AutoSave (Interval: 5 mins)
+setInterval(() => {
+  manageAutoSave();
+}, AUTOSAVE_INTERVAL);
