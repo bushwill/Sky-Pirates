@@ -2,10 +2,10 @@
   "r": 0,
   "g": 51,
   "b": 255,
-  "x": 735.4514394119276,
-  "y": -660.8625625098803,
+  "x": 0,
+  "y": -200,
   "money": 0,
-  "biome": "air",
+  "biome": "recovery",
   "selectedGun": 2,
   "lastRecoveryZone": {
     "type": "recovery",
@@ -82,5 +82,5 @@
     "projectileRange": 1500
   },
   "inventory": [],
-  "savedAt": 1769475704670
+  "savedAt": 1769476655298
 }
