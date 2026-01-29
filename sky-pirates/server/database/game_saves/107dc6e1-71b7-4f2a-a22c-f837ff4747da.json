@@ -2,11 +2,11 @@
   "r": 0,
   "g": 51,
   "b": 255,
-  "x": 0,
-  "y": -200,
-  "money": 0,
+  "x": -188.13307926676725,
+  "y": -129.0282008547446,
+  "money": 1012,
   "biome": "recovery",
-  "selectedGun": 2,
+  "selectedGun": 1,
   "lastRecoveryZone": {
     "type": "recovery",
     "x1": -800,
@@ -19,13 +19,13 @@
   "pacifist": true,
   "chassis": {
     "type": "chassis",
-    "name": "Pirate Standard Chassis Lvl 1",
-    "weight": 1.509633585571292,
-    "value": 20.128447807617228,
-    "topSpeed": 181.15603026855504,
-    "maxHull": 90.57801513427752,
-    "heatDispersion": 12.580279879760766,
-    "buoyancy": 2.5160559759521535
+    "name": "Kamen Standard Chassis Lvl 1",
+    "weight": 4.116174537367979,
+    "value": 102.90436343419947,
+    "topSpeed": 308.7130903025984,
+    "maxHull": 154.3565451512992,
+    "heatDispersion": 15.435654515129919,
+    "buoyancy": 1.0290436343419946
   },
   "engine": {
     "type": "engine",
@@ -39,17 +39,17 @@
   },
   "wings": {
     "type": "wings",
-    "name": "Pirate Standard Wings Lvl 1",
-    "weight": 0.5010823054515114,
-    "value": 20.043292218060458,
-    "baseTurnSpeed": 1.8038962996254413,
-    "minTurnSpeed": 0.15032469163545342,
-    "maxSpeed": 150.32469163545343,
-    "liftEfficiency": 0.5010823054515114,
-    "minLiftSpeed": 50.108230545151144,
-    "liftAngle": 0.3935491224125763,
+    "name": "Kamen Standard Wings Lvl 1",
+    "weight": 1.406359781361521,
+    "value": 93.75731875743473,
+    "baseTurnSpeed": 1.406359781361521,
+    "minTurnSpeed": 0.28127195627230417,
+    "maxSpeed": 206.2661012663564,
+    "liftEfficiency": 0.5625439125446083,
+    "minLiftSpeed": 75.00585500594778,
+    "liftAngle": 0.2945473038286334,
     "airBrake": true,
-    "airBrakeStrength": 2.004329221806046
+    "airBrakeStrength": 1.8751463751486945
   },
   "gun1": {
     "type": "gun",
@@ -82,5 +82,5 @@
     "projectileRange": 1500
   },
   "inventory": [],
-  "savedAt": 1769476655298
+  "savedAt": 1769659691215
 }
