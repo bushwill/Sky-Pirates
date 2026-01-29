@@ -448,8 +448,8 @@ function updatePlayer(player) {
 const ACHIEVEMENT_DIST_CHECK_INTERVAL = 1000;
 setInterval(() => {
     players.forEach(player => {
-        // Achievement Check: Max Altitude (Mile High Club)
-        if (player.y < -2500) {
+        // Achievement Check: Max Altitude (Above the Clouds!)
+        if (player.y < -6500) {
             if (player.achievements && player.achievements['mile_high_club']) {
                 player.achievements['mile_high_club'].complete(player);
             }
@@ -2488,7 +2488,8 @@ function getPlayerOrRespawningPlayer(username) {
     return {
       username: respawning.username,
       x: respawning.deathX,
-      y: respawning.deathY
+      y: respawning.deathY,
+      party: respawning.player.party
     };
   }
 
@@ -2564,13 +2565,30 @@ function handleIncomingMessage(ws, message) {
       handleUpdate(ws, message);
       break;
     case 'get_players':
-      const serializedPlayers = players.map(p => {
-        // Create a base object with all properties needed by client
-        const pData = Object.assign({}, p);
-        // Ensure lastInputSequence is included
-        pData.lastInputSequence = p.lastInputSequence || 0;
-        return pData;
-      });
+      // Optimized player serialization with culling
+      const requestingPlayer = getPlayerOrRespawningPlayer(ws.currentUsername);
+      const cullingDistance = 4000;
+      
+      const serializedPlayers = players
+        .filter(p => {
+          // If we don't know who is asking, send everyone (fallback)
+          if (!requestingPlayer) return true;
+          
+          // 1. Always include self
+          if (p.username === ws.currentUsername) return true;
+          
+          // 2. Always include party members
+          if (requestingPlayer.party && p.party && requestingPlayer.party.name === p.party.name) return true;
+          
+          // 3. Include nearby players
+          const dist = Math.sqrt((p.x - requestingPlayer.x) ** 2 + (p.y - requestingPlayer.y) ** 2);
+          return dist <= cullingDistance;
+        })
+        .map(p => {
+          // Only send full data (inventory, etc) if it's the requesting player
+          const includePrivate = (p.username === ws.currentUsername);
+          return p.toClientData(includePrivate);
+        });
       sendMessage(ws, { type: 'player_data', players: serializedPlayers });
       break;
     case 'get_enemies':
@@ -2586,11 +2604,11 @@ function handleIncomingMessage(ws, message) {
           type: enemy.type,
           username: enemy.username,
           faction: enemy.faction,
-          x: enemy.x,
-          y: enemy.y,
-          angle: enemy.angle,
-          vx: enemy.vx,
-          vy: enemy.vy,
+          x: +enemy.x.toFixed(2),
+          y: +enemy.y.toFixed(2),
+          angle: +enemy.angle.toFixed(3),
+          vx: +enemy.vx.toFixed(2),
+          vy: +enemy.vy.toFixed(2),
           r: enemy.r,
           g: enemy.g,
           b: enemy.b,
@@ -2602,6 +2620,9 @@ function handleIncomingMessage(ws, message) {
       sendMessage(ws, { type: 'enemy_data', enemies: serializedEnemies });
       break;
     case 'get_animals':
+    // ... animals ... 
+    // We didn't add toClientData to Animal yet, but we should wrap it similarly later or now. 
+    // For now skipping to keep scope manageable unless requested.
       const playerForAnimals = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredAnimals = filterEntitiesInRange(animals, playerForAnimals);
       sendMessage(ws, { type: 'animal_data', animals: filteredAnimals });
@@ -2615,12 +2636,15 @@ function handleIncomingMessage(ws, message) {
     case 'get_projectiles':
       const playerForProjectiles = getPlayerOrRespawningPlayer(ws.currentUsername);
       const filteredProjectiles = filterEntitiesInRange(projectiles, playerForProjectiles);
-      sendMessage(ws, { type: 'projectile_data', projectiles: filteredProjectiles });
+      const serializedProjectiles = filteredProjectiles.map(p => p.toClientData());
+      sendMessage(ws, { type: 'projectile_data', projectiles: serializedProjectiles });
       break;
     case 'get_crates':
       const playerForCrates = getPlayerOrRespawningPlayer(ws.currentUsername);
+      // increased range for creates update
       const filteredCrates = filterEntitiesInRange(crates, playerForCrates, 2000, true);
-      sendMessage(ws, { type: 'crate_data', crates: filteredCrates });
+      const serializedCrates = filteredCrates.map(c => c.toClientData());
+      sendMessage(ws, { type: 'crate_data', crates: serializedCrates });
       break;
     case 'get_events':
       const playerForEvents = getPlayerOrRespawningPlayer(ws.currentUsername);

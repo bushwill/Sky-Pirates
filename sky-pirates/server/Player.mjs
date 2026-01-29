@@ -288,6 +288,53 @@ export class Player extends Plane {
     this.money += parseInt(value, 10);
     return value;
   }
+
+  toClientData(includePrivate = false) {
+    const data = {
+      username: this.username,
+      x: +this.x.toFixed(2),
+      y: +this.y.toFixed(2),
+      vx: +this.vx.toFixed(2),
+      vy: +this.vy.toFixed(2),
+      angle: +this.angle.toFixed(3),
+      r: this.r,
+      g: this.g,
+      b: this.b,
+      biome: this.biome,
+      selectedGun: this.selectedGun,
+      navyTargeted: this.navyTargeted,
+      lastInputSequence: this.lastInputSequence || 0,
+      keys: this.keys || {}, // Include input state for visuals (repair animations, etc.)
+      money: this.money,
+      value: this.value,
+      browsing: this.browsing,
+      inventory: includePrivate ? this.inventory : [],
+      twinRecoveryZone: includePrivate ? this.twinRecoveryZone : null,
+      
+      // Components
+      chassis: this.chassis, // Consider optimizing component objects too (strip value/weight?)
+      engine: this.engine,
+      wings: this.wings,
+      gun1: this.gun1,
+      gun2: this.gun2,
+      
+      // Arrays
+      crates: this.crates, 
+      achievements: this.achievements
+    };
+
+    if (includePrivate) {
+      data.inventory = this.inventory;
+      data.money = this.money;
+      data.maxCrates = this.maxCrates;
+      data.playerId = this.playerId; // Sometimes needed for verification
+      data.lastRecoveryZone = this.lastRecoveryZone;
+    } else {
+      // Don't send inventory or money to others to save bandwidth
+    }
+    
+    return data;
+  }
 }
 
 /**

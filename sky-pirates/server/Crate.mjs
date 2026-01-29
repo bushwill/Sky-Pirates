@@ -30,6 +30,20 @@ export class Crate{
         this.lastDetachedAt = Date.now();
     }
 
+    toClientData() {
+        return {
+            type: this.type,
+            x: +this.x.toFixed(2),
+            y: +this.y.toFixed(2),
+            vx: +this.vx.toFixed(2),
+            vy: +this.vy.toFixed(2),
+            angle: +this.angle.toFixed(3),
+            size: this.size,
+            cargo: this.cargo, 
+            carrier: this.carrier
+        };
+    }
+
     open(player) {
         if (this.type === 'money') {
             player.money += parseInt(this.cargo, 10);

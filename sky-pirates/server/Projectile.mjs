@@ -24,6 +24,27 @@ export class Projectile {
     onExpire() {
         return [];
     }
+
+    toClientData() {
+        return {
+            type: this.type,
+            x: +this.x.toFixed(2),
+            y: +this.y.toFixed(2),
+            vx: +this.vx.toFixed(2),
+            vy: +this.vy.toFixed(2),
+            angle: +this.angle.toFixed(3),
+            size: this.size,
+            owner: this.owner,
+            biome: this.biome,
+            r: this.r, g: this.g, b: this.b,
+            creationTime: this.creationTime,
+            lifetime: this.lifetime,
+            maxDistance: this.maxDistance,
+            distanceTraveled: +this.distanceTraveled.toFixed(1), // needed for sync?
+            // Include name if it exists (for special projectile detection like Firework/Flamethrower)
+            name: this.name 
+        };
+    }
 }
 
 export class FireworkRocket extends Projectile {

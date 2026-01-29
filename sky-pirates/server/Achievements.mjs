@@ -234,7 +234,7 @@ export class TwoBirdsOneStoneAchievement extends Achievement {
 
 export class MileHighClubAchievement extends Achievement {
     constructor() {
-        super('mile_high_club', 'Mile High Club', 'Reach an altitude of 2500m.');
+        super('mile_high_club', 'Above the Clouds!', 'Reach an altitude of 6500m.');
     }
 }
 

@@ -1,22 +1,22 @@
 {
   "username": "bushwill",
   "password": "Guest",
-  "gameSaveId": "107dc6e1-71b7-4f2a-a22c-f837ff4747da",
+  "gameSaveId": "1b92b122-dd7d-4786-a5dc-32169819022d",
   "created": 1769201440865,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 201,
+      "progress": 641,
       "milestones": [
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1769664847698,
           "target": 300
         },
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1769665849378,
           "target": 500
         },
         {
@@ -34,12 +34,16 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 18,
+      "progress": 284,
       "milestones": [
         {
+          "unlocked": true,
+          "unlockedAt": 1769663019387,
           "target": 50
         },
         {
+          "unlocked": true,
+          "unlockedAt": 1769665738632,
           "target": 250
         },
         {
@@ -53,11 +57,11 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 0,
+      "progress": 12,
       "milestones": [
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1769665498617,
           "target": 10
         },
         {
@@ -78,11 +82,13 @@
       ]
     },
     "fish_killer": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 20,
+      "completed": true,
+      "unlockedAt": 1769664624481,
+      "progress": 50,
       "milestones": [
         {
+          "unlocked": true,
+          "unlockedAt": 1769664624481,
           "target": 50
         }
       ]
@@ -115,9 +121,9 @@
       ]
     },
     "mile_high_club": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 0,
+      "completed": true,
+      "unlockedAt": 1769665117594,
+      "progress": 1,
       "milestones": []
     },
     "sky_angler": {
@@ -166,9 +172,9 @@
       "milestones": []
     },
     "sharpshooter": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 0,
+      "completed": true,
+      "unlockedAt": 1769664699207,
+      "progress": 1,
       "milestones": []
     }
   }

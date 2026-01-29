@@ -53,7 +53,8 @@ export function createMachineGun(level, random = true) {
     const cooldownTime = randomFactor * (150 - level * 5);
     const projectileSpeed = randomFactor * (1500.0 + level * 30.0);
     const projectileSize = randomFactor * (1 + level * 0.05);
-    const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 60);
+    // Inverted: Starts wide (45 deg), gets narrow (18 deg at Lvl 10)
+    const maxAngle = randomFactor * Math.max(0.01, Math.PI / 4 - (level - 1) * Math.PI / 60);
     const value = randomFactor * (50 + adjustedLevel * 200);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1500;
@@ -73,7 +74,8 @@ export function createCannon(level, random = true) {
     const cooldownTime = randomFactor * (600 - level * 10);
     const projectileSpeed = randomFactor * (3000.0 + level * 150.0);
     const projectileSize = randomFactor * (2.0 + level * 0.1);
-    const maxAngle = randomFactor * (Math.PI / 12 + level * Math.PI / 80);
+    // Inverted: Starts wide (~37 deg), gets narrow (~17 deg at Lvl 10)
+    const maxAngle = randomFactor * Math.max(0.01, 5 * Math.PI / 24 - (level - 1) * Math.PI / 80);
     const value = randomFactor * (150 + adjustedLevel * 300);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1500;
@@ -93,7 +95,8 @@ export function createScorpion(level, random = true) {
     const cooldownTime = randomFactor * (70 - level * 4);
     const projectileSpeed = randomFactor * (1000.0 + level * 50.0);
     const projectileSize = randomFactor * 0.5;
-    const maxAngle = randomFactor * (Math.PI / 48 + level * Math.PI / 120);
+    // Inverted: Starts wide (~19 deg), gets narrow (~5 deg at Lvl 10)
+    const maxAngle = randomFactor * Math.max(0.01, 5 * Math.PI / 48 - (level - 1) * Math.PI / 120);
     const value = randomFactor * (80 + adjustedLevel * 350);
     const heatDispersion = randomFactor * (17.5 + adjustedLevel);
     const projectileRange = 1000;
@@ -113,7 +116,8 @@ export function createFireworkLauncher(level, random = true) {
     const cooldownTime = 0; // No cooldown, limited by heat
     const projectileSpeed = randomFactor * (300.0 + level * 10.0);
     const projectileSize = randomFactor * 1.0;
-    const maxAngle = randomFactor * (Math.PI / 48 + level * Math.PI / 160);
+    // Inverted: Starts wide (15 deg), gets narrow (~5 deg at Lvl 10)
+    const maxAngle = randomFactor * Math.max(0.01, Math.PI / 12 - (level - 1) * Math.PI / 160);
     const value = randomFactor * (120 + adjustedLevel * 150);
     const heatDispersion = randomFactor * (20 + adjustedLevel);
     const projectileLifetime = 750;
