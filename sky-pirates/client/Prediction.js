@@ -89,34 +89,58 @@ function estimateEnemyPositions(dt = 0.01) {
 }
 
 function estimateProjectilePositions(dt = 0.01) {
-    projectiles.forEach((projectile, index) => {
-        // Get a unique identifier for this projectile (using index for now)
-        const projectileId = `${projectile.owner}_${projectile.x}_${projectile.y}_${index}`;
-        
-        // Store previous biome for comparison
-        const prevBiome = projectilePreviousBiomes.get(projectileId) || 'air';
+    // Iterate backwards to safely remove elements inside the loop
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const projectile = projectiles[i];
         
         // Update position (client prediction)
         projectile.x += projectile.vx * dt;
         projectile.y += projectile.vy * dt;
+
+        // Accumulate distance traveled on client side
+        const distStep = Math.sqrt((projectile.vx * dt) ** 2 + (projectile.vy * dt) ** 2);
+        projectile.distanceTraveled = (projectile.distanceTraveled || 0) + distStep;
         
-        // Check if projectile entered water according to server data
-        const currentBiome = projectile.biome || 'air';
-        
-        // Update the stored previous biome
-        projectilePreviousBiomes.set(projectileId, currentBiome);
-    });
-    
-    // Clean up old projectile biome tracking (remove entries for projectiles that no longer exist)
-    const currentProjectileIds = new Set();
-    projectiles.forEach((projectile, index) => {
-        const projectileId = `${projectile.owner}_${projectile.x}_${projectile.y}_${index}`;
-        currentProjectileIds.add(projectileId);
-    });
-    
-    for (const [id] of projectilePreviousBiomes) {
-        if (!currentProjectileIds.has(id)) {
-            projectilePreviousBiomes.delete(id);
+        // Determine biome
+        const currentBiome = getBiomeAtPosition(projectile.x, projectile.y);
+        projectile.biome = currentBiome;
+
+        // 1. Recovery Zone Cull
+        if (currentBiome === 'recovery') {
+            projectiles.splice(i, 1);
+            continue;
+        }
+
+        // 2. Water / Flame Interaction
+        if (currentBiome === 'water') {
+            const isFlame = projectile.type === 'fire' || 
+                            projectile.type === 'fireworks_fire' ||
+                            (projectile.name && (projectile.name.includes('Fire') || projectile.name.includes('Flame')));
+            
+            if (isFlame) {
+                // Convert to seafoam
+                if (typeof spawnWaterFoamParticles === 'function') {
+                    spawnWaterFoamParticles(projectile.x, projectile.y, { vx: projectile.vx, vy: projectile.vy }, 1.0);
+                }
+                projectiles.splice(i, 1);
+                continue;
+            }
+        }
+
+        // 3. Firework Expiration (Lifetime & Range)
+        if (projectile.type === 'firework_rocket' || (projectile.name && projectile.name.includes('Firework Launcher'))) {
+             // Lifetime Check
+             const age = Date.now() - (projectile.creationTime || 0);
+             if (projectile.lifetime && age > projectile.lifetime) {
+                 projectiles.splice(i, 1);
+                 continue;
+             }
+             
+             // Range Check
+             if (projectile.maxDistance && projectile.distanceTraveled > projectile.maxDistance) {
+                 projectiles.splice(i, 1);
+                 continue;
+             }
         }
     }
 }

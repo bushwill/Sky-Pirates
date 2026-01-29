@@ -76,10 +76,17 @@ class ClientManager {
     saveClient(clientId) {
         if (!this.clients[clientId]) return;
         const filePath = path.join(CLIENTS_DIR, `${clientId}.json`);
+        const tempPath = filePath + '.tmp';
         const data = JSON.stringify(this.clients[clientId], null, 2);
         
-        fs.writeFile(filePath, data, 'utf8', (err) => {
-            if (err) console.error(`Error saving client ${clientId}:`, err);
+        fs.writeFile(tempPath, data, 'utf8', (err) => {
+            if (err) {
+                console.error(`Error saving client ${clientId} (write):`, err);
+                return;
+            }
+            fs.rename(tempPath, filePath, (err) => {
+                if (err) console.error(`Error saving client ${clientId} (rename):`, err);
+            });
         });
     }
     
@@ -91,10 +98,17 @@ class ClientManager {
         // Use normalized key for filename to ensure case consistency on disk
         const safeName = key.replace(/[^a-z0-9]/g, '_'); 
         const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
+        const tempPath = filePath + '.tmp';
         const data = JSON.stringify(account, null, 2);
         
-        fs.writeFile(filePath, data, 'utf8', (err) => {
-            if (err) console.error(`Error saving account ${account.username}:`, err);
+        fs.writeFile(tempPath, data, 'utf8', (err) => {
+            if (err) {
+                console.error(`Error saving account ${account.username} (write):`, err);
+                return;
+            }
+            fs.rename(tempPath, filePath, (err) => {
+                if (err) console.error(`Error saving account ${account.username} (rename):`, err);
+            });
         });
     }
 

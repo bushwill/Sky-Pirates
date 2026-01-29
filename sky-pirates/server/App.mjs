@@ -2817,18 +2817,24 @@ function handleCheckSession(ws, { playerId, username, password }) {
       targetPlayerId = accountPlayerId;
       accountInfo = { username: username };
   } 
-  // 2. Guest Login Attempt
+  // 2. Cookie/Guest Login Attempt (No password provided)
   else {
-      // Check if this client is actually an account but missing credentials
+      // Allow known clients (even accounts) to resume session if identifying cookie matches
       const client = clientManager.getClient(playerId);
-      if (client && client.type === 'account') {
-           // Account-linked client MUST provide password. Fail auto-login.
-           sendMessage(ws, { type: 'session_status', active: false, saveExists: false });
-           return;
-      }
       
-      // Pure guest
-      targetPlayerId = clientManager.getGameSaveIdForClient(playerId);
+      if (client && client.type === 'account') {
+            // It's a known device linked to an account. Allow auto-login.
+            targetPlayerId = clientManager.getGameSaveIdForClient(playerId);
+            
+            // Resolve display username
+            const account = clientManager.getAccount(client.accountName);
+            if (account) {
+                accountInfo = { username: account.username };
+            }
+      } else {
+            // Pure guest
+            targetPlayerId = clientManager.getGameSaveIdForClient(playerId);
+      }
   }
 
   if (!targetPlayerId) {

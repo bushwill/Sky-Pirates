@@ -2,11 +2,11 @@
   "r": 0,
   "g": 51,
   "b": 255,
-  "x": -188.13307926676725,
-  "y": -129.0282008547446,
+  "x": 5602.673897361279,
+  "y": 149.41486749484233,
   "money": 1012,
-  "biome": "recovery",
-  "selectedGun": 1,
+  "biome": "air",
+  "selectedGun": 2,
   "lastRecoveryZone": {
     "type": "recovery",
     "x1": -800,
@@ -68,19 +68,19 @@
   },
   "gun2": {
     "type": "gun",
-    "name": "Cannon Lvl 1",
-    "weight": 2.067632816675121,
-    "value": 140.9749647733037,
-    "maxHeat": 148.49362956121323,
-    "heatEfficiency": 23.025910912972936,
-    "damage": 49.34123767065629,
-    "cooldownTime": 554.5015281083279,
-    "projectileSpeed": 2960.4742602393776,
-    "projectileSize": 1.9736495068262516,
-    "maxAngle": 0.1414774446451873,
-    "heatDispersion": 16.447079223552098,
-    "projectileRange": 1500
+    "name": "Flamethrower Lvl 1",
+    "weight": 0.4537717253658738,
+    "value": 90.75434507317476,
+    "maxHeat": 199.65955916098446,
+    "heatEfficiency": 1.7243325563903202,
+    "damage": 0.952920623268335,
+    "cooldownTime": 10,
+    "projectileSpeed": 235.96129719025438,
+    "projectileSize": 0.952920623268335,
+    "maxAngle": 3.141592653589793,
+    "heatDispersion": 36.301738029269906,
+    "projectileRange": 200
   },
   "inventory": [],
-  "savedAt": 1769659691215
+  "savedAt": 1769661807569
 }
