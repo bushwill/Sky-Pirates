@@ -1493,9 +1493,9 @@ function createBullet(player, gun) {
     player.username,
     gun.projectileRange, // max distance in meters
     gun.projectileLifetime,
-    150,
-    150, // color RGB
-    150
+    200,
+    200, // color RGB
+    200
   );
 
   // Allow standard bullets to pierce once for achievement purposes?

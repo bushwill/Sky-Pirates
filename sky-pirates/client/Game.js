@@ -152,8 +152,9 @@ function draw() {
     // If MapDraw.js drawMapBackground is called, it might cover this.
     // If not signed in, we still want to show the day/night cycle if possible.
     
-    // Default fallback
-    if (typeof cycleTime === 'undefined') {
+    // Default fallback - ONLY if we don't have mapData OR valid cycle time yet
+    // This preserves the orange loading screen until the real environment is ready
+    if (!mapData || typeof cycleTime === 'undefined') {
         background(255, 155, 0); 
     }
     // Note: drawMapBackground handles clear() / background() logic usually.
@@ -165,42 +166,38 @@ function draw() {
              // We'll rely on onmessage handler in ServerMessaging.js
         }
         
-        // Always draw the dynamic background (Sky + Sun/Moon)
-        // This provides the day/night cycle even on the login screen.
-        drawMapBackground(null, 0);
-        
-        // Also draw clouds for ambience (optional, assuming 0,0 center)
-        if (typeof displayClouds === 'function') {
-             displayClouds(0, 0);
-        }
-
-        // Render the Map Terrain and Entities if we have data
-        // Simulate a camera at (0, -400) which is center recovery zone area
-        if (mapData && typeof drawMapTerrain === 'function') {
-            push();
-            // Move world relative to camera at (0, -400)
-            // Camera X = 0, Camera Y = -400
+        // Only draw the dynamic background if we have valid map data to know dimensions/context
+        // and valid time from server. Otherwise keep the orange solid color.
+        if (mapData && typeof cycleTime !== 'undefined') {
+             drawMapBackground(null, 0);
+             
+            // Also draw clouds for ambience (optional, assuming 0,0 center)
+            if (typeof displayClouds === 'function') {
+                 displayClouds(0, 0);
+            }
+    
+            // Render the Map Terrain and Entities if we have data
+            // Simulate a camera at (0, -400) which is center recovery zone area
             // Transform: translate(width/2 - camX, height/2 - camY)
-            translate(width/2 - 0, height/2 - (-400));
-            
-            // Draw Map
-            drawMapTerrain(mapData, 0, -400); // 0, -400 is the center we want to look at
-            
-            // Draw Entities relative to this transform
-            if (typeof displayEnemies === 'function') displayEnemies(0, -400);
-            if (typeof displayPlayers === 'function') displayPlayers(0, -400);
-            if (typeof displayProjectiles === 'function') displayProjectiles(0, -400);
-            if (typeof displayCrates === 'function') displayCrates(0, -400);
-
-            pop();
-        } 
-        
-        // Render the Map Terrain if we have it (unlikely before login, but possible if cached)
-        if (mapData && !drawMapTerrain) {
-            push();
-            translate(width/2, height/2); 
-            pop();
-        } 
+            if (typeof drawMapTerrain === 'function') {
+                push();
+                translate(width/2 - 0, height/2 - (-400));
+                
+                // Draw Map
+                drawMapTerrain(mapData, 0, -400); 
+                
+                // Draw Entities relative to this transform
+                if (typeof displayEnemies === 'function') displayEnemies(0, -400);
+                if (typeof displayPlayers === 'function') displayPlayers(0, -400);
+                if (typeof displayProjectiles === 'function') displayProjectiles(0, -400);
+                if (typeof displayCrates === 'function') displayCrates(0, -400);
+    
+                pop();
+            }
+        } else {
+             // Ensure background stays refreshed if not drawing map
+             background(255, 155, 0);
+        }
 
         // Calculate login menu dimensions
         let mw = Math.max(500, width * 0.45); // Reduced width
