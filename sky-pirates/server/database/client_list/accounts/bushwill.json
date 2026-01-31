@@ -1,7 +1,6 @@
 {
   "username": "bushwill",
   "password": "Guest",
-  "privileges": true,
   "gameSaveId": "1b92b122-dd7d-4786-a5dc-32169819022d",
   "created": 1769201440865,
   "achievements": {
@@ -35,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 401,
+      "progress": 423,
       "milestones": [
         {
           "unlocked": true,
@@ -58,7 +57,7 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 23,
+      "progress": 20,
       "milestones": [
         {
           "unlocked": true,
