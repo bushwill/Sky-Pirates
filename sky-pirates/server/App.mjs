@@ -67,6 +67,17 @@ let AUTO_SPAWN_FLEETS = true;
 let fleetCounter = 1;
 let lastFleetShipDestroyedAt = 0;
 
+// Day/Night Cycle
+const DAY_DURATION = 20 * 60 * 1000; // 20 minutes
+const NIGHT_DURATION = 10 * 60 * 1000; // 10 minutes
+const TOTAL_CYCLE_DURATION = DAY_DURATION + NIGHT_DURATION;
+let cycleTime = DAY_DURATION / 2; // Start at moon (mid-night) ... wait, user said "sun is appearing at its highest point... 10 minutes in"
+// User said: "days last 20 minutes, nights last 10 minutes"
+// "10 minutes in (half) is its peak" -> Day starts at 0, peaks at 10, ends at 20.
+// Night starts at 20, peaks at 25, ends at 30 (0).
+// Start at noon (peak day) for user satisfaction? Or morning?
+// Let's start at 0 (Morning) so the cycle logic is simple.
+
 // Zone-based crate spawning for even distribution
 const CRATE_ZONE_SIZE = 5000; // Each zone is 5km wide
 let crateZoneDensity = new Map(); // Track crate count per zone
@@ -420,6 +431,16 @@ function updatePlayer(player) {
   }
 
   if (player.biome === 'recovery') {
+    // Autosave on Entry
+    if (!player.hasAutoSavedInRecovery) {
+      savePlayerState(player.playerId, player);
+      if (player.clientId) {
+        clientManager.saveClient(player.clientId);
+      }
+      sendNoticeMessage(player.username, "Progress Saved", 'game');
+      player.hasAutoSavedInRecovery = true;
+    }
+
     applyRecoveryJello(player, deltaTime);
 
     const currentRecoveryZone = mapData.getRecoveryZoneAtPosition(player.x, player.y);
@@ -438,11 +459,15 @@ function updatePlayer(player) {
     if (player.inventory.length > 0 && !player.browsing) {
       player.browsing = true;
     }
-  } else if (player.browsing) {
-    player.browsing = false;
-    player.currentRecoveryZone = null;
-    player.twinRecoveryZone = null;
-    // Items remain in inventory until explicitly sold
+  } else {
+    player.hasAutoSavedInRecovery = false;
+    
+    if (player.browsing) {
+      player.browsing = false;
+      player.currentRecoveryZone = null;
+      player.twinRecoveryZone = null;
+      // Items remain in inventory until explicitly sold
+    }
   }
 
 const ACHIEVEMENT_DIST_CHECK_INTERVAL = 1000;
@@ -1468,9 +1493,9 @@ function createBullet(player, gun) {
     player.username,
     gun.projectileRange, // max distance in meters
     gun.projectileLifetime,
-    100,
-    100, // color RGB
-    100
+    150,
+    150, // color RGB
+    150
   );
 
   // Allow standard bullets to pierce once for achievement purposes?
@@ -2505,6 +2530,18 @@ wss.on('connection', (ws, request) => {
   console.log('WebSocket connection established from:', request.socket.remoteAddress, 'URL:', request.url);
   ws.currentUsername = null; // Initialize username per connection
 
+  // Send initial environment sync and map data to new connection (before login)
+  sendMessage(ws, {
+    type: 'gamestate_update',
+    time: cycleTime
+  });
+  
+  // Send map data immediately for background rendering
+  sendMessage(ws, {
+      type: 'map_data',
+      map: mapData
+  });
+
   ws.on('message', (data) => {
     const decodedMessage = msgpack.decode(data);
     handleIncomingMessage(ws, decodedMessage);
@@ -3174,7 +3211,16 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
     sendMessage(ws, { type: 'login_success', username, playerId: clientUUID, map: mapData });
 
     logPlayerJoin(username);
-    if (player.username === admin_name) {
+
+    // Check account privileges
+    if (client && client.type === 'account') {
+        const account = clientManager.getAccount(client.accountName);
+        if (account && account.privileges) {
+            player.privileges = true;
+        }
+    }
+
+    if (player.username === admin_name || player.privileges) {
       sendNoticeMessage(username, "You are the admin.", 'server');
       player.privileges = true; // Grant admin privileges
     }
@@ -3513,29 +3559,49 @@ function enemyTest(player, type = 0) {
 }
 
 function checkCommand(command, player) {
+  console.log(`[CMD] Processing command '${command}' from user '${player.username}' (Privileges: ${player.privileges})`);
   let match;
   // No Privilege Requirement
-  let players_command = /^\/players$/;
-  let parties_command = /^\/party\s(\w+)$/;
-  let align_command = /^\/align$/;
-  let privilege_command = /^\/Shluck$/;
+  let players_command = /^\/players\s*$/i;
+  let parties_command = /^\/party\s+(\w+)\s*$/i;
+  let align_command = /^\/align\s*$/i;
+  let privilege_command = /^\/Shluck\s*$/; // Case sensitive password-like
 
   // Full Privilege Requirement
-  let ep_command = /^\/ep\s(\d+(\.\d+)?)$/;
-  let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?$/;
-  let weapontest_command = /^\/weapontest\s+(\d+)(?:\s+(\d+))?$/;
-  let enemyweapontest_command = /^\/enemyweapontest\s+(\d+)$/;
-  let clearcrates_command = /^\/clearcrates$/;
-  let spawnfleet_command = /^\/spawnfleet$/;
-  let spawnfish_command = /^\/spawnfish$/;
-  let fleets_command = /^\/fleets$/;
-  let resetachievements_command = /^\/resetachievements$/;
-  let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
-  let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)$/;
-  let enemytest_command = /^\/enemytest\s+(\d+)$/;
-  let dummy_set_command = /^\/dummy set$/;
-  let dummy_remove_command = /^\/dummy remove$/;
+  let ep_command = /^\/ep\s+(\d+(\.\d+)?)\s*$/i;
+  let itemtest_command = /^\/itemtest\s+(\d+)(?:\s+(\d+))?\s*$/i;
+  let weapontest_command = /^\/weapontest\s+(\d+)(?:\s+(\d+))?\s*$/i;
+  let enemyweapontest_command = /^\/enemyweapontest\s+(\d+)\s*$/i;
+  let clearcrates_command = /^\/clearcrates\s*$/i;
+  let spawnfleet_command = /^\/spawnfleet\s*$/i;
+  let spawnfish_command = /^\/spawnfish\s*$/i;
+  let fleets_command = /^\/fleets\s*$/i;
+  let resetachievements_command = /^\/resetachievements\s*$/i;
+  let tp_command = /^\/tp\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/i;
+  let tp_other_command = /^\/tp\s+"([^"]+)"\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$/i;
+  let enemytest_command = /^\/enemytest\s+(\d+)\s*$/i;
+  let dummy_set_command = /^\/dummy set\s*$/i;
+  let dummy_remove_command = /^\/dummy remove\s*$/i;
+  let time_command = /^\/time\s+(\d+)\s*$/i;
 
+
+  match = command.match(time_command);
+  if (match) {
+    if (player.privileges) {
+        const minutes = parseInt(match[1]);
+        if (!isNaN(minutes)) {
+           // Cycle is 30 mins total (20 day + 10 night)
+           // Input is in minutes. Convert to ms.
+           const targetMs = (minutes % 30) * 60 * 1000;
+           cycleTime = targetMs;
+           console.log(`[CMD] Time set to ${minutes}m. cycleTime=${cycleTime}`);
+           sendNoticeMessage(player.username, `Time set to ${minutes}m (Cycle: ${cycleTime/60000}m)`, 'server');
+        }
+    } else {
+        console.log(`[CMD] Time command denied. Privileges: ${player.privileges}`);
+        sendNoticeMessage(player.username, "Insufficient privileges.", 'server');
+    }
+  }
 
   match = command.match(players_command);
   if (match) {
@@ -3595,11 +3661,11 @@ function checkCommand(command, player) {
   match = command.match(privilege_command);
   if (match) {
     try {
-      sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
+      console.log(`[CMD] Granting privileges to ${player.username}`);
       player.privileges = true;
+      sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
     } catch (err) {
       console.error('Error enabling privileges for', player && player.username, err);
-      // Avoid crashing the server; notify the admin if possible
       try {
         sendNoticeMessage(player.username, 'Failed to enable privileges: ' + (err && err.message), 'server');
       } catch (e) {
@@ -3924,6 +3990,9 @@ setInterval(() => {
 
 // Main Game State Broadcast (20Hz)
 setInterval(() => {
+    // Update Cycle Time
+    cycleTime = (cycleTime + 50) % TOTAL_CYCLE_DURATION;
+
     if (players.length === 0) return;
     
     // Pre-calculate Global State that doesn't change per-player
@@ -4021,6 +4090,7 @@ setInterval(() => {
 
         sendMessage(ws, {
             type: 'gamestate_update',
+            time: cycleTime, // Client uses this 0-3000000 range to calculate sun/moon pos
             players: serializedPlayers,
             messages: globalMessages,
             enemies: serializedEnemies,

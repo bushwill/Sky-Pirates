@@ -498,8 +498,23 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
     push();
     textSize(12);
     textAlign(CENTER);
-    strokeWeight(1);
-    stroke(0);
+    
+    // Bullet Stroke Logic (Stroke only during day)
+    let projectileStroke = true; // Default to stroke (Day)
+    
+    if (typeof cycleTime !== 'undefined' && typeof DAY_DURATION !== 'undefined') {
+        if (cycleTime >= DAY_DURATION) {
+             projectileStroke = false; // No stroke at night
+        }
+    }
+    
+    if (projectileStroke) {
+        strokeWeight(1);
+        stroke(0);
+    } else {
+        noStroke();
+    }
+    
     fill(projectile.r, projectile.g, projectile.b);
 
     const s = projectile.size; // size scale
@@ -2125,6 +2140,32 @@ function displayClouds(centerX, centerY) {
     const screenCenterX = windowWidth / 2;
     const screenCenterY = windowHeight / 2;
 
+    // Day/Night Cycle Cloud Appearance Logic
+    let brightnessMult = 1.0;
+    let alphaMult = 1.0;
+
+    if (typeof cycleTime !== 'undefined' && typeof DAY_DURATION !== 'undefined') {
+        const transitionTime = 60000; // 1 minute fade
+        let dayFactor = 1.0; // 1 = Day, 0 = Night
+
+        if (cycleTime >= DAY_DURATION) {
+            // Night
+            dayFactor = 0.0;
+        } else if (cycleTime < transitionTime) {
+            // Sunrise
+            dayFactor = cycleTime / transitionTime;
+        } else if (cycleTime > DAY_DURATION - transitionTime) {
+            // Sunset
+            dayFactor = (DAY_DURATION - cycleTime) / transitionTime;
+        }
+
+        // Configuration:
+        // Day: Brightness 1.0, Alpha 1.0
+        // Night: Brightness 0.2 (Dark), Alpha 0.3 (Transparent)
+        brightnessMult = lerp(0.2, 1.0, dayFactor);
+        alphaMult = lerp(0.3, 1.0, dayFactor);
+    }
+
     for (const cloud of clouds) {
         // Base distance from camera center
         let relX = cloud.x - centerX;
@@ -2152,7 +2193,13 @@ function displayClouds(centerX, centerY) {
         }
 
         noStroke();
-        fill(cloud.r, cloud.g, cloud.b, cloud.alpha);
+        // Add minimal brightness (+5) to base, then apply day/night multipliers
+        fill(
+            Math.min(255, cloud.r + 5) * brightnessMult, 
+            Math.min(255, cloud.g + 5) * brightnessMult, 
+            Math.min(255, cloud.b + 5) * brightnessMult, 
+            cloud.alpha * alphaMult
+        );
         circle(drawX, drawY, drawSize);
     }
     pop();

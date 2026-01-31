@@ -2,9 +2,9 @@
   "r": 0,
   "g": 51,
   "b": 255,
-  "x": 19886.216318343042,
-  "y": 31.77611165768523,
-  "money": 7798,
+  "x": 20397.27029748437,
+  "y": 126.09473263268679,
+  "money": 8101,
   "biome": "recovery",
   "selectedGun": 2,
   "lastRecoveryZone": {
@@ -53,33 +53,33 @@
   },
   "gun1": {
     "type": "gun",
-    "name": "Machine Gun Lvl 1",
-    "weight": 0.5026286345212077,
-    "value": 50.26286345212077,
-    "maxHeat": 115.60458593987777,
-    "heatEfficiency": 4.9257606183078355,
-    "damage": 21.110402649890723,
-    "cooldownTime": 145.7623040111502,
-    "projectileSpeed": 1538.0436216348953,
-    "projectileSize": 1.055520132494536,
-    "maxAngle": 0.3947636064239238,
-    "heatDispersion": 17.592002208242267,
-    "projectileRange": 1500
+    "name": "Flamethrower Lvl 1",
+    "weight": 0.5117427906585711,
+    "value": 102.34855813171421,
+    "maxHeat": 225.16682788977127,
+    "heatEfficiency": 1.94462260450257,
+    "damage": 1.0746598603829993,
+    "cooldownTime": 10,
+    "projectileSpeed": 266.106251142457,
+    "projectileSize": 1.0746598603829993,
+    "maxAngle": 3.141592653589793,
+    "heatDispersion": 40.939423252685685,
+    "projectileRange": 200
   },
   "gun2": {
     "type": "gun",
-    "name": "Scorpion Lvl 3",
-    "weight": 1.4974817296193041,
-    "value": 778.6904994020382,
-    "maxHeat": 144.75656719653276,
-    "heatEfficiency": 3.693788266394284,
-    "damage": 11.480693260414666,
-    "cooldownTime": 57.9026268786131,
-    "projectileSpeed": 1148.0693260414666,
-    "projectileSize": 0.4991605765397681,
-    "maxAngle": 0.13721393001916085,
-    "heatDispersion": 19.467262485050956,
-    "projectileRange": 1000
+    "name": "Firework Launcher Lvl 10",
+    "weight": 1.051904074048301,
+    "value": 1546.2989888510024,
+    "maxHeat": 100,
+    "heatEfficiency": 100,
+    "damage": 94.67136666434709,
+    "cooldownTime": 0,
+    "projectileSpeed": 420.7616296193204,
+    "projectileSize": 1.051904074048301,
+    "maxAngle": 0.0447505244240074,
+    "heatDispersion": 30.50521814740073,
+    "projectileRange": 315.57122221449026
   },
   "inventory": [
     {
@@ -128,5 +128,5 @@
       "buoyancy": 2.155114293431896
     }
   ],
-  "savedAt": 1769746170707
+  "savedAt": 1769897799188
 }
