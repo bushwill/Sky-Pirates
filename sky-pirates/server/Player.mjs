@@ -320,7 +320,8 @@ export class Player extends Plane {
       
       // Arrays
       crates: this.crates, 
-      achievements: this.achievements
+      achievements: this.achievements,
+      messages: this.messages
     };
 
     if (includePrivate) {

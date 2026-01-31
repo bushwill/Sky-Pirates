@@ -67,11 +67,17 @@ export class EnemyBoat {
     if (projectile && projectile.owner) {
         this.lastAttackerUsername = projectile.owner;
     }
+
+    let damageToDeal = projectile.damage;
+    if (projectile.fireDamage) {
+         damageToDeal += projectile.fireDamage;
+    }
+
     // Apply damage to hull
     if (typeof this.hull === 'number') {
-      this.hull -= projectile.damage;
+      this.hull -= damageToDeal;
     } else if (this.chassis && typeof this.chassis.hull === 'number') {
-      this.chassis.hull -= projectile.damage;
+      this.chassis.hull -= damageToDeal;
     }
   }
 }
@@ -85,8 +91,12 @@ function planeLabelForLevel(level) {
       return 'Navy Fighter';
     case 2:
       return 'Navy Officer';
+    case 3:
+      return 'Navy Captain';
+    case 4:
+      return 'Navy Commander';
     default:
-      return `Navy Craft L${level}`;
+      return `Navy Craft Level ${level}`;
   }
 }
 

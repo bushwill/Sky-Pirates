@@ -48,9 +48,9 @@ export function createMachineGun(level, random = true) {
     const name = "Machine Gun Lvl " + level;
     const weight = randomFactor * 0.5;
     const maxHeat = randomFactor * (100.0 + level * 15.0);
-    const heatEfficiency = randomFactor * (5.0 - level * 0.1);
-    const damage = randomFactor * (20.0 + level * 1.0);
-    const cooldownTime = randomFactor * (150 - level * 5);
+    const heatEfficiency = randomFactor * (10.0 - level * 0.2);
+    const damage = randomFactor * (24.0 + level * 1.2);
+    const cooldownTime = randomFactor * (200 - level * 6);
     const projectileSpeed = randomFactor * (1500.0 + level * 30.0);
     const projectileSize = randomFactor * (1 + level * 0.05);
     // Inverted: Starts wide (45 deg), gets narrow (18 deg at Lvl 10)
@@ -123,7 +123,9 @@ export function createFireworkLauncher(level, random = true) {
     const projectileLifetime = 750;
     const projectileRange = projectileSpeed * (projectileLifetime / 1000);
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
+    const gun = new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
+    gun.fireDamage = 2 * 1 * level; 
+    return gun;
 }
 
 export function createFlamethrower(level, random = true) {
@@ -143,7 +145,9 @@ export function createFlamethrower(level, random = true) {
     const projectileRange = 200; // Short range
     const projectileLifetime = 1000;
 
-    return new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
+    const gun = new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
+    gun.fireDamage = 5 * 1 * level; 
+    return gun;
 }
 
 export function createEnemyGun(selection, level = 1) {

@@ -108,7 +108,7 @@ function updatePlayers() {
     updatePlayer(player);
     updateHull(player);
     player.updateNavyAggro(); // Check if navy aggro has timed out
-    player.messages = player.messages.filter((msg) => millis() - msg[0] < 8000);
+    // Message cleanup moved to cleanupMessages() interval
   });
 }
 
@@ -124,7 +124,7 @@ function updateEnemies() {
     updateEnemy(enemy, players);
 
     updateHull(enemy);
-    enemy.messages = enemy.messages.filter((msg) => millis() - msg[0] < 8000);
+    // Message cleanup moved to cleanupMessages() interval
   });
 }
 
@@ -1426,7 +1426,8 @@ function createBullet(player, gun) {
       player.username,
       gun.projectileRange,
       gun.projectileLifetime,
-      255, 0, 0 // Red rocket
+      255, 0, 0, // Red rocket
+      gun.fireDamage // Pass fireDamage from gun
     );
   }
 
@@ -1451,7 +1452,8 @@ function createBullet(player, gun) {
       player.username,
       gun.projectileRange,
       gun.projectileLifetime,
-      255, 100 + Math.random() * 100, 0 // Orange-yellow variable color
+      255, 100 + Math.random() * 100, 0, // Orange-yellow variable color
+      gun.fireDamage // Pass fireDamage from gun
     );
   }
 
@@ -2371,21 +2373,20 @@ function spawnFleetBoat() {
 
   // Determine plane levels based on distance-from-spawn
   // <20k: two lvl1 planes
-  // 20k-50k: three lvl1 planes
-  // 50k-100k: three lvl1 + one lvl2
-  // 100k-150k: three lvl2 + three lvl1 (6 planes)
+  // 20k-50k: one lvl2 plane, two lvl1 planes
+  // 50k-100k: three lvl2 + one lvl3
+  // 100k-150k: three lvl3 + three lvl4 (6 planes)
   let levels = null;
   if (distance < 20000) {
     levels = [1, 1];
   } else if (distance < 50000) {
-    levels = [1, 1, 1];
+    levels = [2, 1, 1];
   } else if (distance < 100000) {
-    levels = [1, 1, 1, 2];
+    levels = [2, 2, 2, 3];
   } else if (distance < 150000) {
-    levels = [2, 2, 2, 1, 1, 1];
+    levels = [3, 3, 3, 4, 4, 4];
   } else {
-    // Beyond map range, default to a challenging fleet: three lvl2 + three lvl1
-    levels = [2, 2, 2, 1, 1, 1];
+    levels = [3, 3, 3, 4, 4, 4];
   }
 
   // Spawn its planes with the computed levels
@@ -2589,7 +2590,24 @@ function handleIncomingMessage(ws, message) {
           const includePrivate = (p.username === ws.currentUsername);
           return p.toClientData(includePrivate);
         });
-      sendMessage(ws, { type: 'player_data', players: serializedPlayers });
+
+      // Collect chat messages from ALL players (ignoring culling) to support global chat
+      const globalMessages = [];
+      players.forEach(p => {
+        if (p.messages && p.messages.length > 0) {
+            // Check if messages are recent enough (already filtered by update loop loops but double check if needed)
+            // p.messages structure: [timestamp, messageContent]
+            p.messages.forEach(msg => {
+                globalMessages.push({
+                    id: msg[0], 
+                    username: p.username, 
+                    message: msg[1]
+                });
+            });
+        }
+      });
+
+      sendMessage(ws, { type: 'player_data', players: serializedPlayers, messages: globalMessages });
       break;
     case 'get_enemies':
       const playerForEnemies = getPlayerOrRespawningPlayer(ws.currentUsername);
@@ -3880,3 +3898,150 @@ setInterval(() => {
 setInterval(() => {
   manageAutoSave();
 }, AUTOSAVE_INTERVAL);
+
+// Messages Cleanup (Interval: 1s)
+setInterval(() => {
+    const now = millis();
+    if (players.length > 0) {
+        players.forEach(p => {
+            if (p.messages && p.messages.length > 0) {
+                p.messages = p.messages.filter((msg) => now - msg[0] < 8000);
+            }
+        });
+    }
+    if (enemies.length > 0) {
+        enemies.forEach(e => {
+            if (e.messages && e.messages.length > 0) {
+                e.messages = e.messages.filter((msg) => now - msg[0] < 8000);
+            }
+        });
+    }
+}, 1000);
+
+// ========================================
+// BROADCAST LOOPS (Server Push)
+// ========================================
+
+// Main Game State Broadcast (20Hz)
+setInterval(() => {
+    if (players.length === 0) return;
+    
+    // Pre-calculate Global State that doesn't change per-player
+    // 1. Global Chat Messages
+    const globalMessages = [];
+    players.forEach(p => {
+        if (p.messages && p.messages.length > 0) {
+            p.messages.forEach(msg => {
+                globalMessages.push({
+                    id: msg[0], 
+                    username: p.username, 
+                    message: msg[1]
+                });
+            });
+        }
+    });
+
+    // 2. Serialize Shops (Static, but maybe efficient enough to do once? Or just per player in recovery?)
+    // Actually shops are global. Serialize once.
+    // const globalShops = Array.from(shops.values()).map(shop => shop.toClientData()); 
+    // Wait, user said send shops 1/sec separately. Moving shops out.
+    
+    // Broadcast to each connected client
+    playerSockets.forEach((ws, username) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        
+        const requestingPlayer = getPlayerOrRespawningPlayer(username);
+        if (!requestingPlayer) return; // Can't cull without a reference point (or send full state?)
+
+        const cullingDistance = 4000;
+        const extendedCulling = 5000; // For events/crates
+
+        // 1. Players
+        const serializedPlayers = players
+            .filter(p => {
+                if (p.username === username) return true;
+                if (requestingPlayer.party && p.party && requestingPlayer.party.name === p.party.name) return true;
+                const dist = Math.sqrt((p.x - requestingPlayer.x) ** 2 + (p.y - requestingPlayer.y) ** 2);
+                return dist <= cullingDistance;
+            })
+            .map(p => {
+                const includePrivate = (p.username === username);
+                return p.toClientData(includePrivate);
+            });
+
+        // 2. Enemies
+        const filteredEnemies = filterEntitiesInRange(enemies, requestingPlayer);
+        const serializedEnemies = filteredEnemies.map(enemy => {
+            if (enemy.toClientData) return enemy.toClientData();
+            return {
+                type: enemy.type,
+                username: enemy.username,
+                faction: enemy.faction,
+                x: +enemy.x.toFixed(2),
+                y: +enemy.y.toFixed(2),
+                angle: +enemy.angle.toFixed(3),
+                vx: +enemy.vx.toFixed(2),
+                vy: +enemy.vy.toFixed(2),
+                r: enemy.r, g: enemy.g, b: enemy.b,
+                size: enemy.size,
+                hull: enemy.hull ?? enemy.chassis?.hull ?? 0,
+                maxHull: enemy.maxHull ?? enemy.chassis?.maxHull ?? 1
+            };
+        });
+
+        // 3. Animals
+        // const filteredAnimals = filterEntitiesInRange(animals, requestingPlayer);
+        // Optimization: Filter manually to avoid extra function call overhead if needed
+        const filteredAnimals = animals.filter(e => {
+             const dx = e.x - requestingPlayer.x;
+             const dy = e.y - requestingPlayer.y;
+             return (dx * dx + dy * dy) <= (cullingDistance * cullingDistance);
+        });
+
+        // 4. Projectiles
+        const filteredProjectiles = projectiles.filter(e => {
+             const dx = e.x - requestingPlayer.x;
+             const dy = e.y - requestingPlayer.y;
+             return (dx * dx + dy * dy) <= (cullingDistance * cullingDistance);
+        }).map(p => p.toClientData());
+
+        // 5. Crates (Larger Range)
+        const filteredCrates = crates.filter(e => {
+             const dx = e.x - requestingPlayer.x;
+             const dy = e.y - requestingPlayer.y;
+             return (dx * dx + dy * dy) <= (2000 * 2000);
+        }).map(c => c.toClientData());
+
+        // 6. Events (Largest Range)
+        const filteredEvents = events.filter(e => {
+             const dx = e.x - requestingPlayer.x;
+             const dy = e.y - requestingPlayer.y;
+             return (dx * dx + dy * dy) <= (extendedCulling * extendedCulling);
+        });
+
+        sendMessage(ws, {
+            type: 'gamestate_update',
+            players: serializedPlayers,
+            messages: globalMessages,
+            enemies: serializedEnemies,
+            animals: filteredAnimals,
+            projectiles: filteredProjectiles,
+            crates: filteredCrates,
+            events: filteredEvents
+        });
+    });
+
+}, 50);
+
+// Shop Update Broadcast (1Hz)
+setInterval(() => {
+    if (players.length === 0) return;
+    const shopsData = Array.from(shops.values()).map(shop => shop.toClientData());
+    
+    playerSockets.forEach((ws, username) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // Optimization: Only send if player in recovery?
+        // For now, send to all (bandwidth low for shops, they don't move)
+        sendMessage(ws, { type: 'shop_data', shops: shopsData });
+    });
+}, 1000);

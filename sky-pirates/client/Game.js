@@ -233,6 +233,8 @@ function serverSync(player = null) {
     // updateUpdates(); // Removed dynamic update rate to ensure consistent input sampling
     if (millis() - lastPlayerUpdate > playerUpdateTime) {
         sendPlayerData(player);
+        // Polling removed in favor of Server Push (gamestate_update)
+        /*
         getPlayerData();
         getEnemyData();
         getAnimalData();
@@ -240,6 +242,7 @@ function serverSync(player = null) {
         getCrateData();
         getEventData();
         getShopData();
+        */
         lastPlayerUpdate = millis();
     }
     if (millis() - lastPing > pingUpdateTime) {

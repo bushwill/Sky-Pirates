@@ -149,11 +149,26 @@ export class Plane {
     if (projectile && projectile.owner) {
         this.lastAttackerUsername = projectile.owner;
     }
+
+    let damageToDeal = projectile.damage;
+
+    // Fire Damage Logic
+    if (projectile.fireDamage) {
+        if (this.engine && typeof this.engine.heat === 'number') {
+            this.engine.heat += projectile.fireDamage;
+            if (this.engine.maxHeat && this.engine.heat > this.engine.maxHeat) {
+                this.engine.heat = this.engine.maxHeat; 
+            }
+        } else {
+            damageToDeal += projectile.fireDamage;
+        }
+    }
+
     // Apply damage to hull (supports both plane chassis.hull and direct hull property)
     if (typeof this.hull === 'number') {
-      this.hull -= projectile.damage;
+      this.hull -= damageToDeal;
     } else if (this.chassis && typeof this.chassis.hull === 'number') {
-      this.chassis.hull -= projectile.damage;
-    }
+      this.chassis.hull -= damageToDeal;
+    } // Else branch? No, probably handled elsewhere or not damageable
   }
 }

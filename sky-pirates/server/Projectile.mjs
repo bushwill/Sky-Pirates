@@ -48,9 +48,10 @@ export class Projectile {
 }
 
 export class FireworkRocket extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b, fireDamage) {
         super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'firework_rocket';
+        this.fireDamage = fireDamage;
     }
 
     onExpire() {
@@ -95,7 +96,8 @@ export class FireworkRocket extends Projectile {
                 this.owner,
                 particleRange, 
                 3000, // lifetime
-                color.r, color.g, color.b
+                color.r, color.g, color.b,
+                this.fireDamage
             ));
         }
 
@@ -123,7 +125,8 @@ export class FireworkRocket extends Projectile {
                 this.owner,
                 particleRange * 0.8, // Slightly shorter range for inner
                 3000, // lifetime
-                color.r, color.g, color.b
+                color.r, color.g, color.b,
+                this.fireDamage
             ));
         }
 
@@ -132,17 +135,19 @@ export class FireworkRocket extends Projectile {
 }
 
 export class Fire extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b, fireDamage) {
         super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'fire';
         this.damageDelay = 200; // Shorter delay for direct flamethrower
+        this.fireDamage = fireDamage;
     }
 }
 
 export class FireworksFire extends Projectile {
-    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b) {
+    constructor(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b, fireDamage) {
         super(x, y, vx, vy, angle, damage, size, owner, maxDistance, lifetime, r, g, b);
         this.type = 'fireworks_fire';
         this.damageDelay = 200;
+        this.fireDamage = fireDamage;
     }
 }

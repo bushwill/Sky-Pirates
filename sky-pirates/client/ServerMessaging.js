@@ -273,6 +273,74 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
+        case 'gamestate_update':
+            // Combined update packet
+            // 1. Players
+            if (decodedMessage.players && Array.isArray(decodedMessage.players)) {
+                 const newPlayers = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
+                 const visualState = new Map();
+                 if (players && players.length > 0) {
+                    players.forEach(p => {
+                        if (p.username && typeof p.displayX !== 'undefined') {
+                            visualState.set(p.username, { x: p.displayX, y: p.displayY });
+                        }
+                    });
+                }
+                if (typeof reconcilePlayer === 'function' && username) {
+                    const localPlayerServerState = newPlayers.find(p => p.username === username);
+                    if (localPlayerServerState) reconcilePlayer(localPlayerServerState);
+                }
+                players = newPlayers;
+                if (menuManager && menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].hasReceivedPlayerData = true;
+                }
+                players.forEach(p => {
+                    if (visualState.has(p.username)) {
+                        const state = visualState.get(p.username);
+                        p.displayX = state.x; p.displayY = state.y;
+                    } else {
+                        p.displayX = p.x; p.displayY = p.y;
+                    }
+                });
+                
+                // Messages
+                 if (decodedMessage.messages && Array.isArray(decodedMessage.messages)) {
+                    decodedMessage.messages.forEach(msg => {
+                        if (!chat_messages.find(m => m.id === msg.id)) {
+                            chat_messages.push(msg);
+                        }
+                    });
+                }
+            }
+
+            // 2. Enemies
+            if (decodedMessage.enemies && Array.isArray(decodedMessage.enemies)) {
+                enemies = decodedMessage.enemies;
+            }
+
+            // 3. Animals
+            if (decodedMessage.animals && Array.isArray(decodedMessage.animals)) {
+                animals = decodedMessage.animals;
+            }
+
+            // 4. Projectiles
+            if (decodedMessage.projectiles && Array.isArray(decodedMessage.projectiles)) {
+                projectiles = decodedMessage.projectiles;
+            }
+
+            // 5. Crates
+            if (decodedMessage.crates && Array.isArray(decodedMessage.crates)) {
+                crates = decodedMessage.crates;
+            }
+
+            // 6. Events
+            if (decodedMessage.events && Array.isArray(decodedMessage.events)) {
+                events = decodedMessage.events;
+                // Auto-clear old displayed events tracking if list is empty?
+                if (events.length === 0) displayedEventIds.clear();
+            }
+            break;
+
         case 'player_data':
             if (!decodedMessage.players || !Array.isArray(decodedMessage.players)) {
                 console.warn('Invalid players data:', decodedMessage.players);
@@ -313,10 +381,19 @@ function handleDecodedMessage(decodedMessage) {
                         p.displayY = state.y;
                     } else {
                         // Initialize for new players
-                        p.displayX = p.x;
                         p.displayY = p.y;
                     }
                 });
+
+                // Handle global chat messages
+                if (decodedMessage.messages && Array.isArray(decodedMessage.messages)) {
+                    decodedMessage.messages.forEach(msg => {
+                        if (!chat_messages.find(m => m.id === msg.id)) {
+                             // msg format from server: { id, username, message }
+                            chat_messages.push(msg);
+                        }
+                    });
+                }
             }
             break;
 
