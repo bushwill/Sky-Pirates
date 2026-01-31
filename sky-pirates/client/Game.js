@@ -45,6 +45,11 @@ let shopButtonRegion = null;
 let sellAllButtonRegion = null;
 let shopOpen = false; // Track if shop is open or closed
 
+// Day/Night Cycle (Shared with server, updated by packet)
+let cycleTime = 0; // 0 to 30 mins (in ms)
+const DAY_DURATION = 20 * 60 * 1000;
+const NIGHT_DURATION = 10 * 60 * 1000;
+
 // Chat and messaging
 let chat_messages = [];
 let notice_messages = [];
@@ -143,16 +148,59 @@ function setup() {
 }
 
 function draw() {
-    background(255, 155, 0);
+    // Determine background color based on cycle time before map draw overrides it
+    // If MapDraw.js drawMapBackground is called, it might cover this.
+    // If not signed in, we still want to show the day/night cycle if possible.
+    
+    // Default fallback
+    if (typeof cycleTime === 'undefined') {
+        background(255, 155, 0); 
+    }
+    // Note: drawMapBackground handles clear() / background() logic usually.
+
     if (!signedIn) {
-        if (connected) serverSync();
-        // If you want the actual map visible even when not signed in:
-        if (mapData) {
-            handleGameDisplay();
-            // Draw other map elements here
-        } else {
-            background(255, 155, 0);
+        if (connected) {
+             // In Game.js, serverSync() handles receive but we don't send updates if not signed in usually
+             // But we need to process incoming messages to get the time.
+             // We'll rely on onmessage handler in ServerMessaging.js
         }
+        
+        // Always draw the dynamic background (Sky + Sun/Moon)
+        // This provides the day/night cycle even on the login screen.
+        drawMapBackground(null, 0);
+        
+        // Also draw clouds for ambience (optional, assuming 0,0 center)
+        if (typeof displayClouds === 'function') {
+             displayClouds(0, 0);
+        }
+
+        // Render the Map Terrain and Entities if we have data
+        // Simulate a camera at (0, -400) which is center recovery zone area
+        if (mapData && typeof drawMapTerrain === 'function') {
+            push();
+            // Move world relative to camera at (0, -400)
+            // Camera X = 0, Camera Y = -400
+            // Transform: translate(width/2 - camX, height/2 - camY)
+            translate(width/2 - 0, height/2 - (-400));
+            
+            // Draw Map
+            drawMapTerrain(mapData, 0, -400); // 0, -400 is the center we want to look at
+            
+            // Draw Entities relative to this transform
+            if (typeof displayEnemies === 'function') displayEnemies(0, -400);
+            if (typeof displayPlayers === 'function') displayPlayers(0, -400);
+            if (typeof displayProjectiles === 'function') displayProjectiles(0, -400);
+            if (typeof displayCrates === 'function') displayCrates(0, -400);
+
+            pop();
+        } 
+        
+        // Render the Map Terrain if we have it (unlikely before login, but possible if cached)
+        if (mapData && !drawMapTerrain) {
+            push();
+            translate(width/2, height/2); 
+            pop();
+        } 
 
         // Calculate login menu dimensions
         let mw = Math.max(500, width * 0.45); // Reduced width

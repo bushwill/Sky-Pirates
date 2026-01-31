@@ -77,6 +77,30 @@ function polygonWinding(verts) {
   
     const cameraX = windowWidth / 2;
     const cameraY = windowHeight / 2;
+
+    // Ocean Color Modification at Night
+    let waterColorMod = { r: 1, g: 1, b: 1 };
+    if (typeof cycleTime !== 'undefined' && typeof DAY_DURATION !== 'undefined') {
+        if (cycleTime >= DAY_DURATION) {
+             // Less blue at night (darker/desaturated)
+             // 0.4 multiplier for blue channel specifically? Or darken overall.
+             // "become less blue at night" -> Reduce Blue channel intensity 
+             waterColorMod = { r: 0.6, g: 0.6, b: 0.4 }; 
+        } else {
+            // Transitions etc can be added here if desired, using same logic as clouds
+            // For now, binary switch for simplicity or smooth transition
+             const transitionTime = 60000;
+             let dayFactor = 1.0;
+             if (cycleTime < transitionTime) dayFactor = cycleTime / transitionTime;
+             else if (cycleTime > DAY_DURATION - transitionTime) dayFactor = (DAY_DURATION - cycleTime) / transitionTime;
+             
+             waterColorMod = { 
+                 r: lerp(0.6, 1, dayFactor), 
+                 g: lerp(0.6, 1, dayFactor), 
+                 b: lerp(0.4, 1, dayFactor) 
+             };
+        }
+    }
   
     for (const polygon of map.polygons) {
       if (typeFilter) {
@@ -86,12 +110,17 @@ function polygonWinding(verts) {
       
       // Set fill based on color, applying a 0.7 multiplier.
       if (polygon.color) {
-        fill(
-          polygon.color.r * 0.7,
-          polygon.color.g * 0.7,
-          polygon.color.b * 0.7,
-          polygon.color.t
-        );
+        let r = polygon.color.r * 0.7;
+        let g = polygon.color.g * 0.7;
+        let b = polygon.color.b * 0.7;
+        
+        if (polygon.type === 'water') {
+            r *= waterColorMod.r;
+            g *= waterColorMod.g;
+            b *= waterColorMod.b;
+        }
+
+        fill(r, g, b, polygon.color.t);
       } else {
         noFill();
       }
@@ -126,10 +155,38 @@ function polygonWinding(verts) {
     textSize(12);
     textAlign(CENTER);
     stroke(0);
+
+    // Ocean Color Modification at Night (Shared Logic)
+    let waterColorMod = { r: 1, g: 1, b: 1 };
+    if (typeof cycleTime !== 'undefined' && typeof DAY_DURATION !== 'undefined') {
+        if (cycleTime >= DAY_DURATION) {
+             waterColorMod = { r: 0.6, g: 0.6, b: 0.4 }; 
+        } else {
+             const transitionTime = 60000;
+             let dayFactor = 1.0;
+             if (cycleTime < transitionTime) dayFactor = cycleTime / transitionTime;
+             else if (cycleTime > DAY_DURATION - transitionTime) dayFactor = (DAY_DURATION - cycleTime) / transitionTime;
+             
+             waterColorMod = { 
+                 r: lerp(0.6, 1, dayFactor), 
+                 g: lerp(0.6, 1, dayFactor), 
+                 b: lerp(0.4, 1, dayFactor) 
+             };
+        }
+    }
   
     for (const polygon of map.polygons) {
       if (polygon.color) {
-        fill(polygon.color.r, polygon.color.g, polygon.color.b, polygon.color.t);
+        let r = polygon.color.r;
+        let g = polygon.color.g;
+        let b = polygon.color.b;
+
+        if (polygon.type === 'water') {
+            r *= waterColorMod.r;
+            g *= waterColorMod.g;
+            b *= waterColorMod.b;
+        }
+        fill(r, g, b, polygon.color.t);
       } else {
         noFill();
       }
@@ -184,37 +241,258 @@ function polygonWinding(verts) {
   // Draws the map background with the specified colors.
   // First draws sky with sun and clouds, then overlays the map background color
   function drawMapBackground(map, centerX = 0) {
-    // Draw sky blue background
-    background(135, 206, 235);
+    // Determine Time of Day
+    // cycleTime is 0 to (20+10)*60*1000 = 1,800,000
+    // Day: 0 to 1,200,000 (20 mins). Peak at 10 mins (600,000).
+    // Night: 1,200,000 to 1,800,000 (10 mins). Peak at 25 mins (1,500,000).
+
+    const totalDuration = DAY_DURATION + NIGHT_DURATION;
+    const isNight = cycleTime >= DAY_DURATION;
     
-    // Draw sun with parallax
-    // Range is approx -150000 to 150000
-    // When camera is at 0, sun is in center
-    // When camera is at 150000, sun moves left
-    const parallaxFactor = 0.5; // Controls how much the sun moves relative to screen width
+    // Horizon Y position (matches celestial body logic)
+    const horizonY = windowHeight * 0.6;
+    const horizonRatio = 0.6;
+
+    // Transition Config
+    const transTime = 60000; // 1 minute
+    
+    // Base Colors
+    const daySky = color(135, 206, 235);
+    const dayHorizon = color(200, 230, 255); // Whiter horizon
+    
+    const nightSky = color(20, 24, 50);
+    const nightHorizon = color(10, 12, 30); // Dark horizon
+    
+    const sunriseHorizon = color(255, 100, 50); // Orange
+    const sunsetHorizon = color(255, 60, 30); // Redder orange
+
+    let displaySky;
+    let displayHorizon;
+
+    if (isNight) {
+        // Deep Night
+        displaySky = nightSky;
+        displayHorizon = nightHorizon;
+        
+        // Sunrise/Sunset Transition within Night?
+        // Night 0-10m.
+        // Sunset Fade Out: 0-1m of night (after 20m day)
+        // Sunrise Fade In: 9-10m of night (before 0m day)
+        const timeInNight = cycleTime - DAY_DURATION;
+        if (timeInNight < transTime) {
+            // Dusk (Day fading completely)
+            const t = timeInNight / transTime;
+            displaySky = lerpColor(color(60,60,80), nightSky, t); // Fading from dusk blue
+            displayHorizon = lerpColor(sunsetHorizon, nightHorizon, t);
+        } else if (timeInNight > NIGHT_DURATION - transTime) {
+            // Dawn (Night fading to Day)
+            const t = (timeInNight - (NIGHT_DURATION - transTime)) / transTime;
+            displaySky = lerpColor(nightSky, color(60,60,80), t);
+            displayHorizon = lerpColor(nightHorizon, sunriseHorizon, t);
+        }
+
+    } else {
+        // Day
+        if (cycleTime < transTime) {
+            // Sunrise (Completion)
+            const t = cycleTime / transTime;
+            displaySky = lerpColor(color(60,60,80), daySky, t);
+            displayHorizon = lerpColor(sunriseHorizon, dayHorizon, t);
+        } else if (cycleTime > DAY_DURATION - transTime) {
+            // Sunset (Start)
+            const t = (cycleTime - (DAY_DURATION - transTime)) / transTime;
+            displaySky = lerpColor(daySky, color(60,60,80), t);
+            displayHorizon = lerpColor(dayHorizon, sunsetHorizon, t);
+        } else {
+            // Full Day
+            displaySky = daySky;
+            displayHorizon = dayHorizon;
+        }
+    }
+
+    // Draw Gradient Background
+    // Optimization: fast linear gradient using drawingContext
+    let ctx = drawingContext;
+    let gradient = ctx.createLinearGradient(0, 0, 0, windowHeight);
+    
+    // Gradient Stops:
+    // 0.0 (Top) -> Sky Color
+    // 0.6 (Horizon) -> Horizon Color
+    // 1.0 (Bottom) -> Horizon/Dark Color (Underwater depth effect)
+    
+    gradient.addColorStop(0, displaySky.toString());
+    gradient.addColorStop(horizonRatio, displayHorizon.toString());
+    
+    // Bottom: Darker version of horizon or reuse horizon?
+    // Since ocean is transparent, if we make it dark it simulates depth
+    let bottomColor = lerpColor(displayHorizon, color(0,0,20), 0.5); 
+    gradient.addColorStop(1, bottomColor.toString());
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, windowWidth, windowHeight);
+    
+    // Parallax Logic
+    const parallaxFactor = 0.5;
     const mapBounds = 150000;
-    
-    // Calculate offset (-1 to 1 based on world position)
     const normalizedPos = Math.max(-1, Math.min(1, centerX / mapBounds));
+    const parallaxOffsetX = normalizedPos * (windowWidth * parallaxFactor);
     
-    // Apply offset inverse to camera movement
-    const sunX = (windowWidth / 2) - (normalizedPos * (windowWidth * parallaxFactor));
-    const sunY = 80;
-    const sunRadius = 60;
+    // Start Logic
+    // Generate static stars if not exists
+    if (!window.staticStars) {
+        window.staticStars = [];
+        // Generate more stars near the top
+        for (let i = 0; i < 150; i++) {
+            window.staticStars.push({
+                x: Math.random() * windowWidth,
+                y: Math.random() * (windowHeight * 0.7), // mostly sky
+                size: Math.random() * 2 + 1,
+                blinkOffset: Math.random() * 100
+            });
+        }
+    }
+
+    if (isNight) {
+        // Calculate Star Opacity
+        // Full opacity during deep night, fade in/out near transition?
+        // Let's use simple opacity based on night depth
+        let starAlpha = 200;
+        
+        // Optionally fade in/out
+        const transitionTime = 60000;
+        const timeInNight = cycleTime - DAY_DURATION;
+        if (timeInNight < transitionTime) { // Dawn of night? (Dusk)
+            starAlpha = lerp(0, 200, timeInNight / transitionTime);
+        } else if (timeInNight > NIGHT_DURATION - transitionTime) { // Dawn
+             starAlpha = lerp(200, 0, (timeInNight - (NIGHT_DURATION - transitionTime)) / transitionTime);
+        }
+        
+        push();
+        noStroke();
+        fill(255, 255, 255, starAlpha);
+        
+        for (const star of window.staticStars) {
+             // Simple twinkling
+             const flicker = Math.sin((millis() / 500) + star.blinkOffset) * 50; 
+             fill(255, 255, 255, starAlpha + flicker);
+             
+             // Parallax for stars (slower than celestial body)
+             // Star X needs to wrap or cover screen
+             // Simplified: Just draw relative to screen + slight offset
+             // stars are "infinite distance" so they shouldn't move much with X, but mapBounds logic suggests camera moves
+             // If camera moves left (centerX decreases), stars should move right slightly? or stay fixed?
+             // Usually fixed relative to screen for simple 2D, or slight parallax.
+             // Let's do slight parallax. 
+             let drawX = (star.x - (parallaxOffsetX * 0.1)) % windowWidth;
+             if (drawX < 0) drawX += windowWidth;
+             
+             circle(drawX, star.y, star.size);
+        }
+        pop();
+    }
     
-    // Sun glow (outer layers)
-    noStroke();
-    fill(255, 255, 200, 80);
-    circle(sunX, sunY, sunRadius * 2.5);
-    fill(255, 255, 150, 120);
-    circle(sunX, sunY, sunRadius * 1.8);
+    // Draw Celestial Body (Sun or Moon)
+    let bodyX = (windowWidth / 2) - parallaxOffsetX;
+    let bodyY;
     
-    // Sun core
-    fill(255, 255, 100);
-    circle(sunX, sunY, sunRadius);
+    // Peak height for celestial bodies
+    const peakY = windowHeight * 0.1; // Highest point near top of screen
     
-    // DON'T call background() again or it will erase everything
-    // The map background color would overwrite the sky/sun/clouds
-    // Instead, the sky blue IS our background
+    if (!isNight) {
+        // Sun Cycle
+        const timeInData = cycleTime;
+        const sunProgress = timeInData / DAY_DURATION; // 0 to 1
+        // Sine wave: 0 (horizon) -> 1 (peak) -> 0 (horizon)
+        const heightFactor = Math.sin(sunProgress * Math.PI); 
+        
+        // Map height factor to Y position (Interpolate between Horizon and Peak)
+        bodyY = horizonY - (heightFactor * (horizonY - peakY));
+        
+        // Transparency Fade: 0 to 1 based on height (fades out near horizon)
+        // Starts fading below 20% height
+        let fadeAlpha = 1;
+        if (heightFactor < 0.2) {
+            fadeAlpha = heightFactor / 0.2;
+        }
+        
+        // Draw Sun
+        const sunRadius = 60;
+        noStroke();
+        fill(255, 255, 200, 80 * fadeAlpha);
+        circle(bodyX, bodyY, sunRadius * 2.5);
+        fill(255, 255, 150, 120 * fadeAlpha);
+        circle(bodyX, bodyY, sunRadius * 1.8);
+        fill(255, 255, 100, 255 * fadeAlpha);
+        circle(bodyX, bodyY, sunRadius);
+
+    } else {
+        // Moon Cycle
+        const timeInNight = cycleTime - DAY_DURATION;
+        const moonProgress = timeInNight / NIGHT_DURATION; // 0 to 1
+        const heightFactor = Math.sin(moonProgress * Math.PI);
+        
+        bodyY = horizonY - (heightFactor * (horizonY - peakY));
+        
+        let fadeAlpha = 1;
+        if (heightFactor < 0.2) {
+            fadeAlpha = heightFactor / 0.2;
+        }
+        
+        // Draw Moon
+        const moonRadius = 50;
+        noStroke();
+        fill(200, 200, 255, 50 * fadeAlpha); // Glow
+        circle(bodyX, bodyY, moonRadius * 2.2);
+        fill(240, 240, 255, 255 * fadeAlpha); // Main body
+        circle(bodyX, bodyY, moonRadius);
+        
+        // Craters
+        fill(200, 200, 230, 255 * fadeAlpha);
+        circle(bodyX - 10, bodyY - 5, 15);
+        circle(bodyX + 15, bodyY + 10, 10);
+        circle(bodyX + 5, bodyY - 15, 8);
+    }
   }
+
+  // Standalone helper to draw the map from a specific camera center
+  function drawMapTerrain(map, centerX, centerY) {
+      if (!map) return;
+      preparePolygonsForDrawing(map, centerX, centerY);
+      drawMapPolygonsSides(map);
+      drawMapPolygonsFronts(map);
+      
+      // Draw biome text
+      drawBiomeText(map, centerX, centerY);
+  }
+
+// Biome name drawing helper
+function drawBiomeText(map, centerX, centerY) {
+    if (!map.biomes) return;
+    
+    textAlign(CENTER);
+    textSize(24);
+    fill(0);
+    noStroke();
+    
+    const cameraX = windowWidth / 2;
+    const cameraY = windowHeight / 2;
+
+    for (const biome of map.biomes) {
+        if (!biome.name) continue;
+        
+        // Approximate center of biome
+        const bx = (biome.x1 + biome.x2) / 2;
+        const by = (biome.y1 + biome.y2) / 2;
+        
+        // Screen position
+        const screenX = cameraX + (bx - centerX);
+        const screenY = cameraY + (by - centerY);
+        
+        // Only draw if on screen
+        if (screenX > -100 && screenX < windowWidth + 100 && 
+            screenY > -100 && screenY < windowHeight + 100) {
+            text(biome.name, screenX, screenY);
+        }
+    }
+}
   

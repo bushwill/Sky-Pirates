@@ -5,6 +5,11 @@ let lastLogin = null;
 let maxReconnectAttempts = 10;
 let serverTimeOffset = 0; // Difference between server time and client time
 
+// Global cycle variables
+window.cycleTime = 0;
+window.DAY_DURATION = 20 * 60 * 1000;
+window.NIGHT_DURATION = 10 * 60 * 1000;
+
 function connectWebSocket() {
     if (connected) return;
 
@@ -227,6 +232,15 @@ function handleDecodedMessage(decodedMessage) {
             recovery = mapData.biomes.find(biome => biome.type === "recovery")
             break;
 
+        case 'map_data':
+            if (decodedMessage.map) {
+                mapData = decodedMessage.map;
+                // Also assign to global 'map' specific for polygon logic if needed
+                // Assuming 'map' variable is used somewhere else or MapDraw handles it
+                map = decodedMessage.map;
+            }
+            break;
+
         case 'login_success':
             signedIn = true;
             signedInTime = millis();
@@ -275,6 +289,11 @@ function handleDecodedMessage(decodedMessage) {
 
         case 'gamestate_update':
             // Combined update packet
+            // 0. Time
+            if (decodedMessage.time !== undefined) {
+                cycleTime = decodedMessage.time; 
+            }
+
             // 1. Players
             if (decodedMessage.players && Array.isArray(decodedMessage.players)) {
                  const newPlayers = decodedMessage.players.filter(p => p && p.username && p.username.trim() !== "");
