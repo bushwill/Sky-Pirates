@@ -120,7 +120,7 @@ export function createFireworkLauncher(level, random = true) {
     const maxAngle = randomFactor * Math.max(0.01, Math.PI / 12 - (level - 1) * Math.PI / 160);
     const value = randomFactor * (120 + adjustedLevel * 150);
     const heatDispersion = randomFactor * (20 + adjustedLevel);
-    const projectileLifetime = 750;
+    const projectileLifetime = 1500;
     const projectileRange = projectileSpeed * (projectileLifetime / 1000);
 
     const gun = new Gun(name, weight, maxHeat, heatEfficiency, damage, cooldownTime, projectileSpeed, projectileSize, maxAngle, value, heatDispersion, projectileRange, projectileLifetime);
