@@ -1,0 +1,36 @@
+{
+  "type": "account",
+  "accountName": "bushwill",
+  "gameSaveId": "57f37ab8-a606-4224-aa3d-78ca03ecb24e",
+  "created": 1769892570061,
+  "lastSeen": 1769897463974,
+  "achievements": {
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 214,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    }
+  }
+}
