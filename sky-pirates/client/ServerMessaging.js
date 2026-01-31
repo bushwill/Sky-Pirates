@@ -7,8 +7,8 @@ let serverTimeOffset = 0; // Difference between server time and client time
 
 // Global cycle variables
 window.cycleTime = 0;
-window.DAY_DURATION = 20 * 60 * 1000;
-window.NIGHT_DURATION = 10 * 60 * 1000;
+window.DAY_DURATION = 16 * 60 * 1000;
+window.NIGHT_DURATION = 8 * 60 * 1000;
 
 function connectWebSocket() {
     if (connected) return;
@@ -292,6 +292,12 @@ function handleDecodedMessage(decodedMessage) {
             // 0. Time
             if (decodedMessage.time !== undefined) {
                 cycleTime = decodedMessage.time; 
+            }
+            if (decodedMessage.dayDuration !== undefined) {
+                window.DAY_DURATION = decodedMessage.dayDuration;
+            }
+            if (decodedMessage.nightDuration !== undefined) {
+                window.NIGHT_DURATION = decodedMessage.nightDuration;
             }
 
             // 1. Players

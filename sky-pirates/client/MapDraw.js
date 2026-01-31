@@ -242,9 +242,9 @@ function polygonWinding(verts) {
   // First draws sky with sun and clouds, then overlays the map background color
   function drawMapBackground(map, centerX = 0) {
     // Determine Time of Day
-    // cycleTime is 0 to (20+10)*60*1000 = 1,800,000
-    // Day: 0 to 1,200,000 (20 mins). Peak at 10 mins (600,000).
-    // Night: 1,200,000 to 1,800,000 (10 mins). Peak at 25 mins (1,500,000).
+    // cycleTime is 0 to (16+8)*60*1000 = 1,440,000
+    // Day: 0 to 960,000 (16 mins). Peak at 8 mins (480,000).
+    // Night: 960,000 to 1,440,000 (8 mins). Peak at 20 mins (1,200,000).
 
     const totalDuration = DAY_DURATION + NIGHT_DURATION;
     const isNight = cycleTime >= DAY_DURATION;
