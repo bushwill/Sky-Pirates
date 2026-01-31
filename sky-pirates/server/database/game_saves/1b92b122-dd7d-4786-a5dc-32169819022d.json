@@ -2,9 +2,9 @@
   "r": 0,
   "g": 51,
   "b": 255,
-  "x": 20000,
-  "y": 0,
-  "money": 15109,
+  "x": 20002.88456955002,
+  "y": -198.5671235731943,
+  "money": 15775,
   "biome": "recovery",
   "selectedGun": 1,
   "lastRecoveryZone": {
@@ -19,13 +19,13 @@
   "pacifist": true,
   "chassis": {
     "type": "chassis",
-    "name": "Kamen Standard Chassis Lvl 3",
-    "weight": 4.224996080791352,
-    "value": 739.3743141384866,
-    "topSpeed": 422.4996080791352,
-    "maxHull": 179.56233343363246,
-    "heatDispersion": 21.124980403956762,
-    "buoyancy": 1.056249020197838
+    "name": "Core Standard Chassis Lvl 3",
+    "weight": 1.5756827043649746,
+    "value": 491.8942347883248,
+    "topSpeed": 290.21759852511167,
+    "maxHull": 147.56827043649744,
+    "heatDispersion": 24.59471173941624,
+    "buoyancy": 1.9675769391532993
   },
   "engine": {
     "type": "engine",
@@ -81,6 +81,17 @@
     "heatDispersion": 19.467262485050956,
     "projectileRange": 1000
   },
-  "inventory": [],
-  "savedAt": 1769895520844
+  "inventory": [
+    {
+      "type": "chassis",
+      "name": "Kamen Standard Chassis Lvl 3",
+      "weight": 4.224996080791352,
+      "value": 739.3743141384866,
+      "topSpeed": 422.4996080791352,
+      "maxHull": 179.56233343363246,
+      "heatDispersion": 21.124980403956762,
+      "buoyancy": 1.056249020197838
+    }
+  ],
+  "savedAt": 1769900760917
 }

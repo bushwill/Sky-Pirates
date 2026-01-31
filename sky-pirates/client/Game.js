@@ -47,8 +47,8 @@ let shopOpen = false; // Track if shop is open or closed
 
 // Day/Night Cycle (Shared with server, updated by packet)
 let cycleTime = 0; // 0 to 30 mins (in ms)
-const DAY_DURATION = 20 * 60 * 1000;
-const NIGHT_DURATION = 10 * 60 * 1000;
+const DAY_DURATION = 16 * 60 * 1000;
+const NIGHT_DURATION = 8 * 60 * 1000;
 
 // Chat and messaging
 let chat_messages = [];

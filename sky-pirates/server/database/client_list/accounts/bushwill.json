@@ -34,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 423,
+      "progress": 429,
       "milestones": [
         {
           "unlocked": true,
@@ -57,7 +57,7 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 20,
+      "progress": 25,
       "milestones": [
         {
           "unlocked": true,
@@ -177,5 +177,6 @@
       "progress": 1,
       "milestones": []
     }
-  }
+  },
+  "privileges": true
 }

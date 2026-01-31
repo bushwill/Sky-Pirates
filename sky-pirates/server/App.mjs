@@ -68,15 +68,11 @@ let fleetCounter = 1;
 let lastFleetShipDestroyedAt = 0;
 
 // Day/Night Cycle
-const DAY_DURATION = 20 * 60 * 1000; // 20 minutes
-const NIGHT_DURATION = 10 * 60 * 1000; // 10 minutes
+const DAY_DURATION = 16 * 60 * 1000; // 16 minutes
+const NIGHT_DURATION = 8 * 60 * 1000; // 8 minutes
 const TOTAL_CYCLE_DURATION = DAY_DURATION + NIGHT_DURATION;
-let cycleTime = DAY_DURATION / 2; // Start at moon (mid-night) ... wait, user said "sun is appearing at its highest point... 10 minutes in"
-// User said: "days last 20 minutes, nights last 10 minutes"
-// "10 minutes in (half) is its peak" -> Day starts at 0, peaks at 10, ends at 20.
-// Night starts at 20, peaks at 25, ends at 30 (0).
-// Start at noon (peak day) for user satisfaction? Or morning?
-// Let's start at 0 (Morning) so the cycle logic is simple.
+let cycleTime = 0; // Start at morning (beginning of day)
+
 
 // Zone-based crate spawning for even distribution
 const CRATE_ZONE_SIZE = 5000; // Each zone is 5km wide
@@ -431,7 +427,36 @@ function updatePlayer(player) {
   }
 
   if (player.biome === 'recovery') {
-    // Autosave on Entry
+    // 1. Auto-Open Crates
+    if (player.crates.length > 0) {
+      const cratesToOpen = [...player.crates];
+      let moneyGained = 0;
+      let itemsGained = 0;
+
+      cratesToOpen.forEach(crate => {
+        if (crate.type === 'money') {
+             moneyGained += parseInt(crate.cargo, 10);
+        } else {
+             itemsGained++;
+        }
+        
+        handleCrateCollection(crate, player, true); // Batch mode = true
+      });
+
+      // Cleanup global crates list
+      crates = crates.filter(c => !c.removedFromWorld);
+      
+      // Notify player
+      if (moneyGained > 0 && itemsGained > 0) {
+          sendNoticeMessage(player.username, `Secured ${moneyGained} coins and ${itemsGained} items!`, 'pickup');
+      } else if (moneyGained > 0) {
+          sendNoticeMessage(player.username, `Secured ${moneyGained} coins!`, 'pickup');
+      } else if (itemsGained > 0) {
+          sendNoticeMessage(player.username, `Secured ${itemsGained} items!`, 'pickup');
+      }
+    }
+
+    // 2. Autosave on Entry (after crates are processed)
     if (!player.hasAutoSavedInRecovery) {
       savePlayerState(player.playerId, player);
       if (player.clientId) {
@@ -1015,6 +1040,23 @@ function applyCrateRepulsion(crate, allCrates, deltaTime) {
   });
 }
 
+// Helper for consistency in crate opening
+function handleCrateCollection(crate, player, batchMode = false) {
+  crate.open(player);
+  crate.removedFromWorld = true;
+
+  // In batch mode, we don't send individual messages or filter immediately
+  if (!batchMode) {
+    if (crate.type === 'money') {
+      sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
+    } else if (crate.type === 'component' || crate.type === 'weapon') {
+      sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
+    }
+    // Immediate cleanup for single crate
+    crates = crates.filter((c) => c !== crate);
+  }
+}
+
 function updateCrate(crate) {
   if (!crate.type) {
     crate.removedFromWorld = true;
@@ -1034,14 +1076,7 @@ function updateCrate(crate) {
     }
 
     if (player && mapData.getBiomeAtPosition(crate.x, crate.y) === 'recovery') {
-      crate.open(player);
-      if (crate.type === 'money') {
-        sendNoticeMessage(player.username, `+$${crate.cargo}!`, 'pickup');
-      } else if (crate.type === 'component' || crate.type === 'weapon') {
-        sendNoticeMessage(player.username, `Picked up ${crate.cargo.name}`, 'pickup');
-      }
-      crate.removedFromWorld = true;
-      crates = crates.filter((c) => c !== crate);
+      handleCrateCollection(crate, player, false);
       return;
     }
 
@@ -1498,12 +1533,6 @@ function createBullet(player, gun) {
     200
   );
 
-  // Allow standard bullets to pierce once for achievement purposes?
-  // Or just set it to 1 to allow for the "Two Birds" achievement which requires 1 pierce.
-  // Actually, let's just make all standard bullets have piercing = 1 (can hit 2 targets) for now, 
-  // or maybe only updates if I had a specific weapon. 
-  // User asked to implement "Two birds one stone... shoot two midair fish with one projectile".
-  // This implies the mechanics MUST support it.
   proj.piercing = 1; 
 
   return proj;
@@ -2533,7 +2562,9 @@ wss.on('connection', (ws, request) => {
   // Send initial environment sync and map data to new connection (before login)
   sendMessage(ws, {
     type: 'gamestate_update',
-    time: cycleTime
+    time: cycleTime,
+    dayDuration: DAY_DURATION,
+    nightDuration: NIGHT_DURATION
   });
   
   // Send map data immediately for background rendering
@@ -3220,9 +3251,8 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
         }
     }
 
-    if (player.username === admin_name || player.privileges) {
+    if (player.privileges) {
       sendNoticeMessage(username, "You are the admin.", 'server');
-      player.privileges = true; // Grant admin privileges
     }
   } else {
     // Username already exists. Allow update if this message comes from the same socket that owns the player
@@ -3588,14 +3618,30 @@ function checkCommand(command, player) {
   match = command.match(time_command);
   if (match) {
     if (player.privileges) {
-        const minutes = parseInt(match[1]);
-        if (!isNaN(minutes)) {
-           // Cycle is 30 mins total (20 day + 10 night)
-           // Input is in minutes. Convert to ms.
-           const targetMs = (minutes % 30) * 60 * 1000;
+        const inputVal = parseInt(match[1]);
+        if (!isNaN(inputVal)) {
+           // Input is 0-200. 
+           // 0-100 maps to DAY_DURATION.
+           // 100-200 maps to NIGHT_DURATION.
+           
+           let targetMs = 0;
+           
+           if (inputVal <= 100) {
+               // Day Phase (0 to DAY_DURATION)
+               const ratio = inputVal / 100;
+               targetMs = ratio * DAY_DURATION;
+           } else {
+               // Night Phase (DAY_DURATION to TOTAL_CYCLE_DURATION)
+               const ratio = (inputVal - 100) / 100;
+               targetMs = DAY_DURATION + (ratio * NIGHT_DURATION);
+           }
+           
+           // Clamp to safely handle 200+ or <0 if regex allowed it
+           targetMs = targetMs % TOTAL_CYCLE_DURATION;
            cycleTime = targetMs;
-           console.log(`[CMD] Time set to ${minutes}m. cycleTime=${cycleTime}`);
-           sendNoticeMessage(player.username, `Time set to ${minutes}m (Cycle: ${cycleTime/60000}m)`, 'server');
+           
+           console.log(`[CMD] Time set to ${inputVal} (mapped to ${cycleTime}ms).`);
+           sendNoticeMessage(player.username, `Time set to ${inputVal}`, 'server');
         }
     } else {
         console.log(`[CMD] Time command denied. Privileges: ${player.privileges}`);
@@ -3663,7 +3709,20 @@ function checkCommand(command, player) {
     try {
       console.log(`[CMD] Granting privileges to ${player.username}`);
       player.privileges = true;
-      sendNoticeMessage(player.username, "Command privileges enabled.", 'server');
+      sendNoticeMessage(player.username, "Command privileges enabled for this session.", 'server');
+
+      // Persistence Logic: If logged in, save to account
+      if (player.clientId) {
+          const client = clientManager.getClient(player.clientId);
+          if (client && client.type === 'account' && client.accountName) {
+              const account = clientManager.getAccount(client.accountName);
+              if (account) {
+                  account.privileges = true;
+                  clientManager.saveAccount(client.accountName);
+                  sendNoticeMessage(player.username, "Privileges permanently saved to account.", 'server');
+              }
+          }
+      }
     } catch (err) {
       console.error('Error enabling privileges for', player && player.username, err);
       try {
