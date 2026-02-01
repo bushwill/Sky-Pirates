@@ -289,8 +289,22 @@ function updateMobileControls() {
 }
 
 function touchStarted() {
-    if ((menuVisible || !signedIn) && menuManager && menuManager.current && menuManager.current.touchStarted) {
-        menuManager.current.touchStarted();
+    // Handle Menu Interactions
+    if ((menuVisible || !signedIn) && menuManager && menuManager.current) {
+        if (menuManager.current.touchStarted) {
+            menuManager.current.touchStarted();
+        }
+        
+        // Treat tap as mouse press for menu buttons
+        if (menuManager.current.mousePressed && typeof touches !== 'undefined' && touches.length > 0) {
+            let mw = Math.max(500, width * 0.45);
+            let mh = height * 0.8;
+            let mx = (width - mw) / 2;
+            let my = (height - mh) / 2;
+            menuManager.current.mousePressed(touches[0].x, touches[0].y, mx, my, mw, mh);
+        }
+        
+        return false;
     }
     
     if (typeof isMobile !== 'undefined' && isMobile && signedIn && !menuVisible) {
