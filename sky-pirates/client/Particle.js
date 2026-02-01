@@ -224,9 +224,19 @@ class Particle {
         const screenX = this.x - cameraX;
         const screenY = this.y - cameraY;
         
-        // Optimization: Don't draw if off-screen (basic culling)
-        if (screenX < -50 || screenX > windowWidth + 50 || 
-            screenY < -50 || screenY > windowHeight + 50) return;
+        // Get scale to adjust culling bounds
+        const s = (typeof getGameScale === 'function') ? getGameScale() : 1.0;
+        const margin = 50 + this.size; 
+        
+        // Calculate visible bounds in the unscaled drawing coordinate system
+        const cx = windowWidth / 2;
+        const cy = windowHeight / 2;
+        const visibleHalfW = (windowWidth / 2) / s;
+        const visibleHalfH = (windowHeight / 2) / s;
+        
+        // Optimization: Don't draw if off-screen (scaled culling)
+        if (screenX < cx - visibleHalfW - margin || screenX > cx + visibleHalfW + margin || 
+            screenY < cy - visibleHalfH - margin || screenY > cy + visibleHalfH + margin) return;
 
         // Low Quality: Optimized rendering
         if (lowQuality) {

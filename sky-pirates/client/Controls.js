@@ -208,6 +208,8 @@ function mouseWheel(event) {
 
 /* Mobile Controls Configuration */
 // Configurations are now functions to allow dynamic screen resizing
+let mobileButtonTimers = {};
+
 function getMobileButtons() {
     // Ensure spacing is at least diameter + padding (40*2 + 10 = 90)
     // Use a larger percentage of screen or a hard floor
@@ -215,17 +217,36 @@ function getMobileButtons() {
     const startX = 140; // Moved right from 100
     const startY = height - 80; // Moved down from height-100
     
+    // Check for narrow screen overlap (stack right buttons if needed)
+    const stackRightButtons = width < 550;
+
+    let rightButtons = [];
+    if (stackRightButtons) {
+        // Stack vertically on right edge
+        let rX = width - 50;
+        let rStartY = height - 120;
+        let rGap = 70;
+        rightButtons = [
+             { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
+             { label: 'R', key: 'r', x: rX, y: rStartY, r: 35 },
+             { label: 'F', key: 'f', x: rX, y: rStartY - rGap * 1, r: 35 },
+             { label: 'C', key: 'c', x: rX, y: rStartY - rGap * 2, r: 35 }
+        ];
+    } else {
+        rightButtons = [
+            { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
+            { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 }, 
+            { label: 'F', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
+            { label: 'C', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
+        ];
+    }
+
     return [
         { label: 'W', key: 'w', x: startX, y: startY - spacing, r: 40 },
-        { label: 'A', key: 'a', x: startX - spacing, y: startY, r: 40 }, // Increased horizontal spacing
+        { label: 'A', key: 'a', x: startX - spacing, y: startY, r: 40 }, 
         { label: 'S', key: 's', x: startX, y: startY, r: 40 },
-        { label: 'D', key: 'd', x: startX + spacing, y: startY, r: 40 }, // Increased horizontal spacing
-        
-        // Right side actions
-        { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
-        { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 }, // Adjusted Y to clear overlapping
-        { label: 'F', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
-        { label: 'C', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
+        { label: 'D', key: 'd', x: startX + spacing, y: startY, r: 40 }, 
+        ...rightButtons
     ];
 }
 
@@ -359,12 +380,35 @@ function updateMobileControls() {
             let tx = touches[i].x;
             let ty = touches[i].y;
             
+            // Find best button for this touch (prevent one touch hitting multiple)
+            let bestBtn = null;
+            let minD = Infinity;
+
             for (let btn of buttons) {
                 let bx = btn.x;
                 let by = btn.y;
-                if (dist(tx, ty, bx, by) < btn.r * 1.5) { 
-                    keys[btn.key] = true;
+                let d = dist(tx, ty, bx, by);
+                if (d < btn.r * 1.5) { 
+                    if (d < minD) {
+                        minD = d;
+                        bestBtn = btn;
+                    }
                 }
+            }
+            
+            if (bestBtn) {
+                keys[bestBtn.key] = true;
+                mobileButtonTimers[bestBtn.key] = millis();
+            }
+        }
+    }
+
+    // Apply latching (minimum hold time) to prevent dropped inputs on fast taps
+    const LATCH_MS = 100; // 100ms sticky
+    for (let btn of buttons) {
+        if (!keys[btn.key]) { // If not currently held by a touch
+            if (mobileButtonTimers[btn.key] && (millis() - mobileButtonTimers[btn.key] < LATCH_MS)) {
+                keys[btn.key] = true;
             }
         }
     }

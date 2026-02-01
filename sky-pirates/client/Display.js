@@ -2,11 +2,33 @@
 window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: ..., index: ... }
 window.mobileActionButtons = []; // Array of click regions for action buttons
 
+function getGameScale() {
+    return (typeof isMobile !== 'undefined' && isMobile) ? 0.65 : 1.0;
+}
+
+function getVisibleScreenBounds() {
+    const s = getGameScale();
+    const w = windowWidth;
+    const h = windowHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    
+    // Inverse transform of: screen = (world - cx) * s + cx
+    // world = (screen - cx) / s + cx
+    return {
+        minX: (0 - cx) / s + cx,
+        maxX: (w - cx) / s + cx,
+        minY: (0 - cy) / s + cy,
+        maxY: (h - cy) / s + cy
+    };
+}
+
 // Helper to check if a position is on screen
 function isOnScreen(drawX, drawY, margin = 0) {
+    const bounds = getVisibleScreenBounds();
     return (
-        drawX >= -margin && drawX <= windowWidth + margin &&
-        drawY >= -margin && drawY <= windowHeight + margin
+        drawX >= bounds.minX - margin && drawX <= bounds.maxX + margin &&
+        drawY >= bounds.minY - margin && drawY <= bounds.maxY + margin
     );
 }
 
@@ -17,11 +39,12 @@ function calculateScreenEdgeIntersection(startX, startY, targetX, targetY, margi
     
     if (dx === 0 && dy === 0) return { x: startX, y: startY, angle: 0 };
     
-    // Screen bounds
-    const minX = margin;
-    const maxX = windowWidth - margin;
-    const minY = margin;
-    const maxY = windowHeight - margin;
+    const bounds = getVisibleScreenBounds();
+    // Screen bounds (World Coordinates)
+    const minX = bounds.minX + margin;
+    const maxX = bounds.maxX - margin;
+    const minY = bounds.minY + margin;
+    const maxY = bounds.maxY - margin;
     
     let tMin = Infinity;
     
@@ -2338,8 +2361,7 @@ function displayClouds(centerX, centerY) {
         let drawSize = cloud.size * scale;
 
         // Culling
-        if (drawX + drawSize < 0 || drawX - drawSize > windowWidth ||
-            drawY + drawSize < 0 || drawY - drawSize > windowHeight) {
+        if (!isOnScreen(drawX, drawY, drawSize)) {
             continue;
         }
 

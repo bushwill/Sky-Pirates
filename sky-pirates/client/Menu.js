@@ -1324,15 +1324,15 @@ class LoginMenuScreen extends MenuScreen {
 
         if (isNarrow) {
             // TAB BAR CLICK LOGIC
-            // Tabs: Main, Community, Stats
+            // Tabs: Main, Community, Achievements
             let tabH = 50 * s;
             if (my >= y && my <= y + tabH && mx >= x && mx <= x + w) {
-                let tabs = ['Main', 'Community', 'Stats'];
+                let tabs = ['Main', 'Community', 'Achievements'];
                 let tabW = w / tabs.length;
                 let clickedIndex = Math.floor((mx - x) / tabW);
                 if (clickedIndex >= 0 && clickedIndex < tabs.length) {
                     let clickedTabLabel = tabs[clickedIndex];
-                    let clickedTabKey = clickedTabLabel === 'Stats' ? 'achievements' : clickedTabLabel.toLowerCase();
+                    let clickedTabKey = clickedTabLabel === 'Achievements' ? 'achievements' : clickedTabLabel.toLowerCase();
                     this.activeTab = clickedTabKey;
                     
                     // Reset selected items when switching tabs
