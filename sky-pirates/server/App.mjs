@@ -2609,6 +2609,7 @@ wss.on('connection', (ws, request) => {
       playerSockets.delete(ws.currentUsername);
       sendNoticeMessageAll(ws.currentUsername + ' has disconnected', 'server');
       console.log(`Player disconnected: ${ws.currentUsername}`);
+      broadcastCommunityUpdate(); // Update community list on disconnect
     }
   });
 });
@@ -3242,6 +3243,9 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
     sendMessage(ws, { type: 'login_success', username, playerId: clientUUID, map: mapData });
 
     logPlayerJoin(username);
+    
+    // Broadcast community update when a player successfully logs in
+    broadcastCommunityUpdate();
 
     // Check account privileges
     if (client && client.type === 'account') {
@@ -4162,15 +4166,37 @@ setInterval(() => {
 
 }, 50);
 
-// Shop Update Broadcast (1Hz)
+// Low-Frequency Updates (1Hz) - Shops only
 setInterval(() => {
     if (players.length === 0) return;
+    
     const shopsData = Array.from(shops.values()).map(shop => shop.toClientData());
     
     playerSockets.forEach((ws, username) => {
         if (ws.readyState !== WebSocket.OPEN) return;
-        // Optimization: Only send if player in recovery?
-        // For now, send to all (bandwidth low for shops, they don't move)
-        sendMessage(ws, { type: 'shop_data', shops: shopsData });
+        sendMessage(ws, { 
+            type: 'low_freq_update', 
+            shops: shopsData
+            // Community list sent event-based via broadcastCommunityUpdate
+        });
     });
 }, 1000);
+
+function broadcastCommunityUpdate() {
+    // Community List (All Players)
+    const communityList = players.map(p => ({
+        username: p.username,
+        r: p.r,
+        g: p.g,
+        b: p.b
+    }));
+    
+    playerSockets.forEach((ws) => {
+         if (ws.readyState === WebSocket.OPEN) {
+             sendMessage(ws, {
+                 type: 'low_freq_update',
+                 community: communityList
+             });
+         }
+    });
+}

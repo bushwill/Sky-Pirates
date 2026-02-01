@@ -475,12 +475,12 @@ function handleDecodedMessage(decodedMessage) {
             }
             break;
 
-        case 'shop_data':
-            if (!decodedMessage.shops || !Array.isArray(decodedMessage.shops)) {
-                console.warn('Invalid shops data:', decodedMessage.shops);
-                shops = [];
-            } else {
+        case 'low_freq_update':
+            if (decodedMessage.shops && Array.isArray(decodedMessage.shops)) {
                 shops = decodedMessage.shops;
+            }
+            if (decodedMessage.community && Array.isArray(decodedMessage.community)) {
+                window.allPlayers = decodedMessage.community;
             }
             break;
 

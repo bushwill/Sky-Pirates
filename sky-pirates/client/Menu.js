@@ -966,7 +966,10 @@ class LoginMenuScreen extends MenuScreen {
         textSize(24);
         textAlign(CENTER, TOP);
         
-        let onlineCount = (typeof players !== 'undefined') ? players.length : 0;
+        // Use full server list if available, otherwise fallback to local players array
+        let communityList = (typeof window.allPlayers !== 'undefined' && window.allPlayers) ? window.allPlayers : ((typeof players !== 'undefined') ? players : []);
+        let onlineCount = communityList.length;
+
         text("Community", x + w/2, y + 25);
         textSize(16);
         fill(100);
@@ -979,15 +982,14 @@ class LoginMenuScreen extends MenuScreen {
         let listH = h - 100;
         
         // Show "Connecting..." only if we haven't received initial data yet.
-        // Once received, if players is empty, it means 0 players online.
-        if (!this.hasReceivedPlayerData && (typeof players === 'undefined' || players.length === 0)) {
+        if (!this.hasReceivedPlayerData && communityList.length === 0) {
             textSize(16);
             fill(100);
             text("Connecting...", x + w/2, listY + 50);
             return;
         }
 
-        if (typeof players !== 'undefined' && players.length === 0) {
+        if (communityList.length === 0) {
             textSize(16);
             fill(100);
             text("No pilots online.", x + w/2, listY + 50);
@@ -995,7 +997,7 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         let itemHeight = 50;
-        let totalHeight = players.length * itemHeight;
+        let totalHeight = communityList.length * itemHeight;
         
         // Scroll handling
         if (totalHeight > listH) {
@@ -1016,7 +1018,7 @@ class LoginMenuScreen extends MenuScreen {
         // Use a consistent sort order (e.g., username) to stop jitter
         // But players array order might be stable enough from server
         // Let's iterate
-        for (let p of players) {
+        for (let p of communityList) {
              // Only draw if visible
              if (currentY + itemHeight > listY && currentY < listY + listH) {
                  fill(245, 245, 245, 200);
