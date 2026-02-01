@@ -66,6 +66,31 @@ class MenuManager {
     }
     
     mousePressed(mx, my, x, y, w, h) {
+        // Handle "Outside Tap" logic for achievement dismissal
+        if (this.current && this.current.selectedAchievement) {
+            // Check if tap is outside the menu bounds OR just handled generally
+            // If the user taps exactly on the close button, that should take precedence.
+            // But if they tap effectively "space" around the menu...
+            
+            // Actually, we modified LoginMenuScreen.mousePressed to handle "outside menu" taps.
+            // But Controls.js only calls menuManager.mousePressed. 
+            // If menuManager.mousePressed returns false, Controls.js treats it as unhandled? 
+            // If menu is visible, specific logic in mousePressed (Controls.js):
+            /*
+            if (menuVisible && menuManager) {
+                // ... calc bounds ...
+                if (menuManager.mousePressed(mouseX, mouseY, mx, my, mw, mh)) {
+                    return; 
+                }
+                return; // Consumed by menu overlay
+            }
+            */
+           // So if we return false, it is just consumed.
+           // We need to ensure LoginMenuScreen.mousePressed actually gets called even if the click is outside the visual menu area?
+           // No, Controls.js passes coordinates. The implementation of LoginMenuScreen.mousePressed needs to check them.
+           // MenuManager unconditionally calls current.mousePressed.
+        }
+
         // Check Close Button first
         if (this.closeButtonRegion) {
             const btn = this.closeButtonRegion;
@@ -1396,8 +1421,23 @@ class LoginMenuScreen extends MenuScreen {
                 
                 return; 
             }
+        }
+        
+        // Handle closing selected achievement window if clicking completely outside menu
+        if (this.selectedAchievement && (mx < x || mx > x + w || my < y || my > y + h)) {
+             this.selectedAchievement = null;
+             // Do NOT return true; let other logic (like close button or controls) run?
+             // Actually, if we consumed it here, we might prevent closing the menu if the user tapped on the X?
+             // Close button check is done elsewhere (MenuManager level).
+             // Does Controls.js pass events if menuManager returns false?
+             // Controls.js passes if menuManager.mousePressed returns true.
+             // If we return true here, we claim the click.
+             return true; 
+        }
 
-            if (this.activeTab !== 'main') {
+        if (isNarrow && this.activeTab !== 'main') {
+            return;
+        }
                 return; 
             }
         }
@@ -1668,54 +1708,60 @@ class SettingsMenuScreen extends MenuScreen {
     }
 
     draw(x, y, w, h) {
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
         rectMode(CORNER);
         fill(255, 255, 255, 200);
         noStroke();
-        rect(x, y, w, h, 30);
+        rect(x, y, w, h, 30 * s);
 
         fill(0);
-        textSize(40);
+        textSize(40 * s);
         textAlign(CENTER, CENTER);
-        text("Settings", x + w / 2, y + 80);
+        text("Settings", x + w / 2, y + 80 * s);
 
         // Draw camera toggle
-        let optionY = y + 160;
-        let optionSpacing = 100;
+        let optionY = y + 160 * s;
+        let optionSpacing = 100 * s;
+        let buttonW = 300 * s;
+        let buttonH = 50 * s;
         
-        this.cameraToggle.setPosition(x + w / 2 - 150, optionY);
-        this.cameraToggle.setSize(300, 50);
+        // Ensure buttons fit within menu width
+        if (buttonW > w - 40 * s) buttonW = w - 40 * s;
+        
+        this.cameraToggle.setPosition(x + w / 2 - buttonW / 2, optionY);
+        this.cameraToggle.setSize(buttonW, buttonH);
         this.cameraToggle.draw();
         
         // Draw camera description
-        textSize(14);
+        textSize(14 * s);
         fill(100);
         textAlign(CENTER, TOP);
-        text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60);
-        text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80);
+        text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60 * s);
+        text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80 * s);
 
         // Draw screen shake toggle
         optionY += optionSpacing;
-        this.shakeToggle.setPosition(x + w / 2 - 150, optionY);
-        this.shakeToggle.setSize(300, 50);
+        this.shakeToggle.setPosition(x + w / 2 - buttonW / 2, optionY);
+        this.shakeToggle.setSize(buttonW, buttonH);
         this.shakeToggle.draw();
         
         // Draw shake description
-        textSize(14);
+        textSize(14 * s);
         fill(100);
         textAlign(CENTER, TOP);
-        text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60);
+        text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60 * s);
 
         // Draw particles toggle
         optionY += optionSpacing;
-        this.particlesToggle.setPosition(x + w / 2 - 150, optionY);
-        this.particlesToggle.setSize(300, 50);
+        this.particlesToggle.setPosition(x + w / 2 - buttonW / 2, optionY);
+        this.particlesToggle.setSize(buttonW, buttonH);
         this.particlesToggle.draw();
         
         // Draw particles description
-        textSize(14);
+        textSize(14 * s);
         fill(100);
         textAlign(CENTER, TOP);
-        text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60);
+        text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60 * s);
 
         // Only show reset progress button when not signed in
         let resetButtonIndex = 3;
@@ -1723,24 +1769,27 @@ class SettingsMenuScreen extends MenuScreen {
         if (!signedIn) {
             // Draw reset progress button
             optionY += optionSpacing;
-            this.resetProgressButton.setPosition(x + w / 2 - 150, optionY);
-            this.resetProgressButton.setSize(300, 50);
+            this.resetProgressButton.setPosition(x + w / 2 - buttonW / 2, optionY);
+            this.resetProgressButton.setSize(buttonW, buttonH);
             this.resetProgressButton.draw();
             
             // Draw reset description
-            textSize(14);
+            textSize(14 * s);
             fill(100);
             textAlign(CENTER, TOP);
-            text("Delete saved game and start fresh", x + w / 2, optionY + 60);
+            text("Delete saved game and start fresh", x + w / 2, optionY + 60 * s);
         } else {
             // If signed in, skip the reset button
             backButtonIndex = 3;
         }
 
         // Draw back button
+        let backBtnW = 200 * s;
+        if (backBtnW > w - 40 * s) backBtnW = w - 40 * s;
+
         optionY += optionSpacing;
-        this.backButton.setPosition(x + w / 2 - 100, optionY);
-        this.backButton.setSize(200, 50);
+        this.backButton.setPosition(x + w / 2 - backBtnW / 2, optionY);
+        this.backButton.setSize(backBtnW, 50 * s);
         this.backButton.draw();
     }
 

@@ -1739,11 +1739,18 @@ function displayShop(controlledPlayer) {
         return;
     }
 
-    // Shop display settings - made twice as wide, positioned on left side
+    // Shop display settings
     const s = getUIScale();
     const shopX = 20 * s; // Left side of screen
     const shopY = 100 * s; // Top of screen
-    const itemWidth = 400 * s; // Doubled from 200
+    let itemWidth = 400 * s; 
+    
+    // Responsive adjustment: if shop is too wide for screen, shrink
+    // Assuming we want some margin on right (e.g. 20*s padding)
+    if (shopX + itemWidth > windowWidth - 20 * s) {
+        itemWidth = windowWidth - shopX - 20 * s;
+    }
+
     const itemHeight = 80 * s;
     const itemSpacing = 10 * s;
     const headerHeight = 60 * s;
@@ -1808,27 +1815,27 @@ function displayShop(controlledPlayer) {
         fill(isHovering ? 70 : 50, isHovering ? 70 : 50, isHovering ? 80 : 60, 220);
         stroke(isHovering ? 255 : 180, isHovering ? 255 : 180, isHovering ? 100 : 200);
         strokeWeight(1);
-        rect(shopX, itemY, itemWidth, itemHeight, 5);
+        rect(shopX, itemY, itemWidth, itemHeight, 5 * s);
 
         // Draw component icon on the left
-        const iconX = shopX + 40;
+        const iconX = shopX + 40 * s;
         const iconY = itemY + itemHeight / 2;
-        drawItem(shopItem.component, iconX, iconY, 35);
+        drawItem(shopItem.component, iconX, iconY, 35 * s);
 
         // Component name on the right
         fill(255, 255, 255);
         noStroke();
         textAlign(LEFT, CENTER);
-        textSize(16);
+        textSize(16 * s);
         textStyle(NORMAL);
-        text(shopItem.component.name, shopX + 80, itemY + itemHeight / 2 - 10);
+        text(shopItem.component.name, shopX + 80 * s, itemY + itemHeight / 2 - 10 * s);
 
         // Price display
         const canAfford = controlledPlayer.money >= shopItem.price;
         fill(canAfford ? 100 : 255, canAfford ? 255 : 100, canAfford ? 100 : 100);
-        textSize(18);
+        textSize(18 * s);
         textStyle(BOLD);
-        text(`$${shopItem.price}`, shopX + 80, itemY + itemHeight / 2 + 15);
+        text(`$${shopItem.price}`, shopX + 80 * s, itemY + itemHeight / 2 + 15 * s);
 
         // Store clickable region
         shopRegions.push({
