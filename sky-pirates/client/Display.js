@@ -1741,19 +1741,56 @@ function displayShop(controlledPlayer) {
 
     // Shop display settings
     const s = getUIScale();
-    const shopX = 20 * s; // Left side of screen
-    const shopY = 100 * s; // Top of screen
+    let shopX = 20 * s; 
+    let shopY = 100 * s; 
     let itemWidth = 400 * s; 
     
-    // Responsive adjustment: if shop is too wide for screen, shrink
-    // Assuming we want some margin on right (e.g. 20*s padding)
+    // Responsive adjustment: Width
     if (shopX + itemWidth > windowWidth - 20 * s) {
         itemWidth = windowWidth - shopX - 20 * s;
     }
 
-    const itemHeight = 80 * s;
-    const itemSpacing = 10 * s;
-    const headerHeight = 60 * s;
+    let itemHeight = 80 * s;
+    let itemSpacing = 10 * s;
+    let headerHeight = 60 * s;
+    
+    // Responsive adjustment: Height
+    // Calculate total height needed vs available
+    const totalNeededH = headerHeight + currentShop.inventory.length * (itemHeight + itemSpacing) + 20 * s;
+    const availableH = (windowHeight || height) - shopY - 10 * s;
+    
+    if (totalNeededH > availableH) {
+         // Attempt to fit by compressing vertical space
+         // First, check if moving the shop up helps (if shopY is large)
+         if (shopY > 20 * s) {
+             // Move up to 20*s from top
+             const canMoveUp = shopY - 20 * s;
+             // Only move up what is needed
+             const deficit = totalNeededH - availableH;
+             const moveUpAmount = Math.min(canMoveUp, deficit);
+             
+             shopY -= moveUpAmount;
+         }
+         
+         // Recalculate available space after moving
+         const newAvailableH = (windowHeight || height) - shopY - 10 * s;
+         
+         if (totalNeededH > newAvailableH) {
+             // Still need to compress items
+             const contentSpace = newAvailableH - headerHeight - 20 * s; // -20 for padding
+             const spacePerItem = contentSpace / currentShop.inventory.length;
+             
+             // Apply compression
+             itemSpacing = Math.max(2 * s, spacePerItem * 0.1);
+             itemHeight = spacePerItem - itemSpacing;
+             
+             // Clamp min height to avoid breaking rendering
+             if (itemHeight < 40 * s) {
+                 itemHeight = 40 * s;
+                 // If we still overflow with min height, we will just overflow off-screen (better than unreadable)
+             }
+         }
+    }
 
     push();
     rectMode(CORNER);

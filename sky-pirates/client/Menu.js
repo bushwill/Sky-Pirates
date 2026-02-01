@@ -1341,6 +1341,13 @@ class LoginMenuScreen extends MenuScreen {
         let sideW = Math.max(200 * s, width * 0.2);
         let gap = 20 * s;
 
+        // Handle closing selected achievement window if clicking completely outside menu
+        // This must be checked first to ensure "Outside Tap" works regardless of narrow/wide layout logic
+        if (this.selectedAchievement && (mx < x || mx > x + w || my < y || my > y + h)) {
+             this.selectedAchievement = null;
+             return true; 
+        }
+
         // Check if narrow mode
         let isNarrow = false;
         if (x - gap - sideW < 0 || x + w + gap + sideW > width) {
@@ -1422,18 +1429,7 @@ class LoginMenuScreen extends MenuScreen {
                 return; 
             }
         }
-        
-        // Handle closing selected achievement window if clicking completely outside menu
-        if (this.selectedAchievement && (mx < x || mx > x + w || my < y || my > y + h)) {
-             this.selectedAchievement = null;
-             // Do NOT return true; let other logic (like close button or controls) run?
-             // Actually, if we consumed it here, we might prevent closing the menu if the user tapped on the X?
-             // Close button check is done elsewhere (MenuManager level).
-             // Does Controls.js pass events if menuManager returns false?
-             // Controls.js passes if menuManager.mousePressed returns true.
-             // If we return true here, we claim the click.
-             return true; 
-        }
+
 
         if (isNarrow && this.activeTab !== 'main') {
             return;
@@ -1716,11 +1712,29 @@ class SettingsMenuScreen extends MenuScreen {
         textAlign(CENTER, CENTER);
         text("Settings", x + w / 2, y + 80 * s);
 
-        // Draw camera toggle
-        let optionY = y + 160 * s;
+        // Responsive layout calculations
+        const optionsCount = signedIn ? 4 : 5;
+        let headerH = 160 * s;
         let optionSpacing = 100 * s;
+        let showDescriptions = true;
+        
+        // If content is too tall, compress layout
+        if (headerH + (optionsCount * optionSpacing) > h - 20 * s) {
+             // Try to fit by reducing spacing
+             let availableH = h - headerH - 20 * s;
+             optionSpacing = Math.max(50 * s, availableH / optionsCount);
+             
+             // If heavily compressed, hide descriptions to avoid overlap
+             if (optionSpacing < 80 * s) {
+                 showDescriptions = false;
+             }
+        }
+
+        // Draw camera toggle
+        let optionY = y + headerH;
         let buttonW = 300 * s;
-        let buttonH = 50 * s;
+        let buttonH = 40 * s; // Slightly smaller default height
+        if (optionSpacing < 60 * s) buttonH = 30 * s;
         
         // Ensure buttons fit within menu width
         if (buttonW > w - 40 * s) buttonW = w - 40 * s;
@@ -1730,11 +1744,13 @@ class SettingsMenuScreen extends MenuScreen {
         this.cameraToggle.draw();
         
         // Draw camera description
-        textSize(14 * s);
-        fill(100);
-        textAlign(CENTER, TOP);
-        text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60 * s);
-        text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80 * s);
+        if (showDescriptions) {
+            textSize(14 * s);
+            fill(100);
+            textAlign(CENTER, TOP);
+            text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60 * s);
+            text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80 * s);
+        }
 
         // Draw screen shake toggle
         optionY += optionSpacing;
@@ -1743,10 +1759,12 @@ class SettingsMenuScreen extends MenuScreen {
         this.shakeToggle.draw();
         
         // Draw shake description
-        textSize(14 * s);
-        fill(100);
-        textAlign(CENTER, TOP);
-        text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60 * s);
+        if (showDescriptions) {
+            textSize(14 * s);
+            fill(100);
+            textAlign(CENTER, TOP);
+            text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60 * s);
+        }
 
         // Draw particles toggle
         optionY += optionSpacing;
@@ -1755,10 +1773,12 @@ class SettingsMenuScreen extends MenuScreen {
         this.particlesToggle.draw();
         
         // Draw particles description
-        textSize(14 * s);
-        fill(100);
-        textAlign(CENTER, TOP);
-        text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60 * s);
+        if (showDescriptions) {
+            textSize(14 * s);
+            fill(100);
+            textAlign(CENTER, TOP);
+            text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60 * s);
+        }
 
         // Only show reset progress button when not signed in
         let resetButtonIndex = 3;
@@ -1771,10 +1791,12 @@ class SettingsMenuScreen extends MenuScreen {
             this.resetProgressButton.draw();
             
             // Draw reset description
-            textSize(14 * s);
-            fill(100);
-            textAlign(CENTER, TOP);
-            text("Delete saved game and start fresh", x + w / 2, optionY + 60 * s);
+            if (showDescriptions) {
+                textSize(14 * s);
+                fill(100);
+                textAlign(CENTER, TOP);
+                text("Delete saved game and start fresh", x + w / 2, optionY + 60 * s);
+            }
         } else {
             // If signed in, skip the reset button
             backButtonIndex = 3;
@@ -1786,7 +1808,7 @@ class SettingsMenuScreen extends MenuScreen {
 
         optionY += optionSpacing;
         this.backButton.setPosition(x + w / 2 - backBtnW / 2, optionY);
-        this.backButton.setSize(backBtnW, 50 * s);
+        this.backButton.setSize(backBtnW, buttonH);
         this.backButton.draw();
     }
 
