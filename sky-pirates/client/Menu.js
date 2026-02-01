@@ -15,6 +15,7 @@ class MenuManager {
         this.screens = {};
         this.current = null;
         this.colorPicker = colorPicker;
+        this.closeButtonRegion = null;
     }
 
     addScreen(name, screen) {
@@ -64,7 +65,7 @@ class MenuManager {
         }
     }
     
-    mousePressed(mx, my) {
+    mousePressed(mx, my, x, y, w, h) {
         // Check Close Button first
         if (this.closeButtonRegion) {
             const btn = this.closeButtonRegion;
@@ -73,22 +74,20 @@ class MenuManager {
             if (mx >= btn.x - padding && mx <= btn.x + btn.w + padding &&
                 my >= btn.y - padding && my <= btn.y + btn.h + padding) {
                 
-                // Close menu - directly manipulate the global variable as defined in Game.js
-                try {
-                    // Assuming menuVisible is global as seen in Game.js
-                    if (typeof menuVisible !== 'undefined') {
-                        menuVisible = false;
-                    } else if (window.menuVisible !== undefined) {
-                        window.menuVisible = false;
-                    } 
-                } catch(e) { console.error("Could not set menuVisible", e); }
-
+                // Close menu - using global helper
+                if (typeof setMenuVisible === 'function') {
+                    setMenuVisible(false);
+                } else if (typeof menuVisible !== 'undefined') {
+                    menuVisible = false;
+                } else if (window.menuVisible !== undefined) {
+                    window.menuVisible = false;
+                }
                 return true; 
             }
         }
     
         if (this.current && this.current.mousePressed) {
-            return this.current.mousePressed(mx, my);
+            return this.current.mousePressed(mx, my, x, y, w, h);
         }
         return false;
     }
@@ -648,7 +647,7 @@ class LoginMenuScreen extends MenuScreen {
 
             // Draw Tab Bar at Top
             let tabH = 50 * s;
-            let tabs = ['Main', 'Community', 'Stats'];
+            let tabs = ['Main', 'Community', 'Achievements'];
             let tabW = w / tabs.length;
             
             textAlign(CENTER, CENTER);
@@ -661,7 +660,7 @@ class LoginMenuScreen extends MenuScreen {
                 let tx = x + i * tabW;
                 let ty = y;
                 let tLabel = tabs[i];
-                let tKey = tLabel === 'Stats' ? 'achievements' : tLabel.toLowerCase();
+                let tKey = tLabel === 'Achievements' ? 'achievements' : tLabel.toLowerCase();
                 
                 let isActive = this.activeTab === tKey;
                 
@@ -1320,6 +1319,12 @@ class LoginMenuScreen extends MenuScreen {
                     let clickedTabKey = clickedTabLabel === 'Stats' ? 'achievements' : clickedTabLabel.toLowerCase();
                     this.activeTab = clickedTabKey;
                     
+                    // Show/Hide inputs based on tab
+                    if (this.activeTab !== 'main') {
+                        if (this.usernameField) this.usernameField.hide();
+                        if (this.partyField) this.partyField.hide();
+                    }
+
                     // Show/Hide color picker based on tab
                     if (this.colorPicker) {
                          if (this.activeTab === 'main' && !signedIn) {
@@ -1328,7 +1333,7 @@ class LoginMenuScreen extends MenuScreen {
                              this.colorPicker.hide();
                          }
                     }
-                    return;
+                    return true;
                 }
             }
             // If clicking content area
@@ -1513,9 +1518,14 @@ class SettingsMenuScreen extends MenuScreen {
     constructor() {
         super("Settings");
         
+        // Force fixed camera on mobile
+        if (typeof isMobile !== 'undefined' && isMobile) {
+            settings.dynamicCamera = false;
+        }
+
         // Camera toggle option
         this.cameraToggle = new MenuOption(
-            settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed",
+            (typeof isMobile !== 'undefined' && isMobile) ? "Camera: Fixed (Locked)" : (settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed"),
             () => this.toggleCamera()
         );
         
@@ -1541,6 +1551,8 @@ class SettingsMenuScreen extends MenuScreen {
     }
 
     toggleCamera() {
+        if (typeof isMobile !== 'undefined' && isMobile) return;
+
         settings.dynamicCamera = !settings.dynamicCamera;
         this.cameraToggle.label = settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed";
         

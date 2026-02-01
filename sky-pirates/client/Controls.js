@@ -1,19 +1,29 @@
 function mousePressed() {
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
-    if (menuVisible && menuManager.current && menuManager.current.mousePressed) {
-        let mw = Math.max(500, width * 0.45); // Reduced width to match drawing logic
-        let mh = height * 0.8;
+    if (menuVisible && menuManager) {
+        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
+        // Match logic from Game.js draw loop
+        if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
+        let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
-        menuManager.current.mousePressed(mouseX, mouseY, mx, my, mw, mh);
-        return;
+        
+        // Pass clicks to manager (which handles close button)
+        if (menuManager.mousePressed(mouseX, mouseY, mx, my, mw, mh)) {
+            return; // Handled by manager (e.g. close button)
+        }
+        return; // Consumed by menu overlay
     }
-    if (!signedIn && menuManager.current && menuManager.current.mousePressed) {
-        let mw = Math.max(500, width * 0.45); // Reduced width to match drawing logic
-        let mh = height * 0.8;
+    
+    // Fallback if menuVisible is false but signedIn is false (initial login screen, failsafe)
+    if (!signedIn && menuManager && menuManager.current) {
+        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
+        if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
+        let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
-        menuManager.current.mousePressed(mouseX, mouseY, mx, my, mw, mh);
+
+        if (menuManager.mousePressed(mouseX, mouseY, mx, my, mw, mh)) return;
     } else if (signedIn) {
         // Check teleport button first (higher priority)
         if (teleportButtonRegion) {
@@ -202,8 +212,8 @@ function getMobileButtons() {
     // Ensure spacing is at least diameter + padding (40*2 + 10 = 90)
     // Use a larger percentage of screen or a hard floor
     const spacing = Math.max(90, Math.min(width, height) * 0.18); 
-    const startX = 100;
-    const startY = height - 100;
+    const startX = 140; // Moved right from 100
+    const startY = height - 80; // Moved down from height-100
     
     return [
         { label: 'W', key: 'w', x: startX, y: startY - spacing, r: 40 },
@@ -383,18 +393,31 @@ function touchStarted(event) {
     }
 
     // Handle Menu Interactions
-    if ((menuVisible || !signedIn) && menuManager && menuManager.current) {
-        if (menuManager.current.touchStarted) {
-            menuManager.current.touchStarted();
+    if ((menuVisible || !signedIn) && menuManager) {
+        // Pass to manager
+        if (menuManager.touchStarted) {
+             // If manager has a touchStarted, use it (optional, mainly for scroll tracking in current screen)
+             // But we really want to trigger click logic
         }
         
         // Treat tap as mouse press for menu buttons
-        if (menuManager.current.mousePressed && typeof touches !== 'undefined' && touches.length > 0) {
-            let mw = Math.max(500, width * 0.45);
-            let mh = height * 0.8;
-            let mx = (width - mw) / 2;
-            let my = (height - mh) / 2;
-            menuManager.current.mousePressed(touches[0].x, touches[0].y, mx, my, mw, mh);
+        // Logic must match mousePressed() dimensions
+        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
+        if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
+        let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
+        let mx = (width - mw) / 2;
+        let my = (height - mh) / 2;
+
+        if (typeof touches !== 'undefined' && touches.length > 0) {
+             // Route via Manager to handle Close button + Screen logic
+             if (menuManager.mousePressed(touches[0].x, touches[0].y, mx, my, mw, mh)) {
+                 // Handled
+             }
+             
+             // Also call current.touchStarted for scrolling initialization
+             if (menuManager.current && menuManager.current.touchStarted) {
+                 menuManager.current.touchStarted();
+             }
         }
         
         return false;
