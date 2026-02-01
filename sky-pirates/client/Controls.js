@@ -288,7 +288,12 @@ function updateMobileControls() {
     }
 }
 
-function touchStarted() {
+function touchStarted(event) {
+    // Allow default browser behavior for inputs (text fields, etc.)
+    if (event && event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) {
+        return true;
+    }
+
     // Handle Menu Interactions
     if ((menuVisible || !signedIn) && menuManager && menuManager.current) {
         if (menuManager.current.touchStarted) {
