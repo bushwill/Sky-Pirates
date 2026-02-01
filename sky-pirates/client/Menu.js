@@ -560,6 +560,7 @@ class LoginMenuScreen extends MenuScreen {
         this.achievements = [];
         this.achievementScroll = 0;
         this.hoveredAchievement = null;
+        this.selectedAchievement = null; // For mobile/click interaction
         this.playerScroll = 0;
         
         // Define panel bounds for scrolling interaction
@@ -1125,6 +1126,12 @@ class LoginMenuScreen extends MenuScreen {
         if (typeof drawingContext !== 'undefined') {
              drawingContext.restore();
         }
+
+        // Display tooltip for hovered or selected achievement
+        let activeAch = this.hoveredAchievement || this.selectedAchievement;
+        if (activeAch) {
+            this.drawAchievementTooltip(activeAch);
+        }
     }
     
     drawAchievementTooltip(ach) {
@@ -1328,6 +1335,9 @@ class LoginMenuScreen extends MenuScreen {
                     let clickedTabKey = clickedTabLabel === 'Stats' ? 'achievements' : clickedTabLabel.toLowerCase();
                     this.activeTab = clickedTabKey;
                     
+                    // Reset selected items when switching tabs
+                    this.selectedAchievement = null;
+
                     // Show/Hide inputs based on tab
                     if (this.activeTab !== 'main') {
                         if (this.usernameField) this.usernameField.hide();
@@ -1348,9 +1358,41 @@ class LoginMenuScreen extends MenuScreen {
             // If clicking content area
             let contentY = y + tabH;
             
-            // If active tab is NOT main, don't process main buttons
+            // If If active tab is NOT main, handle specific tab interactions
+            if (this.activeTab === 'achievements') {
+                // Handle achievement clicks (for mobile/toggle)
+                // Replicate layout logic from drawAchievements
+                let listY = contentY + 70;
+                let listX = x + 20; 
+                let listW = w - 40;
+                let listH = h - tabH - 90; // h passed to mousePressed is full height? 
+                
+                // Note: h in mousePressed is full menu height. 
+                // In draw: contentH = h - tabH.
+                // In drawAchievements: listH = contentH - 90.
+                
+                if (mx > listX && mx < listX + listW && my > listY && my < listY + listH) {
+                    let relativeY = my - listY - this.achievementScroll;
+                    let itemHeight = 50;
+                    let idx = Math.floor(relativeY / itemHeight);
+                    
+                    if (idx >= 0 && idx < this.achievements.length) {
+                        let clickedAch = this.achievements[idx];
+                        // Toggle selection
+                        if (this.selectedAchievement === clickedAch) {
+                            this.selectedAchievement = null;
+                        } else {
+                            this.selectedAchievement = clickedAch;
+                        }
+                        return true;
+                    }
+                }
+                
+                return; 
+            }
+
             if (this.activeTab !== 'main') {
-                return; // Nothing clickable in Community/Stats yet mostly (except scrollwheel)
+                return; 
             }
         }
 
