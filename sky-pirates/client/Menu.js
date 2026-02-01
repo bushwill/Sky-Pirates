@@ -41,14 +41,12 @@ class MenuManager {
         if (this.current) {
             this.current.draw(x, y, w, h);
             
-            // Draw Close Button logic for Pause Menu (when signed in)
-            // or if on Mobile (always, since mobile needs it)
-            // Actually user said for both mobile and PC.
-            if (signedIn || (typeof isMobile !== 'undefined' && isMobile)) {
+            // Draw Close Button logic for Pause Menu (when signed in and menu is actually toggle-able)
+            if (signedIn) {
                 const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
                 const closeSize = 30 * s;
                 const closeX = x + (15 * s);
-                const closeY = y + (10 * s); // Adjusted to be inside the panel
+                const closeY = y + (10 * s); 
                 
                 // Draw X
                 push();
@@ -75,26 +73,16 @@ class MenuManager {
             if (mx >= btn.x - padding && mx <= btn.x + btn.w + padding &&
                 my >= btn.y - padding && my <= btn.y + btn.h + padding) {
                 
-                // Close menu
-                if (typeof menuVisible !== 'undefined') {
-                     // Toggle variable
-                     // Actually we can't write to the global 'menuVisible' easily if it's a let/var in Game.js
-                     // But usually global vars are accessible.
-                     // The user said "unpause (resume) button", which toggles menuVisible.
-                     // We can try setting window.menuVisible or just menuVisible = false;
-                     // In JS modules this might fail, but client-side script tags usually share scope.
-                     // Since controls.js accesses menuVisible, it's likely global.
-                }
-                
-                // Call a global helper if direct assignment fails or for clean access
-                if (typeof toggleMenu === 'function') {
-                    toggleMenu(false);
-                } else {
-                    // Fallback try global
-                    try {
+                // Close menu - directly manipulate the global variable as defined in Game.js
+                try {
+                    // Assuming menuVisible is global as seen in Game.js
+                    if (typeof menuVisible !== 'undefined') {
                         menuVisible = false;
-                    } catch(e) { console.error("Could not set menuVisible", e); }
-                }
+                    } else if (window.menuVisible !== undefined) {
+                        window.menuVisible = false;
+                    } 
+                } catch(e) { console.error("Could not set menuVisible", e); }
+
                 return true; 
             }
         }
@@ -194,6 +182,8 @@ class MenuOption {
     }
 
     draw() {
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+        
         // Check hover
         let isHovered = mouseX > this.x && mouseX < this.x + this.w && 
                         mouseY > this.y && mouseY < this.y + this.h;
@@ -201,13 +191,13 @@ class MenuOption {
         // Draw background
         fill((this.selected || isHovered) ? [0, 200, 255] : 255);
         stroke(0);
-        rect(this.x, this.y, this.w, this.h, 10);
+        rect(this.x, this.y, this.w, this.h, 10 * s);
 
         // Draw label
         noStroke();
         fill(0);
         textAlign(CENTER, CENTER);
-        textSize(18);
+        textSize(18 * s);
         text(this.label, this.x + this.w / 2, this.y + this.h / 2);
     }
 
@@ -232,6 +222,8 @@ class WeaponMenuOption extends MenuOption {
     }
 
     draw() {
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+        
         // Check hover
         let isHovered = mouseX > this.x && mouseX < this.x + this.w && 
                         mouseY > this.y && mouseY < this.y + this.h;
@@ -251,11 +243,11 @@ class WeaponMenuOption extends MenuOption {
         
         fill(bgColor);
         stroke(0);
-        rect(this.x, this.y, this.w, this.h, 10);
+        rect(this.x, this.y, this.w, this.h, 10 * s);
 
         // Draw weapon icon to the left inside the option
-        let iconSize = Math.min(this.h - 8, 32);
-        let iconX = this.x + 8 + iconSize / 2;
+        let iconSize = Math.min(this.h - (8 * s), 32 * s);
+        let iconX = this.x + (8 * s) + iconSize / 2;
         let iconY = this.y + this.h / 2;
         drawWeaponItem(this.weaponName, iconX, iconY, iconSize);
 
@@ -263,8 +255,8 @@ class WeaponMenuOption extends MenuOption {
         noStroke();
         fill(0);
         textAlign(LEFT, CENTER);
-        textSize(14);
-        text(this.label, this.x + 16 + iconSize, this.y + this.h / 2);
+        textSize(14 * s);
+        text(this.label, this.x + (16 * s) + iconSize, this.y + this.h / 2);
     }
 }
 
@@ -1205,17 +1197,13 @@ class LoginMenuScreen extends MenuScreen {
         this.partyField.mousePressed(mx, my);
         
         // Settings button - in top-right corner
-        let settingsBtnX = x + w - 130;
-        let settingsBtnY = y + 20;
-        if (mx > settingsBtnX && mx < settingsBtnX + 110 && my > settingsBtnY && my < settingsBtnY + 40) {
+        if (this.settingsButton.mousePressed(mx, my)) {
             this.settingsButton.callback();
             return;
         }
 
         // Login button - updated to match new position (right of party field)
-        let loginBtnX = x + w / 2 + 120 + 10;
-        let loginBtnY = y + 220;
-        if (mx > loginBtnX && mx < loginBtnX + 120 && my > loginBtnY && my < loginBtnY + 40) {
+        if (this.loginButton.mousePressed(mx, my)) {
             // If signed in, change party action should only update party
             if (signedIn) {
                 this.changeParty();
