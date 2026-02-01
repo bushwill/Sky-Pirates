@@ -908,7 +908,8 @@ function getConnectionStatus() {
 function setCookie(name, value, days = 90) {
     const expires = new Date();
     expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/;SameSite=Strict`;
+    // Use Lax to be more permissive for local dev, while still reasonably secure
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
 }
 
 function getCookie(name) {
@@ -928,7 +929,7 @@ function getCookie(name) {
 
 function deleteCookie(name) {
     // Delete with strict attributes
-    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Strict`;
+    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Lax`;
     // Delete with just path (legacy fallback)
     document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
 }

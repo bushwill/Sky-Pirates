@@ -2573,6 +2573,19 @@ wss.on('connection', (ws, request) => {
       map: mapData
   });
 
+  // Send initial community list so user can see who is online before joining
+  const communityList = players.map(p => ({
+      username: p.username,
+      r: p.r,
+      g: p.g,
+      b: p.b
+  }));
+  
+  sendMessage(ws, {
+      type: 'low_freq_update',
+      community: communityList
+  });
+
   ws.on('message', (data) => {
     const decodedMessage = msgpack.decode(data);
     handleIncomingMessage(ws, decodedMessage);
@@ -3132,7 +3145,8 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
   
   // Ensure we have a valid client record (creates guest if new)
   // If clientUUID is null/undefined, we'll generate one, but temporarily use null
-  let client = clientUUID ? clientManager.getClient(clientUUID, clientUUID) : null;
+  // We pass null as defaultSaveId to prevent linking to a non-existent save file named after the ClientUUID
+  let client = clientUUID ? clientManager.getClient(clientUUID, null) : null;
   
   // Security Check: If the client ID is linked to an account, we MUST verify the password matches
   if (client && client.type === 'account') {
