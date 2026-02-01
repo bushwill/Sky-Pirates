@@ -1388,6 +1388,12 @@ class LoginMenuScreen extends MenuScreen {
                     }
                 }
                 
+                // If clicked outside the list items properly (but inside menu), deselect
+                if (mx >= x && mx <= x + w && my >= y && my <= y + h) {
+                    this.selectedAchievement = null;
+                    return true;
+                }
+                
                 return; 
             }
 

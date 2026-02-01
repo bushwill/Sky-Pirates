@@ -209,7 +209,7 @@ function draw() {
 
         // Calculate login menu dimensions
         let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : Math.max(500, width * 0.45);
-        let mh = height * 0.8;
+        let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
         menuManager.draw(mx, my, mw, mh);
@@ -266,7 +266,10 @@ function draw() {
             if (mapData) {
                 handleGameDisplay(controlledPlayer);
                 
-                // Draw Mobile Controls (always check, so pause button renders)
+                // Update and Draw Mobile Controls
+                if (typeof updateMobileControls === 'function') {
+                    updateMobileControls();
+                }
                 if (typeof drawMobileControls === 'function') {
                     drawMobileControls();
                 }

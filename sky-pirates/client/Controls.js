@@ -404,7 +404,7 @@ function updateMobileControls() {
     }
 
     // Apply latching (minimum hold time) to prevent dropped inputs on fast taps
-    const LATCH_MS = 100; // 100ms sticky
+    const LATCH_MS = 50; // Reduced from 100ms to 50ms for snappier response
     for (let btn of buttons) {
         if (!keys[btn.key]) { // If not currently held by a touch
             if (mobileButtonTimers[btn.key] && (millis() - mobileButtonTimers[btn.key] < LATCH_MS)) {
