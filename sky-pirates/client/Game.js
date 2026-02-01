@@ -100,6 +100,10 @@ let menuManager;
 let colorPicker;
 let menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
 
+// Global setter for menu visibility (accessible from other scripts)
+window.setMenuVisible = function(visible) {
+    menuVisible = visible;
+};
 
 // ========================================
 // P5.JS LIFECYCLE FUNCTIONS

@@ -570,6 +570,8 @@ class LoginMenuScreen extends MenuScreen {
                 }
             });
         }
+
+        this.activeTab = 'main'; // 'main', 'community', 'achievements'
         
         // Load saved preferences from cookies (after all fields are created)
         this.loadSavedPreferences();
@@ -578,6 +580,7 @@ class LoginMenuScreen extends MenuScreen {
     hide() {
         this.usernameField.hide();
         this.partyField.hide();
+        if (this.colorPicker) this.colorPicker.hide();
     }
 
     draw(x, y, w, h) {
@@ -590,48 +593,137 @@ class LoginMenuScreen extends MenuScreen {
              this.isAccountSession = true;
         }
 
-        // Draw Side Menus
+        // --- Liquid Layout Logic ---
         let sideW = Math.max(200 * s, width * 0.2);
         let gap = 20 * s;
+        // Check if we have room for side panels
+        // Normal layout requires: sideW + gap + w + gap + sideW < width
+        // Wait, 'w' passed here is usually calculated in Game.js as 45-95% of width.
+        // If we want side panels, we need to check if they would fit OUTSIDE 'w'.
+        // If Game.js gives us 95% width (isMobile), then sideWidth won't fit.
+        
+        let isNarrow = false;
+        // If the calculated left/right panel positions (based on x, w) would fall offscreen, we are narrow.
+        if (x - gap - sideW < 0 || x + w + gap + sideW > width) {
+            isNarrow = true;
+        }
 
-        // Left Panel
-        let leftX = x - gap - sideW;
-        if (leftX > -sideW * 0.5) { 
+        if (!isNarrow) {
+            // Force main tab if we have space (reset view)
+            if (this.activeTab !== 'main') this.activeTab = 'main';
+
+            // Draw Side Menus Normal
+            // Left Panel
+            let leftX = x - gap - sideW;
             fill(255, 255, 255, 200);
             noStroke();
             rect(leftX, y, sideW, h, 30 * s);
-            
-            // Store bounds for scrolling
             this.leftPanelBounds = { x: leftX, y: y, w: sideW, h: h };
-
             this.drawPlayerList(leftX, y, sideW, h);
-        }
 
-        // Right Panel
-        let rightX = x + w + gap;
-        if (rightX < width + sideW * 0.5) {
+            // Right Panel
+            let rightX = x + w + gap;
             fill(255, 255, 255, 200);
             noStroke();
             rect(rightX, y, sideW, h, 30 * s);
-            
-            // Store bounds for scrolling
             this.rightPanelBounds = { x: rightX, y: y, w: sideW, h: h };
-
-            // Always draw achievements instead of community/online list
             this.drawAchievements(rightX, y, sideW, h);
+
+            // Draw Central Main Panel Background
+            fill(255, 255, 255, 200);
+            noStroke();
+            rect(x, y, w, h, 30 * s);
+            
+            // Draw Main Content
+            this.drawMainContent(x, y, w, h, s);
+
+        } else {
+            // NARROW MODE (Mobile / Small Window)
+            // Use the full available area (x,y,w,h) for the active tab content
+            
+            // Draw background for the whole modal
+            fill(255, 255, 255, 240); // Slightly more opaque for mobile
+            noStroke();
+            rect(x, y, w, h, 20 * s);
+
+            // Draw Tab Bar at Top
+            let tabH = 50 * s;
+            let tabs = ['Main', 'Community', 'Stats'];
+            let tabW = w / tabs.length;
+            
+            textAlign(CENTER, CENTER);
+            textSize(18 * s);
+            // Tab Background
+            // fill(200);
+            // rect(x, y, w, tabH, 20 * s, 20 * s, 0, 0); // Rounded top corners
+            
+            for (let i = 0; i < tabs.length; i++) {
+                let tx = x + i * tabW;
+                let ty = y;
+                let tLabel = tabs[i];
+                let tKey = tLabel === 'Stats' ? 'achievements' : tLabel.toLowerCase();
+                
+                let isActive = this.activeTab === tKey;
+                
+                fill(isActive ? [255, 255, 255] : [220, 220, 220]);
+                // Round top corners only? 
+                if (isActive) {
+                    stroke(200);
+                    // Open bottom
+                    rect(tx, ty, tabW, tabH + 5, 10 * s, 10 * s, 0, 0);
+                    noStroke();
+                    rect(tx + 2, ty + tabH - 2, tabW - 4, 10); // Cover bottom border
+                } else {
+                    stroke(200);
+                    rect(tx, ty, tabW, tabH, 10 * s, 10 * s, 0, 0);
+                }
+                
+                noStroke();
+                fill(isActive ? 0 : 100);
+                text(tLabel, tx + tabW / 2, ty + tabH / 2);
+                
+                // Click region handled in mousePressed
+            }
+            
+            // Separator
+            stroke(200);
+            line(x, y + tabH, x + w, y + tabH);
+            noStroke();
+
+            // Draw Content Area
+            let contentY = y + tabH;
+            let contentH = h - tabH;
+            
+            if (this.activeTab === 'main') {
+                this.drawMainContent(x, contentY, w, contentH, s);
+            } else if (this.activeTab === 'community') {
+                // Pass bounds to helper
+                this.leftPanelBounds = { x: x, y: contentY, w: w, h: contentH };
+                this.drawPlayerList(x, contentY, w, contentH);
+            } else if (this.activeTab === 'achievements') {
+                this.rightPanelBounds = { x: x, y: contentY, w: w, h: contentH };
+                this.drawAchievements(x, contentY, w, contentH);
+            }
         }
+    }
 
-        fill(255, 255, 255, 200);
-        noStroke();
-        rect(x, y, w, h, 30 * s);
-
+    // Extracted Main Content Logic (Login fields, buttons, etc.)
+    drawMainContent(x, y, w, h, s) {
         fill(0);
         textSize(40 * s);
 
         // Only position/show color picker when not already signed in
         if (!signedIn && this.colorPicker) {
-            this.colorPicker.position(x + w / 2 + (120 * s), y + (183 * s));
-            // Also scale color picker style if possible (not easy with p5 DOM, but position is key)
+            // Hide if not main tab? handled by hide in draw?
+            // Actually color picker is DOM element.
+            if (this.activeTab === 'main') {
+               this.colorPicker.show();
+               this.colorPicker.position(x + w / 2 + (120 * s), y + (183 * s));
+            } else {
+               this.colorPicker.hide();
+            }
+        } else if (this.colorPicker) {
+            this.colorPicker.hide();
         }
 
         textAlign(CENTER, CENTER);
@@ -650,7 +742,10 @@ class LoginMenuScreen extends MenuScreen {
             text(this.loginSubheader, x + w / 2, y + (140 * s));
         }
 
-        // Draw input field centered horizontally
+        // Draw input field logic... (username, party)
+        // Need to ensure we only show DOM inputs if main tab is active
+        // But drawMainContent is only called if activeTab is main.
+        
         // Scale input dimensions
         let fieldW = 240 * s;
         let fieldH = 40 * s;
@@ -686,9 +781,10 @@ class LoginMenuScreen extends MenuScreen {
         let loginBtnW = 120 * s;
         let loginBtnH = 40 * s;
         
-        // If very narrow, stack below
+        // If very narrow, stack below OR if we are in Narrow Mode we almost certainly want to stack below
+        // The original logic checked 'w'.
         let loginBtnX, loginBtnY;
-        if (w < 400 * s) {
+        if (w < 400 * s) { // This threshold might trip in narrow mode
              loginBtnX = x + w / 2 - (loginBtnW / 2);
              loginBtnY = y + (270 * s); // shifted down
         } else {
@@ -696,17 +792,20 @@ class LoginMenuScreen extends MenuScreen {
              loginBtnY = y + (220 * s);
         }
 
-    this.loginButton.setPosition(loginBtnX, loginBtnY);
-    this.loginButton.setSize(loginBtnW, loginBtnH);
-    // Change label when signed in: allow changing party mid-match
-    if (signedIn) {
-        this.loginButton.label = "Change Party";
-    } else {
-        this.loginButton.label = this.hasSavedState ? "Continue" : "Start";
-    }
-    this.loginButton.draw();
+        this.loginButton.setPosition(loginBtnX, loginBtnY);
+        this.loginButton.setSize(loginBtnW, loginBtnH);
+        // Change label when signed in
+        if (signedIn) {
+            this.loginButton.label = "Change Party";
+        } else {
+            this.loginButton.label = this.hasSavedState ? "Continue" : "Start";
+        }
+        this.loginButton.draw();
         
         // --- Draw settings button in top-right corner ---
+        // Warning: in narrow mode, 'y' is shifted down by tabH? No, y is passed as contentY.
+        // But settings button might look weird inside content area.
+        // It's ok.
         let settingsBtnW = 110 * s;
         let settingsBtnH = 40 * s;
         let settingsBtnX = x + w - (130 * s); // 130px from right edge
@@ -747,7 +846,13 @@ class LoginMenuScreen extends MenuScreen {
             let listSpacing = 54 * s;
             let listYOffset = (w < 400 * s) ? y + (360 * s) : y + (360 * s); // Could adjust if needed
             let gunListW = 180 * s, gunListH = 44 * s;
-            let gunListPad = 40 * s;
+            let gunListPad = 40 * s; // 40
+            
+            // Adjust for really narrow screens
+            if (w < 400 * s) { 
+                gunListPad = 5 * s;
+                gunListW = 150 * s;
+            }
 
             // Gun1 list (left)
             let gun1X = x + w / 2 - gunListW - gunListPad;
@@ -1192,6 +1297,49 @@ class LoginMenuScreen extends MenuScreen {
     }
 
     mousePressed(mx, my, x, y, w, h) {
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+        let sideW = Math.max(200 * s, width * 0.2);
+        let gap = 20 * s;
+
+        // Check if narrow mode
+        let isNarrow = false;
+        if (x - gap - sideW < 0 || x + w + gap + sideW > width) {
+            isNarrow = true;
+        }
+
+        if (isNarrow) {
+            // TAB BAR CLICK LOGIC
+            // Tabs: Main, Community, Stats
+            let tabH = 50 * s;
+            if (my >= y && my <= y + tabH && mx >= x && mx <= x + w) {
+                let tabs = ['Main', 'Community', 'Stats'];
+                let tabW = w / tabs.length;
+                let clickedIndex = Math.floor((mx - x) / tabW);
+                if (clickedIndex >= 0 && clickedIndex < tabs.length) {
+                    let clickedTabLabel = tabs[clickedIndex];
+                    let clickedTabKey = clickedTabLabel === 'Stats' ? 'achievements' : clickedTabLabel.toLowerCase();
+                    this.activeTab = clickedTabKey;
+                    
+                    // Show/Hide color picker based on tab
+                    if (this.colorPicker) {
+                         if (this.activeTab === 'main' && !signedIn) {
+                             this.colorPicker.show();
+                         } else {
+                             this.colorPicker.hide();
+                         }
+                    }
+                    return;
+                }
+            }
+            // If clicking content area
+            let contentY = y + tabH;
+            
+            // If active tab is NOT main, don't process main buttons
+            if (this.activeTab !== 'main') {
+                return; // Nothing clickable in Community/Stats yet mostly (except scrollwheel)
+            }
+        }
+
     // Only allow focusing the username field when not signed in
     if (!signedIn) this.usernameField.mousePressed(mx, my);
         this.partyField.mousePressed(mx, my);
