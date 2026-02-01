@@ -280,11 +280,6 @@ function draw() {
                     push();
                     translate(0,0); // Reset transform ensures menu draws on top of everything
                     menuManager.draw(mx, my, mw, mh);
-                    
-                    // Re-draw pause button on top of menu so it remains accessible
-                    if (typeof drawMobilePauseButton === 'function') {
-                        drawMobilePauseButton();
-                    }
                     pop();
                 } 
             }

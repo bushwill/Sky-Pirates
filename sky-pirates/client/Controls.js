@@ -244,7 +244,7 @@ function getMobileChatButton() {
 
 
 function drawMobilePauseButton() {
-    if (typeof isMobile === 'undefined' || !isMobile || !signedIn) return;
+    if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible) return;
     
     const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
     

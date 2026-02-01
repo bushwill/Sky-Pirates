@@ -38,7 +38,80 @@ class MenuManager {
     }
 
     draw(x, y, w, h) {
-        if (this.current) this.current.draw(x, y, w, h);
+        if (this.current) {
+            this.current.draw(x, y, w, h);
+            
+            // Draw Close Button logic for Pause Menu (when signed in)
+            // or if on Mobile (always, since mobile needs it)
+            // Actually user said for both mobile and PC.
+            if (signedIn || (typeof isMobile !== 'undefined' && isMobile)) {
+                const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+                const closeSize = 30 * s;
+                const closeX = x + (15 * s);
+                const closeY = y + (10 * s); // Adjusted to be inside the panel
+                
+                // Draw X
+                push();
+                stroke(0);
+                strokeWeight(3);
+                line(closeX, closeY, closeX + closeSize, closeY + closeSize);
+                line(closeX + closeSize, closeY, closeX, closeY + closeSize);
+                pop();
+                
+                // Store region for touch/mouse handling
+                this.closeButtonRegion = { x: closeX, y: closeY, w: closeSize, h: closeSize };
+            } else {
+                this.closeButtonRegion = null;
+            }
+        }
+    }
+    
+    mousePressed(mx, my) {
+        // Check Close Button first
+        if (this.closeButtonRegion) {
+            const btn = this.closeButtonRegion;
+            // Pad touch area slightly
+            const padding = 10;
+            if (mx >= btn.x - padding && mx <= btn.x + btn.w + padding &&
+                my >= btn.y - padding && my <= btn.y + btn.h + padding) {
+                
+                // Close menu
+                if (typeof menuVisible !== 'undefined') {
+                     // Toggle variable
+                     // Actually we can't write to the global 'menuVisible' easily if it's a let/var in Game.js
+                     // But usually global vars are accessible.
+                     // The user said "unpause (resume) button", which toggles menuVisible.
+                     // We can try setting window.menuVisible or just menuVisible = false;
+                     // In JS modules this might fail, but client-side script tags usually share scope.
+                     // Since controls.js accesses menuVisible, it's likely global.
+                }
+                
+                // Call a global helper if direct assignment fails or for clean access
+                if (typeof toggleMenu === 'function') {
+                    toggleMenu(false);
+                } else {
+                    // Fallback try global
+                    try {
+                        menuVisible = false;
+                    } catch(e) { console.error("Could not set menuVisible", e); }
+                }
+                return true; 
+            }
+        }
+    
+        if (this.current && this.current.mousePressed) {
+            return this.current.mousePressed(mx, my);
+        }
+        return false;
+    }
+
+    touchStarted() {
+         // Forward to mousePressed with first touch
+         if (typeof touches !== 'undefined' && touches.length > 0) {
+              const mx = touches[0].x;
+              const my = touches[0].y;
+              return this.mousePressed(mx, my);
+         }
     }
 
     navigate(dir) {
@@ -62,19 +135,21 @@ class MenuScreen {
     }
 
     draw(x, y, w, h, spacing = 50) {
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+        
         textAlign(CENTER, CENTER);
-        textSize(32);
+        textSize(32 * s);
         fill(255);
-        text(this.title, x + w / 2, y + spacing / 2);
+        text(this.title, x + w / 2, y + (spacing * s) / 2);
 
         for (let i = 0; i < this.options.length; i++) {
-            let ry = y + spacing * (i + 1);
-            let rh = spacing - 10;
+            let ry = y + (spacing * s) * (i + 1);
+            let rh = (spacing * s) - (10 * s);
             let isHovered = mouseX > x && mouseX < x + w && mouseY > ry && mouseY < ry + rh;
 
             if (i === this.selected || isHovered) fill(0, 200, 255);
             else fill(255);
-            rect(x, ry, w, rh, 10);
+            rect(x, ry, w, rh, 10 * s);
             fill(0);
             text(this.options[i].label, x + w / 2, ry + rh / 2);
         }
@@ -515,6 +590,8 @@ class LoginMenuScreen extends MenuScreen {
 
     draw(x, y, w, h) {
         rectMode(CORNER);
+        
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
 
         // Update local state from global if needed (legacy compatibility) but prefer instance state
         if (typeof isAccountSession !== 'undefined' && isAccountSession && !this.isAccountSession) {
@@ -522,15 +599,15 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         // Draw Side Menus
-        let sideW = Math.max(200, width * 0.2);
-        let gap = 20;
+        let sideW = Math.max(200 * s, width * 0.2);
+        let gap = 20 * s;
 
         // Left Panel
         let leftX = x - gap - sideW;
         if (leftX > -sideW * 0.5) { 
             fill(255, 255, 255, 200);
             noStroke();
-            rect(leftX, y, sideW, h, 30);
+            rect(leftX, y, sideW, h, 30 * s);
             
             // Store bounds for scrolling
             this.leftPanelBounds = { x: leftX, y: y, w: sideW, h: h };
@@ -543,7 +620,7 @@ class LoginMenuScreen extends MenuScreen {
         if (rightX < width + sideW * 0.5) {
             fill(255, 255, 255, 200);
             noStroke();
-            rect(rightX, y, sideW, h, 30);
+            rect(rightX, y, sideW, h, 30 * s);
             
             // Store bounds for scrolling
             this.rightPanelBounds = { x: rightX, y: y, w: sideW, h: h };
@@ -554,57 +631,81 @@ class LoginMenuScreen extends MenuScreen {
 
         fill(255, 255, 255, 200);
         noStroke();
-        rect(x, y, w, h, 30);
+        rect(x, y, w, h, 30 * s);
 
         fill(0);
-        textSize(40);
+        textSize(40 * s);
 
         // Only position/show color picker when not already signed in
         if (!signedIn && this.colorPicker) {
-            this.colorPicker.position(x + w / 2 + 120, y + 183);
+            this.colorPicker.position(x + w / 2 + (120 * s), y + (183 * s));
+            // Also scale color picker style if possible (not easy with p5 DOM, but position is key)
         }
 
         textAlign(CENTER, CENTER);
         if (window.WS_ADDRESS === 'ws://localhost:3001') {
-            text("SKY PIRATES (test environment)", x + w / 2, y + 50);
+            text("SKY PIRATES (test environment)", x + w / 2, y + (50 * s));
         } else {
-            text("SKY PIRATES", x + w / 2, y + 50);
+            text("SKY PIRATES", x + w / 2, y + (50 * s));
         }
-        textSize(20);
+        textSize(20 * s);
         // Show different header/subheader depending on whether this is the pre-login screen or the in-game pause menu
         if (signedIn) {
-            text(this.pauseHeader, x + w / 2, y + 100);
-            text(this.pauseSubheader, x + w / 2, y + 140);
+            text(this.pauseHeader, x + w / 2, y + (100 * s));
+            text(this.pauseSubheader, x + w / 2, y + (140 * s));
         } else {
-            text(this.loginHeader, x + w / 2, y + 100);
-            text(this.loginSubheader, x + w / 2, y + 140);
+            text(this.loginHeader, x + w / 2, y + (100 * s));
+            text(this.loginSubheader, x + w / 2, y + (140 * s));
         }
 
         // Draw input field centered horizontally
-        this.usernameField.x = x + w / 2 - 120;
-        this.usernameField.y = y + 170;
+        // Scale input dimensions
+        let fieldW = 240 * s;
+        let fieldH = 40 * s;
+        let halfFieldW = fieldW / 2;
+        
+        this.usernameField.x = x + w / 2 - halfFieldW;
+        this.usernameField.y = y + (170 * s);
+        this.usernameField.w = fieldW;
+        this.usernameField.h = fieldH;
+        
         // If already signed in, display username read-only; otherwise draw editable field
         if (signedIn) {
             this.usernameField.hide();
             fill(50);
             textAlign(LEFT, CENTER);
-            textSize(18);
+            textSize(18 * s);
             const displayName = username || this.usernameField.value || '(unknown)';
-            text(displayName, this.usernameField.x + 8, this.usernameField.y + this.usernameField.h / 2);
+            text(displayName, this.usernameField.x + (8 * s), this.usernameField.y + this.usernameField.h / 2);
         } else {
             this.usernameField.draw();
         }
         
         // Draw party field below username
-        this.partyField.x = x + w / 2 - 120;
-        this.partyField.y = y + 220;
+        this.partyField.x = x + w / 2 - halfFieldW;
+        this.partyField.y = y + (220 * s);
+        this.partyField.w = fieldW;
+        this.partyField.h = fieldH;
         this.partyField.draw();
 
         // Login button - updated to match new position (right of party field)
-        let loginBtnX = x + w / 2 + 120 + 10;
-        let loginBtnY = y + 220;
+        // Adjust logic: Make it sit beside if space, or below if very small?
+        // Original: right of party field
+        let loginBtnW = 120 * s;
+        let loginBtnH = 40 * s;
+        
+        // If very narrow, stack below
+        let loginBtnX, loginBtnY;
+        if (w < 400 * s) {
+             loginBtnX = x + w / 2 - (loginBtnW / 2);
+             loginBtnY = y + (270 * s); // shifted down
+        } else {
+             loginBtnX = x + w / 2 + halfFieldW + (10 * s);
+             loginBtnY = y + (220 * s);
+        }
+
     this.loginButton.setPosition(loginBtnX, loginBtnY);
-    this.loginButton.setSize(120, 40);
+    this.loginButton.setSize(loginBtnW, loginBtnH);
     // Change label when signed in: allow changing party mid-match
     if (signedIn) {
         this.loginButton.label = "Change Party";
@@ -614,97 +715,114 @@ class LoginMenuScreen extends MenuScreen {
     this.loginButton.draw();
         
         // --- Draw settings button in top-right corner ---
-        let settingsBtnX = x + w - 130; // 130px from right edge
-        let settingsBtnY = y + 20; // 20px from top
+        let settingsBtnW = 110 * s;
+        let settingsBtnH = 40 * s;
+        let settingsBtnX = x + w - (130 * s); // 130px from right edge
+        let settingsBtnY = y + (20 * s); // 20px from top
         this.settingsButton.setPosition(settingsBtnX, settingsBtnY);
-        this.settingsButton.setSize(110, 40);
+        this.settingsButton.setSize(settingsBtnW, settingsBtnH);
         this.settingsButton.selected = false; // Not part of navigation
         this.settingsButton.draw();
 
         // Error message / status text
-        // If logged in via account, and in PAUSE menu or Lobby, show "Logged in as" instead of generic messages,
-        // unless there is a specific error/status message (like "Updating party...")
-        
         let showLoginMsg = true;
 
         if (signedIn) {
             showLoginMsg = false;
             textAlign(CENTER, CENTER);
-            textSize(14);
+            textSize(14 * s);
             fill(80);
             
+            let statusY = (w < 400 * s) ? y + (320 * s) : y + (280 * s);
+            
             if (this.isAccountSession && this.accountName) {
-                text("Logged in as: " + this.accountName, x + w / 2, y + 280);
+                text("Logged in as: " + this.accountName, x + w / 2, statusY);
             } else {
-                 text("Logged in as a guest", x + w / 2, y + 280);
+                 text("Logged in as a guest", x + w / 2, statusY);
             }
         }
 
         if (showLoginMsg && this.loginMsg) {
             textAlign(CENTER, CENTER);
             fill(0); 
-            textSize(16);
-            text(this.loginMsg, x + w / 2, y + 280); 
+            textSize(16 * s);
+            let statusY = (w < 400 * s) ? y + (320 * s) : y + (280 * s);
+            text(this.loginMsg, x + w / 2, statusY); 
         }
 
         // --- Draw weapon lists ---
-        // If the player is already signed in, or if resuming is available (AND verified by server), hide weapon selection
-        // Exception: If server hasn't responded yet (serverSaveExists is true/undefined), trust cookie for momentary flicker prevention,
-        // but if server strictly says false, show weapons.
         if (!signedIn && (!this.hasSavedState || this.serverSaveExists === false)) {
-            let listSpacing = 54;
-            let listYOffset = y + 360; // Position well below error message area
-            let gunListW = 180, gunListH = 44;
-            let gunListPad = 40;
+            let listSpacing = 54 * s;
+            let listYOffset = (w < 400 * s) ? y + (360 * s) : y + (360 * s); // Could adjust if needed
+            let gunListW = 180 * s, gunListH = 44 * s;
+            let gunListPad = 40 * s;
 
             // Gun1 list (left)
             let gun1X = x + w / 2 - gunListW - gunListPad;
             let gun1Y = listYOffset;
-            textSize(22);
+            textSize(22 * s);
             fill(0);
             textAlign(CENTER, CENTER);
-            text("Gun 1", gun1X + gunListW / 2, gun1Y - 34);
+            text("Gun 1", gun1X + gunListW / 2, gun1Y - (34 * s));
             for (let i = 0; i < this.gun1Options.length; i++) {
                 let opt = this.gun1Options[i];
                 opt.setPosition(gun1X, gun1Y + i * listSpacing);
                 opt.setSize(gunListW, gunListH);
-                
-                // Simplified logic: ONLY show weapon selection highlight
-                // Navigation highlight is disabled to prevent conflicts
-                if (selectedGun1 === i) {
-                    opt.selected = "weapon";
-                } else {
-                    opt.selected = false;
-                }
+                if (selectedGun1 === i) opt.selected = "weapon";
+                else opt.selected = false;
                 opt.draw();
             }
 
             // Gun2 list (right)
             let gun2X = x + w / 2 + gunListPad;
             let gun2Y = listYOffset;
-            textSize(22);
+            textSize(22 * s);
             fill(0);
             textAlign(CENTER, CENTER);
-            text("Gun 2", gun2X + gunListW / 2, gun2Y - 34);
+            text("Gun 2", gun2X + gunListW / 2, gun2Y - (34 * s));
             for (let i = 0; i < this.gun2Options.length; i++) {
                 let opt = this.gun2Options[i];
                 opt.setPosition(gun2X, gun2Y + i * listSpacing);
                 opt.setSize(gunListW, gunListH);
-                
-                // Same simplified logic for gun2
-                if (selectedGun2 === i) {
-                    opt.selected = "weapon";
-                } else {
-                    opt.selected = false;
-                }
+                if (selectedGun2 === i) opt.selected = "weapon";
+                else opt.selected = false;
                 opt.draw();
             }
         }
         
         // Drawn account management buttons or logout button
         if (!signedIn) {
-            let btnY = y + h - 60;
-            // Check global 'isAccountSession' (assume undefined = guest)
+            let btnY = y + h - (60 * s);
+            
+            if (this.isAccountSession) {
+                 if (this.accountName) {
+                     textSize(14 * s);
+                     textAlign(CENTER, BOTTOM);
+                     fill(80); // Dark Gray
+                     text("Logged in as: " + this.accountName, x + w/2, btnY - (5 * s));
+                 }
+
+                 this.logoutBtn.setPosition(x + w/2 - (75 * s), btnY);
+                 this.logoutBtn.setSize(150 * s, 40 * s);
+                 this.logoutBtn.draw();
+            } else {
+                 textSize(14 * s);
+                 textAlign(CENTER, BOTTOM);
+                 fill(80);
+                 text("Logged in as a guest", x + w/2, btnY - (5 * s));
+                 
+                 let authBtnW = 150 * s;
+                 let authBtnH = 40 * s;
+
+                 this.createAccountBtn.setPosition(x + w/2 - authBtnW - (10 * s), btnY);
+                 this.createAccountBtn.setSize(authBtnW, authBtnH);
+                 this.createAccountBtn.draw();
+
+                 this.loginAccountBtn.setPosition(x + w/2 + (10 * s), btnY);
+                 this.loginAccountBtn.setSize(authBtnW, authBtnH);
+                 this.loginAccountBtn.draw();
+            }
+        }
             
             if (this.isAccountSession) {
                  if (this.accountName) {

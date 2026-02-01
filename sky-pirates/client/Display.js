@@ -1073,8 +1073,6 @@ function drawPlaneInfo(player) {
         size: iconSize
     });
 
-    pop();
-
     currentY += iconSize + (20 * s);
     
     // Draw weapon icons centered under the 3 components
@@ -1201,8 +1199,22 @@ function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, pa
     let popupX = mouseX + 20;
     let popupY = mouseY + 20;
     
-    if (popupX + popupWidth > windowWidth) popupX = mouseX - popupWidth - 20;
-    if (popupY + popupHeight > windowHeight) popupY = mouseY - popupHeight - 20;
+    // Check right edge
+    if (popupX + popupWidth > windowWidth) {
+        popupX = mouseX - popupWidth - 20;
+    }
+    
+    // Check bottom edge
+    if (popupY + popupHeight > windowHeight) {
+        popupY = mouseY - popupHeight - 20;
+    }
+
+    // Creating a hard clamp to screen boundaries as a final fallback
+    // This ensures popups never go off-screen even if the "flip" logic above fails (e.g. near corners)
+    if (popupX < 10) popupX = 10;
+    if (popupY < 10) popupY = 10;
+    if (popupX + popupWidth > windowWidth - 10) popupX = windowWidth - popupWidth - 10;
+    if (popupY + popupHeight > windowHeight - 10) popupY = windowHeight - popupHeight - 10;
     
     push();
     rectMode(CORNER);
@@ -1329,8 +1341,7 @@ function displayOtherPlayerStatus(player, drawX, drawY) {
 }
 
 function drawGunCursor(player, drawX, drawY) {
-    if (typeof isMobile !== 'undefined' && isMobile) return;
-
+    // Determine active gun
     var gun;
     if (player.selectedGun === 1) {
         gun = player.gun1;
@@ -1372,6 +1383,8 @@ function drawGunHeat(player, drawX, drawY) {
 }
 
 function drawGunArc(player, drawX, drawY, options = {}) {
+    if (typeof isMobile !== 'undefined' && isMobile) return;
+
     // Get selected gun and max angle (in radians)
     const gun = player.selectedGun === 2 ? player.gun2 : player.gun1;
     const maxAngle = gun.maxAngle ?? (Math.PI / 4); // fallback to 45deg if not set
