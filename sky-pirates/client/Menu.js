@@ -1438,9 +1438,6 @@ class LoginMenuScreen extends MenuScreen {
         if (isNarrow && this.activeTab !== 'main') {
             return;
         }
-                return; 
-            }
-        }
 
     // Only allow focusing the username field when not signed in
     if (!signedIn) this.usernameField.mousePressed(mx, my);
