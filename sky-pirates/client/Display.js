@@ -1803,7 +1803,7 @@ function displayShop(controlledPlayer) {
 function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region, isShop) {
     const btnHeight = 40;
     const padding = 10;
-    const y = popupY + popupHeight + padding;
+    let currentY = popupY + popupHeight + padding;
     
     // Reset regions if this is the first draw of buttons this frame? 
     // Since this is called per-popup, and we only show one popup, it is safe to reset.
@@ -1812,6 +1812,7 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
     push();
     textSize(16);
     textStyle(BOLD);
+    textAlign(CENTER, CENTER);
     
     if (isShop) {
         // BUY button
@@ -1820,51 +1821,50 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
         
         fill(50, 200, 50);
         stroke(255);
-        rect(btnX, y, btnW, btnHeight, 8);
+        rect(btnX, currentY, btnW, btnHeight, 8);
         
         fill(255);
         noStroke();
-        textAlign(CENTER, CENTER);
-        text("BUY", btnX + btnW/2, y + btnHeight/2);
+        text("BUY", btnX + btnW/2, currentY + btnHeight/2);
         
         window.mobileActionButtons.push({
-            x: btnX, y: y, w: btnW, h: btnHeight,
+            x: btnX, y: currentY, w: btnW, h: btnHeight,
             action: { type: 'buy', index: region.itemIndex }
         });
     } else {
-        // EQUIP and SELL buttons
-        const btnW = (popupWidth - padding) / 2;
+        // Stacked Layout: EQUIP on top, SELL on bottom
+        const btnW = popupWidth;
         
-        // Equip (Left)
+        // Equip (Top)
         const equipX = popupX;
         fill(50, 150, 250);
         stroke(255);
-        rect(equipX, y, btnW, btnHeight, 8);
+        rect(equipX, currentY, btnW, btnHeight, 8);
         
         fill(255);
         noStroke();
-        textAlign(CENTER, CENTER);
-        text("EQUIP", equipX + btnW/2, y + btnHeight/2);
+        text("EQUIP", equipX + btnW/2, currentY + btnHeight/2);
         
         window.mobileActionButtons.push({
-            x: equipX, y: y, w: btnW, h: btnHeight,
+            x: equipX, y: currentY, w: btnW, h: btnHeight,
             action: { type: 'equip', index: region.inventoryIndex }
         });
         
-        // Sell (Right)
-        const sellX = popupX + btnW + padding;
+        currentY += btnHeight + padding;
+        
+        // Sell (Bottom)
+        const sellX = popupX;
         fill(250, 150, 50);
         stroke(255);
-        rect(sellX, y, btnW, btnHeight, 8);
+        rect(sellX, currentY, btnW, btnHeight, 8);
         
         fill(255);
         noStroke();
-        textAlign(CENTER, CENTER);
-        text("SELL", sellX + btnW/2, y + btnHeight/2);
+        text("SELL", sellX + btnW/2, currentY + btnHeight/2);
         
         window.mobileActionButtons.push({
-            x: sellX, y: y, w: btnW, h: btnHeight,
-            action: { type: 'sell', index: region.inventoryIndex }
+            x: sellX, y: currentY, w: btnW, h: btnHeight,
+            action: { type: 'sell', index: region.inventoryIndex } // Fix: Use inventoryIndex for sell
         });
     }
     pop();

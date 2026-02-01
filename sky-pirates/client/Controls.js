@@ -197,56 +197,78 @@ function mouseWheel(event) {
 }
 
 /* Mobile Controls Configuration */
-const mobileButtons = [
-    { label: 'W', key: 'w', x: 0.15, y: 0.75, r: 40 },
-    { label: 'A', key: 'a', x: 0.08, y: 0.85, r: 40 },
-    { label: 'S', key: 's', x: 0.15, y: 0.85, r: 40 },
-    { label: 'D', key: 'd', x: 0.22, y: 0.85, r: 40 },
+// Configurations are now functions to allow dynamic screen resizing
+function getMobileButtons() {
+    const spacing = Math.min(width, height) * 0.15; // Dynamic spacing based on screen size
+    const startX = 100;
+    const startY = height - 100;
     
-    // Right side actions
-    { label: 'FIRE', key: 'mouse', x: 0.85, y: 0.8, r: 50, color: [255, 50, 50] },
-    { label: 'R', key: 'r', x: 0.92, y: 0.65, r: 35 },
-    { label: 'F', key: 'f', x: 0.82, y: 0.65, r: 35 },
-    { label: 'C', key: 'c', x: 0.72, y: 0.65, r: 35 }
-];
+    return [
+        { label: 'W', key: 'w', x: startX, y: startY - spacing, r: 40 },
+        { label: 'A', key: 'a', x: startX - spacing * 0.8, y: startY, r: 40 },
+        { label: 'S', key: 's', x: startX, y: startY, r: 40 },
+        { label: 'D', key: 'd', x: startX + spacing * 0.8, y: startY, r: 40 },
+        
+        // Right side actions
+        { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
+        { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 },
+        { label: 'F', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
+        { label: 'C', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
+    ];
+}
 
-const mobilePauseButton = { x: 0.5, y: 0.1, w: 80, h: 40, label: 'PAUSE' };
-const mobileChatButton = { x: 0.1, y: 0.1, w: 80, h: 40, label: 'CHAT' };
+function getMobilePauseButton() {
+    return { x: width * 0.5, y: 50, w: 80, h: 40, label: menuVisible ? 'RESUME' : 'PAUSE' };
+}
+
+function getMobileChatButton() {
+    return { x: 50, y: 50, w: 80, h: 40, label: 'CHAT' };
+}
 
 
 function drawMobileControls() {
-    if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible) return;
+    // Always draw pause button if signed in (even if menu is visible, so we can exit)
+    if (typeof isMobile === 'undefined' || !isMobile || !signedIn) return;
     
     push();
     textAlign(CENTER, CENTER);
-    textSize(20);
+    textSize(16);
     noStroke();
-    
-    // Draw Pause Button
+
+    // Draw Pause Button (Always visible when signed in)
     {
-        const bx = width * mobilePauseButton.x;
-        const by = height * mobilePauseButton.y;
-        fill(200, 200, 200, 100);
+        const btn = getMobilePauseButton();
+        const bx = btn.x;
+        const by = btn.y;
+        fill(200, 200, 200, 200); // Higher opacity
         rectMode(CENTER);
-        rect(bx, by, mobilePauseButton.w, mobilePauseButton.h, 8);
-        fill(255);
-        text(mobilePauseButton.label, bx, by);
+        rect(bx, by, btn.w, btn.h, 8);
+        fill(0);
+        text(btn.label, bx, by);
+    }
+
+    // Hide other controls if menu is open
+    if (menuVisible) {
+        pop();
+        return;
     }
     
     // Draw Chat Button
     {
-        const bx = width * mobileChatButton.x;
-        const by = height * mobileChatButton.y;
+        const btn = getMobileChatButton();
+        const bx = btn.x;
+        const by = btn.y;
         fill(chatting ? 100 : 200, chatting ? 255 : 200, chatting ? 100 : 200, 100);
         rectMode(CENTER);
-        rect(bx, by, mobileChatButton.w, mobileChatButton.h, 8);
+        rect(bx, by, btn.w, btn.h, 8);
         fill(255);
-        text(mobileChatButton.label, bx, by);
+        text(btn.label, bx, by);
     }
     
-    for (let btn of mobileButtons) {
-        let bx = width * btn.x;
-        let by = height * btn.y;
+    const buttons = getMobileButtons();
+    for (let btn of buttons) {
+        let bx = btn.x;
+        let by = btn.y;
         
         let isPressed = typeof keys !== 'undefined' && keys[btn.key];
         
@@ -257,6 +279,7 @@ function drawMobileControls() {
         circle(bx, by, btn.r * 2);
         
         fill(0);
+        textSize(20);
         text(btn.label, bx, by);
     }
     pop();
@@ -266,8 +289,10 @@ function updateMobileControls() {
     if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible) return;
     if (typeof keys === 'undefined') return;
 
+    const buttons = getMobileButtons();
+
     // Reset keys handled by mobile controls
-    for (let btn of mobileButtons) {
+    for (let btn of buttons) {
         keys[btn.key] = false;
     }
     
@@ -277,9 +302,9 @@ function updateMobileControls() {
             let tx = touches[i].x;
             let ty = touches[i].y;
             
-            for (let btn of mobileButtons) {
-                let bx = width * btn.x;
-                let by = height * btn.y;
+            for (let btn of buttons) {
+                let bx = btn.x;
+                let by = btn.y;
                 if (dist(tx, ty, bx, by) < btn.r * 1.5) { 
                     keys[btn.key] = true;
                 }
@@ -312,22 +337,35 @@ function touchStarted(event) {
         return false;
     }
     
-    if (typeof isMobile !== 'undefined' && isMobile && signedIn && !menuVisible) {
+    if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
         // Mobile Interactions
         const mx = touches[0].x;
         const my = touches[0].y;
         
-        // Pause Button
-        if (Math.abs(mx - width * mobilePauseButton.x) < mobilePauseButton.w/2 &&
-            Math.abs(my - height * mobilePauseButton.y) < mobilePauseButton.h/2) {
-             menuVisible = true;
-             if (menuManager) menuManager.show('login');
+        // Pause Button - Check regardless of menu state for exit behavior
+        const pauseBtn = getMobilePauseButton();
+        if (Math.abs(mx - pauseBtn.x) < pauseBtn.w/2 + 20 &&
+            Math.abs(my - pauseBtn.y) < pauseBtn.h/2 + 20) {
+             
+             // Toggle logic
+             if (menuVisible) {
+                 menuVisible = false;
+                 // Don't show login immediately when closing
+                 // if (menuManager && menuManager.current && menuManager.current.hide) menuManager.current.hide(); 
+             } else {
+                 menuVisible = true;
+                 if (menuManager) menuManager.show('login');
+             }
              return false;
         }
 
+        // If menu is open, don't process potential game controls underneath
+        if (menuVisible) return false;
+
         // Chat Button
-        if (Math.abs(mx - width * mobileChatButton.x) < mobileChatButton.w/2 &&
-            Math.abs(my - height * mobileChatButton.y) < mobileChatButton.h/2) {
+        const chatBtn = getMobileChatButton();
+        if (Math.abs(mx - chatBtn.x) < chatBtn.w/2 &&
+            Math.abs(my - chatBtn.y) < chatBtn.h/2) {
              toggleMobileChat();
              return false;
         }
