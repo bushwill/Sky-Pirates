@@ -199,19 +199,21 @@ function mouseWheel(event) {
 /* Mobile Controls Configuration */
 // Configurations are now functions to allow dynamic screen resizing
 function getMobileButtons() {
-    const spacing = Math.min(width, height) * 0.15; // Dynamic spacing based on screen size
+    // Ensure spacing is at least diameter + padding (40*2 + 10 = 90)
+    // Use a larger percentage of screen or a hard floor
+    const spacing = Math.max(90, Math.min(width, height) * 0.18); 
     const startX = 100;
     const startY = height - 100;
     
     return [
         { label: 'W', key: 'w', x: startX, y: startY - spacing, r: 40 },
-        { label: 'A', key: 'a', x: startX - spacing * 0.8, y: startY, r: 40 },
+        { label: 'A', key: 'a', x: startX - spacing, y: startY, r: 40 }, // Increased horizontal spacing
         { label: 'S', key: 's', x: startX, y: startY, r: 40 },
-        { label: 'D', key: 'd', x: startX + spacing * 0.8, y: startY, r: 40 },
+        { label: 'D', key: 'd', x: startX + spacing, y: startY, r: 40 }, // Increased horizontal spacing
         
         // Right side actions
         { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
-        { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 },
+        { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 }, // Adjusted Y to clear overlapping
         { label: 'F', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
         { label: 'C', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
     ];
@@ -245,6 +247,12 @@ function drawMobileControls() {
         rect(bx, by, btn.w, btn.h, 8);
         fill(0);
         text(btn.label, bx, by);
+    }
+    
+    // Hide controls if an item stats popup is selected/open
+    if (typeof window.mobileSelection !== 'undefined' && window.mobileSelection) {
+        pop();
+        return;
     }
 
     // Hide other controls if menu is open
@@ -288,6 +296,11 @@ function drawMobileControls() {
 function updateMobileControls() {
     if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible) return;
     if (typeof keys === 'undefined') return;
+    
+    // Disable control updates if stats popup is open
+    if (typeof window.mobileSelection !== 'undefined' && window.mobileSelection) {
+        return;
+    }
 
     const buttons = getMobileButtons();
 
@@ -380,6 +393,12 @@ function touchStarted(event) {
         if (typeof shopButtonRegion !== 'undefined' && shopButtonRegion) {
             const shopButtonClicked = handleShopButtonClick(mx, my);
             if (shopButtonClicked) return false;
+        }
+
+        // Check sell all button
+        if (typeof sellAllButtonRegion !== 'undefined' && sellAllButtonRegion) {
+            const sellAllClicked = handleSellAllButtonClick(mx, my);
+            if (sellAllClicked) return false;
         }
         
         // Action Buttons

@@ -958,12 +958,7 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     if (player.browsing) {
         displayInventory(player, drawX, drawY);
     }
-    // Display shop when in recovery zone
-    if (player.biome === 'recovery') {
-        displayShop(player);
-        displayTeleportButton(player);
-        displaySellAllButton(player);
-    }
+    // Shop UI is now handled in Game.js to prevent scaling issues
 }
 
 function drawOverSpeedFireIcon(player, drawX, drawY) {

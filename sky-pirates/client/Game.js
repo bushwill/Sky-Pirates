@@ -204,7 +204,7 @@ function draw() {
         }
 
         // Calculate login menu dimensions
-        let mw = Math.max(500, width * 0.45); // Reduced width
+        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : Math.max(500, width * 0.45);
         let mh = height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
@@ -261,16 +261,24 @@ function draw() {
             }
             if (mapData) {
                 handleGameDisplay(controlledPlayer);
-                // Draw menu overlay if toggled during gameplay
-                if (menuVisible) {
-                    let mw = Math.max(500, width * 0.45); // Reduced width
-                    let mh = height * 0.8;
-                    let mx = (width - mw) / 2;
-                    let my = (height - mh) / 2;
-                    menuManager.draw(mx, my, mw, mh);
-                } else if (typeof drawMobileControls === 'function') {
+                
+                // Draw Mobile Controls (always check, so pause button renders)
+                if (typeof drawMobileControls === 'function') {
                     drawMobileControls();
                 }
+
+                // Draw menu overlay if toggled during gameplay
+                if (menuVisible) {
+                    let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : Math.max(500, width * 0.45);
+                    let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
+                    let mx = (width - mw) / 2;
+                    let my = (height - mh) / 2;
+                    
+                    push();
+                    translate(0,0); // Reset transform ensures menu draws on top of everything
+                    menuManager.draw(mx, my, mw, mh);
+                    pop();
+                } 
             }
         }
     }
@@ -328,6 +336,13 @@ function handleGameDisplay(controlledPlayer) {
 
     // 2. Draw Background (Sky + Sun)
     drawMapBackground(mapData, centerX);
+
+    push(); // Start Zoom Layer
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        translate(width / 2, height / 2);
+        scale(0.65); 
+        translate(-width / 2, -height / 2);
+    }
     
     // Check if respawn delay has ended
     if (respawnDelay && millis() >= respawnDelayEnd) {
@@ -428,6 +443,16 @@ function handleGameDisplay(controlledPlayer) {
         displayPlayers(centerX, centerY);
         displayEnemies(centerX, centerY);
     }
+
+    pop(); // End Zoom Layer
+
+    // Draw UI Elements (Unscaled)
+    if (controlledPlayer && signedIn && controlledPlayer.biome === 'recovery') {
+        if (typeof displayShop === 'function') displayShop(controlledPlayer);
+        if (typeof displayTeleportButton === 'function') displayTeleportButton(controlledPlayer);
+        if (typeof displaySellAllButton === 'function') displaySellAllButton(controlledPlayer);
+    }
+
     displayChat();
     displayNoticeMessages();
     displayAppInfo();
