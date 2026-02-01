@@ -446,11 +446,18 @@ function handleGameDisplay(controlledPlayer) {
 
     pop(); // End Zoom Layer
 
-    // Draw UI Elements (Unscaled)
-    if (controlledPlayer && signedIn && controlledPlayer.biome === 'recovery') {
-        if (typeof displayShop === 'function') displayShop(controlledPlayer);
-        if (typeof displayTeleportButton === 'function') displayTeleportButton(controlledPlayer);
-        if (typeof displaySellAllButton === 'function') displaySellAllButton(controlledPlayer);
+    // Draw UI Elements (Unscaled HUD)
+    if (controlledPlayer && signedIn) {
+        // Draw HUD elements here so they aren't scaled by mobile zoom
+        if (typeof drawPlaneInfo === 'function') drawPlaneInfo(controlledPlayer);
+        if (typeof drawCompass === 'function') drawCompass(controlledPlayer);
+        
+        // Recovery Zone Buttons
+        if (controlledPlayer.biome === 'recovery') {
+            if (typeof displayShop === 'function') displayShop(controlledPlayer);
+            if (typeof displayTeleportButton === 'function') displayTeleportButton(controlledPlayer);
+            if (typeof displaySellAllButton === 'function') displaySellAllButton(controlledPlayer);
+        }
     }
 
     displayChat();

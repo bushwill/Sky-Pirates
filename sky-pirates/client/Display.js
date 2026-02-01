@@ -952,8 +952,10 @@ function displayControlledPlayerStatus(player, drawX, drawY) {
     drawGunCursor(player, drawX, drawY);
     drawGunHeat(player, drawX, drawY);
     drawGunArc(player, drawX, drawY);
-    drawPlaneInfo(player);
-    drawCompass(player);
+    // Info and Compass are HUD elements, moved to Game.js for unscaled drawing
+    // drawPlaneInfo(player);
+    // drawCompass(player);
+
     // drawEnemyTargetIndicators moved to main loop
     if (player.browsing) {
         displayInventory(player, drawX, drawY);
@@ -1800,11 +1802,12 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
     const padding = 10;
     let currentY = popupY + popupHeight + padding;
     
-    // Reset regions if this is the first draw of buttons this frame? 
-    // Since this is called per-popup, and we only show one popup, it is safe to reset.
+    // Reset regions
     window.mobileActionButtons = []; 
 
     push();
+    // Enforce drawing mode to ensure alignment matches calculation
+    rectMode(CORNER);
     textSize(16);
     textStyle(BOLD);
     textAlign(CENTER, CENTER);
@@ -1820,6 +1823,7 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
         
         fill(255);
         noStroke();
+        // Text at center of button rectangle
         text("BUY", btnX + btnW/2, currentY + btnHeight/2);
         
         window.mobileActionButtons.push({
@@ -1859,7 +1863,7 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
         
         window.mobileActionButtons.push({
             x: sellX, y: currentY, w: btnW, h: btnHeight,
-            action: { type: 'sell', index: region.inventoryIndex } // Fix: Use inventoryIndex for sell
+            action: { type: 'sell', index: region.inventoryIndex } 
         });
     }
     pop();

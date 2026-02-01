@@ -326,6 +326,22 @@ function updateMobileControls() {
     }
 }
 
+function getScaledInputCoordinates(screenX, screenY) {
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        const cx = width / 2;
+        const cy = height / 2;
+        const s = 0.65;
+        // Inverse of: drawnX = (logicX - cx) * s + cx
+        // logicX - cx = (drawnX - cx) / s
+        // logicX = (drawnX - cx) / s + cx
+        return {
+            x: (screenX - cx) / s + cx,
+            y: (screenY - cy) / s + cy
+        };
+    }
+    return { x: screenX, y: screenY };
+}
+
 function touchStarted(event) {
     // Allow default browser behavior for inputs (text fields, etc.)
     if (event && event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) {
@@ -422,18 +438,24 @@ function touchStarted(event) {
         // Check Selection Hits
         let uiHit = false;
         
+        // Get scaled coordinates for elements inside the Zoom Layer
+        const scaledClick = getScaledInputCoordinates(mx, my);
+
+        // Equipped Click checks HUD elements (Unscaled) -> Use Raw Coords
         if (handleEquippedClick(mx, my)) uiHit = true;
         
+        // Shop is unscaled now, so use raw mx/my
         if (!uiHit && typeof shopRegions !== 'undefined' && shopRegions.length > 0) {
              if (handleShopClick(mx, my)) uiHit = true;
         }
         
+        // Inventory is in Zoom Layer -> Use Scaled Coords
         if (!uiHit && typeof inventoryRegions !== 'undefined') {
              for (let region of inventoryRegions) {
                  const halfSize = region.size / 2;
-                 if (mx >= region.x - halfSize && mx <= region.x + halfSize &&
-                     my >= region.y - halfSize && my <= region.y + halfSize) {
-                      handleInventoryClick(mx, my); 
+                 if (scaledClick.x >= region.x - halfSize && scaledClick.x <= region.x + halfSize &&
+                     scaledClick.y >= region.y - halfSize && scaledClick.y <= region.y + halfSize) {
+                      handleInventoryClick(scaledClick.x, scaledClick.y); 
                       uiHit = true;
                       break;
                  }
