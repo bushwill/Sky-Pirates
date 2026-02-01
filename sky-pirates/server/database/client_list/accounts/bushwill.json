@@ -7,16 +7,16 @@
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 641,
+      "progress": 448,
       "milestones": [
         {
           "unlocked": true,
-          "unlockedAt": 1769664847698,
+          "unlockedAt": 1769901305942,
           "target": 300
         },
         {
-          "unlocked": true,
-          "unlockedAt": 1769665849378,
+          "unlocked": false,
+          "unlockedAt": null,
           "target": 500
         },
         {
@@ -34,16 +34,14 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 435,
+      "progress": 153,
       "milestones": [
         {
           "unlocked": true,
-          "unlockedAt": 1769663019387,
+          "unlockedAt": 1769901450195,
           "target": 50
         },
         {
-          "unlocked": true,
-          "unlockedAt": 1769665738632,
           "target": 250
         },
         {
@@ -57,11 +55,11 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 25,
+      "progress": 7,
       "milestones": [
         {
-          "unlocked": true,
-          "unlockedAt": 1769665498617,
+          "unlocked": false,
+          "unlockedAt": null,
           "target": 10
         },
         {
@@ -82,13 +80,11 @@
       ]
     },
     "fish_killer": {
-      "completed": true,
-      "unlockedAt": 1769664624481,
-      "progress": 50,
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 15,
       "milestones": [
         {
-          "unlocked": true,
-          "unlockedAt": 1769664624481,
           "target": 50
         }
       ]
@@ -96,11 +92,11 @@
     "distance_flown": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 50001.03623349174,
+      "progress": 50001.74479798303,
       "milestones": [
         {
           "unlocked": true,
-          "unlockedAt": 1769477467023,
+          "unlockedAt": 1769901617334,
           "target": 50000
         },
         {
@@ -122,20 +118,20 @@
     },
     "mile_high_club": {
       "completed": true,
-      "unlockedAt": 1769665117594,
+      "unlockedAt": 1769902572063,
       "progress": 1,
       "milestones": []
     },
     "sky_angler": {
       "completed": true,
-      "unlockedAt": 1769477482715,
+      "unlockedAt": 1769901367680,
       "progress": 1,
       "milestones": []
     },
     "two_birds": {
-      "completed": true,
-      "unlockedAt": 1769659015773,
-      "progress": 1,
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 0,
       "milestones": []
     },
     "player_killer": {
@@ -173,7 +169,7 @@
     },
     "sharpshooter": {
       "completed": true,
-      "unlockedAt": 1769664699207,
+      "unlockedAt": 1769901490476,
       "progress": 1,
       "milestones": []
     }
