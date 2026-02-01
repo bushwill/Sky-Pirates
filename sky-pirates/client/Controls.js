@@ -320,8 +320,8 @@ function drawMobileControls() {
         return;
     }
 
-    // Hide other controls if menu is open
-    if (menuVisible) {
+    // Hide other controls if menu or shop is open
+    if (menuVisible || (typeof shopOpen !== 'undefined' && shopOpen)) {
         pop();
         return;
     }
@@ -359,7 +359,7 @@ function drawMobileControls() {
 }
 
 function updateMobileControls() {
-    if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible) return;
+    if (typeof isMobile === 'undefined' || !isMobile || !signedIn || menuVisible || (typeof shopOpen !== 'undefined' && shopOpen)) return;
     if (typeof keys === 'undefined') return;
     
     // Disable control updates if stats popup is open
