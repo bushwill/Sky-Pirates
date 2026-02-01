@@ -45,6 +45,22 @@ function sortInventory(inventory) {
  * @returns {boolean} True if a shop item was clicked, false otherwise
  */
 function handleShopClick(mx, my) {
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        for (let region of shopRegions) {
+            if (mx >= region.x && mx <= region.x + region.width &&
+                my >= region.y && my <= region.y + region.height) {
+                // Select item
+                window.mobileSelection = {
+                    type: 'shop',
+                    item: region.component,
+                    index: region.itemIndex
+                };
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Iterate over each recorded shop item region
     for (let region of shopRegions) {
         // Check if click is within the shop item's bounding box
@@ -76,6 +92,16 @@ function handleInventoryClick(mx, my) {
         const bottom = region.y + halfSize;
 
         if (mx >= left && mx <= right && my >= top && my <= bottom) {
+            if (typeof isMobile !== 'undefined' && isMobile) {
+                // Mobile Select
+                window.mobileSelection = {
+                    type: 'inventory',
+                    item: region.item,
+                    index: region.inventoryIndex
+                };
+                return;
+            }
+
             // Use the stored inventory index from the region
             itemIndex = region.inventoryIndex;
             if (itemIndex === undefined || itemIndex === -1) {
@@ -95,6 +121,24 @@ function handleInventoryClick(mx, my) {
             break;
         }
     }
+}
+
+function handleEquippedClick(mx, my) {
+    if (typeof window.topRightComponentRegions === 'undefined') return false;
+    
+    for (let region of window.topRightComponentRegions) {
+         if (dist(mx, my, region.x, region.y) <= region.size / 2) {
+             if (typeof isMobile !== 'undefined' && isMobile) {
+                 window.mobileSelection = {
+                     type: 'equipped',
+                     item: region.component,
+                     index: 0 
+                 };
+             }
+             return true;
+         }
+    }
+    return false;
 }
 
 /**

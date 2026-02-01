@@ -254,7 +254,12 @@ function handleDecodedMessage(decodedMessage) {
             // If server sent an 'updated' message it's a party/info update while already logged in
             if (decodedMessage.message === 'updated') {
                 // Close any overlay menu and show a brief confirmation in the login screen area
-                if (typeof menuVisible !== 'undefined') menuVisible = false;
+                if (typeof menuVisible !== 'undefined') {
+                    menuVisible = false;
+                    if (menuManager && menuManager.current && menuManager.current.hide) {
+                        menuManager.current.hide();
+                    }
+                }
                 if (menuManager && menuManager.screens && menuManager.screens['login']) {
                     menuManager.screens['login'].loginMsg = 'Party updated.';
                     // Clear the message after a short delay
@@ -610,8 +615,13 @@ function sendPlayerData(player = null) {
     let t_x = 0;
     let t_y = 0;
     
+    // For mobile users, always aim forward in the direction of travel
+    if (isMobile && player && typeof player.angle !== 'undefined') {
+        t_x = player.x + Math.cos(player.angle) * 500;
+        t_y = player.y + Math.sin(player.angle) * 500;
+    }
     // Use the global camera position if available, which includes screen shake and offsets
-    if (typeof globalCameraX !== 'undefined' && typeof globalCameraY !== 'undefined') {
+    else if (typeof globalCameraX !== 'undefined' && typeof globalCameraY !== 'undefined') {
         t_x = mouseX - windowWidth / 2 + globalCameraX;
         t_y = mouseY - windowHeight / 2 + globalCameraY;
     } else {

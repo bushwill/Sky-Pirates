@@ -22,12 +22,18 @@ class MenuManager {
     }
 
     show(name) {
+        if (this.current && this.current.hide) {
+            this.current.hide();
+        }
         this.current = this.screens[name];
         // Only show the color picker on the login screen when the user is NOT already signed in
         if (name === 'login' && this.colorPicker && !signedIn) {
             this.colorPicker.show();
         } else if (this.colorPicker) {
             this.colorPicker.hide();
+        }
+        if (this.current && this.current.show) {
+            this.current.show();
         }
     }
 
@@ -190,66 +196,65 @@ class WeaponMenuOption extends MenuOption {
 class MenuInputField {
     constructor(label, x, y, w, h, isPassword = false) {
         this.label = label;
-        this.value = '';
         this.x = x;
         this.y = y;
         this.w = w;
         this.h = h;
-        this.focused = false;
-        this.isPassword = isPassword;
+        
+        // Create DOM input
+        this.input = createInput('');
+        if (isPassword) {
+            this.input.attribute('type', 'password');
+        }
+        
+        // Style to look similar to the canvas version
+        this.input.style('font-size', '16px');
+        this.input.style('padding', '5px');
+        this.input.style('border-radius', '6px');
+        this.input.style('border', '1px solid #999');
+        this.input.style('outline', 'none');
+        this.input.style('color', '#000');
+        this.input.style('background', '#fff');
+        this.input.style('box-sizing', 'border-box'); // Ensure padding doesn't affect width
+        
+        // Placeholder
+        this.input.attribute('placeholder', label);
+
+        this.input.hide();
     }
 
     draw() {
-        fill(this.focused ? 255 : 230);
-        stroke(this.focused ? 0 : 150);
-        rect(this.x, this.y, this.w, this.h, 6);
-        fill(80);
-        textAlign(LEFT, CENTER);
-        textSize(16);
-        if (this.value === '') text(this.label, this.x + 8, this.y + this.h / 2);
-        fill(0);
-        let displayVal = this.isPassword ? '*'.repeat(this.value.length) : this.value;
-        text(displayVal, this.x + 8, this.y + this.h / 2);
+        // Update position and size
+        this.input.position(this.x, this.y);
+        this.input.size(this.w, this.h);
+        this.input.show();
+    }
+    
+    // Delegate value property
+    get value() {
+        return this.input.value();
+    }
+    
+    set value(v) {
+        this.input.value(v);
+    }
+    
+    get focused() {
+        return document.activeElement === this.input.elt;
+    }
+    
+    hide() {
+        this.input.hide();
+    }
+    
+    show() {
+        this.input.show();
     }
 
-    mousePressed(mx, my) {
-        this.focused = mx > this.x && mx < this.x + this.w && my > this.y && my < this.y + this.h;
-        return this.focused;
-    }
-
-    keyPressed(k) {
-        if (!this.focused) return false;
-        // If a DOM key string was passed (from our handleKeyDown), handle it here
-        if (typeof k === 'string') {
-            // Backspace handling
-            if (k === 'Backspace') {
-                this.value = this.value.slice(0, -1);
-                return true;
-            }
-            // Printable single-character keys: append
-            if (k.length === 1 && this.value.length < 13) {
-                this.value += k;
-                return true;
-            }
-            // Ignore other keys here
-            return false;
-        }
-
-        // Fallback: legacy p5 keyCode handling
-        if (typeof keyCode !== 'undefined' && keyCode === BACKSPACE) {
-            this.value = this.value.slice(0, -1);
-            return true;
-        }
-        return false;
-    }
-    keyTyped(k) {
-        if (!this.focused) return false;
-        if (typeof k === 'string' && k.length === 1 && this.value.length < 13) {
-            this.value += k;
-            return true;
-        }
-        return false;
-    }
+    // Legacy methods no longer needed
+    mousePressed(mx, my) { return false; }
+    keyPressed(k) { return false; }
+    keyTyped(k) { return false; }
 }
 
 class AccountAuthMenuScreen extends MenuScreen {
@@ -267,6 +272,12 @@ class AccountAuthMenuScreen extends MenuScreen {
         
         this.msg = "";
         this.selected = -1;
+    }
+
+    hide() {
+        this.usernameField.hide();
+        this.passwordField.hide();
+        if (this.confirmPasswordField) this.confirmPasswordField.hide();
     }
 
     submit() {
@@ -369,18 +380,21 @@ class AccountAuthMenuScreen extends MenuScreen {
     }
 
     keyPressed(k) {
-         if (this.usernameField.focused) this.usernameField.keyPressed(k);
-         else if (this.passwordField.focused) this.passwordField.keyPressed(k);
-         else if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused) this.confirmPasswordField.keyPressed(k);
-         else if (k === 'Enter') this.choose();
-         else if (k === 'ArrowUp') this.navigate(-1);
+         if (k === 'Enter') {
+             this.choose();
+             return;
+         }
+         
+         const anyFocused = this.usernameField.focused || this.passwordField.focused || (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused);
+         
+         if (anyFocused) return;
+
+         if (k === 'ArrowUp') this.navigate(-1);
          else if (k === 'ArrowDown') this.navigate(1);
     }
     
     keyTyped(k) {
-         if (this.usernameField.focused) this.usernameField.keyTyped(k);
-         else if (this.passwordField.focused) this.passwordField.keyTyped(k);
-         else if (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused) this.confirmPasswordField.keyTyped(k);
+        // DOM handles text input
     }
 }
 
@@ -398,7 +412,21 @@ class LoginMenuScreen extends MenuScreen {
         this.pauseHeader = randomKey;
         this.pauseSubheader = PAUSE_JOKES[randomKey];
         
+        this.lastTouchY = 0;
+        
         this.usernameField = new MenuInputField("Name:", 150, 220, 240, 40);
+        this.usernameField.input.input(() => {
+            if (typeof saveUserPreferences === 'function') {
+                saveUserPreferences(
+                    this.usernameField.value.trim(), 
+                    this.color, 
+                    selectedGun1, 
+                    selectedGun2, 
+                    (this.partyField ? this.partyField.value.trim() : "")
+                );
+            }
+        });
+
         this.colorPicker = colorPicker;
         this.loginMsg = '';
         this.color = '#ff8800';
@@ -414,6 +442,17 @@ class LoginMenuScreen extends MenuScreen {
         
         // Party name input field
         this.partyField = new MenuInputField("Party (optional):", 150, 270, 240, 40);
+        this.partyField.input.input(() => {
+            if (typeof saveUserPreferences === 'function') {
+                saveUserPreferences(
+                    this.usernameField.value.trim(), 
+                    this.color, 
+                    selectedGun1, 
+                    selectedGun2, 
+                    this.partyField.value.trim()
+                );
+            }
+        });
 
         // Account management buttons
         this.createAccountBtn = new MenuOption("Create Account", () => menuManager.show('createAccount'));
@@ -467,6 +506,11 @@ class LoginMenuScreen extends MenuScreen {
         
         // Load saved preferences from cookies (after all fields are created)
         this.loadSavedPreferences();
+    }
+
+    hide() {
+        this.usernameField.hide();
+        this.partyField.hide();
     }
 
     draw(x, y, w, h) {
@@ -541,6 +585,7 @@ class LoginMenuScreen extends MenuScreen {
         this.usernameField.y = y + 170;
         // If already signed in, display username read-only; otherwise draw editable field
         if (signedIn) {
+            this.usernameField.hide();
             fill(50);
             textAlign(LEFT, CENTER);
             textSize(18);
@@ -966,6 +1011,40 @@ class LoginMenuScreen extends MenuScreen {
         }
     }
 
+    touchStarted() {
+        if (typeof touches !== 'undefined' && touches.length > 0) {
+            this.lastTouchY = touches[0].y;
+        }
+    }
+
+    touchMoved() {
+        if (typeof touches !== 'undefined' && touches.length > 0) {
+            let currentY = touches[0].y;
+            let delta = currentY - this.lastTouchY;
+            this.lastTouchY = currentY;
+            
+            // Check bounds for right panel (achievements)
+            if (this.achievements && this.achievements.length > 0) {
+                let tx = touches[0].x;
+                let ty = touches[0].y;
+                if (tx > this.rightPanelBounds.x && tx < this.rightPanelBounds.x + this.rightPanelBounds.w &&
+                    ty > this.rightPanelBounds.y && ty < this.rightPanelBounds.y + this.rightPanelBounds.h) {
+                    this.achievementScroll += delta;
+                    return false;
+                }
+            }
+            
+            // Check bounds for left panel
+            let tx = touches[0].x;
+            let ty = touches[0].y;
+            if (tx > this.leftPanelBounds.x && tx < this.leftPanelBounds.x + this.leftPanelBounds.w &&
+                ty > this.leftPanelBounds.y && ty < this.leftPanelBounds.y + this.leftPanelBounds.h) {
+                 this.playerScroll += delta;
+                 return false;
+            }
+        }
+    }
+
     setSessionActive(active) {
         this.isSessionActive = active;
     }
@@ -1094,37 +1173,21 @@ class LoginMenuScreen extends MenuScreen {
     }
 
     keyPressed(k) {
-        if (k === 'Enter') this.tryLogin();
-        if (this.usernameField.focused) {
-            this.usernameField.keyPressed(k);
+        if (k === 'Enter') {
+            this.tryLogin();
             return;
         }
-        if (this.partyField.focused) {
-            this.partyField.keyPressed(k);
+        
+        // If inputs are focused, prevent menu navigation
+        if (this.usernameField.focused || this.partyField.focused) {
             return;
         }
+
         if (k === 'ArrowUp') this.navigate(-1);
         if (k === 'ArrowDown') this.navigate(1);
     }
     keyTyped(k) {
-        if (this.usernameField.focused) {
-            this.usernameField.keyTyped(k);
-            if (typeof saveUserPreferences === 'function') {
-                const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
-                const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
-                saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
-            }
-            return;
-        }
-        if (this.partyField.focused) {
-            this.partyField.keyTyped(k);
-            if (typeof saveUserPreferences === 'function') {
-                const name = (this.usernameField && this.usernameField.value) ? this.usernameField.value.trim() : "";
-                const party = (this.partyField && this.partyField.value) ? this.partyField.value.trim() : "";
-                saveUserPreferences(name, this.color, selectedGun1, selectedGun2, party);
-            }
-            return;
-        }
+        // Handled by DOM inputs and 'input' event listeners
     }
 
     loadSavedPreferences() {
@@ -1196,7 +1259,10 @@ class LoginMenuScreen extends MenuScreen {
             this.loginMsg = 'Removing from party...';
             setTimeout(() => {
                 this.loginMsg = '';
-                if (typeof menuVisible !== 'undefined') menuVisible = false;
+                if (typeof menuVisible !== 'undefined') {
+                    menuVisible = false;
+                    this.hide();
+                }
             }, 1500);
             return;
         }

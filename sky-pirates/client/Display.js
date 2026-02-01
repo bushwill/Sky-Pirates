@@ -1,3 +1,7 @@
+// Global state for mobile selection
+window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: ..., index: ... }
+window.mobileActionButtons = []; // Array of click regions for action buttons
+
 // Helper to check if a position is on screen
 function isOnScreen(drawX, drawY, margin = 0) {
     return (
@@ -1210,26 +1214,33 @@ function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, pa
 function drawTopRightComponentStats(player) {
     if (!window.topRightComponentRegions || window.topRightComponentRegions.length === 0) return;
     
-    // Find which component is being hovered
-    let hoveredComponent = null;
-    for (let region of window.topRightComponentRegions) {
-        if (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2) {
-            hoveredComponent = region.component;
-            break;
+    let targetComponent = null;
+
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        if (window.mobileSelection && window.mobileSelection.type === 'equipped') {
+             targetComponent = window.mobileSelection.item;
+        }
+    } else {
+        // Find which component is being hovered
+        for (let region of window.topRightComponentRegions) {
+            if (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2) {
+                targetComponent = region.component;
+                break;
+            }
         }
     }
     
-    if (!hoveredComponent) return;
+    if (!targetComponent) return;
     
-    const stats = getComponentStats(hoveredComponent);
+    const stats = getComponentStats(targetComponent);
     const popupWidth = 250;
     const lineHeight = 20;
     const padding = 10;
     
-    const { popupX, popupY } = drawComponentPopupBase(hoveredComponent.name, stats, popupWidth, lineHeight, padding);
+    const { popupX, popupY } = drawComponentPopupBase(targetComponent.name, stats, popupWidth, lineHeight, padding);
     
     textSize(16);
-    text(hoveredComponent.name, popupX + padding, popupY + padding);
+    text(targetComponent.name, popupX + padding, popupY + padding);
     
     // Stats
     textSize(14);
@@ -1307,6 +1318,8 @@ function displayOtherPlayerStatus(player, drawX, drawY) {
 }
 
 function drawGunCursor(player, drawX, drawY) {
+    if (typeof isMobile !== 'undefined' && isMobile) return;
+
     var gun;
     if (player.selectedGun === 1) {
         gun = player.gun1;
@@ -1787,6 +1800,76 @@ function displayShop(controlledPlayer) {
     drawComponentComparisonPopup(controlledPlayer, shopRegions, true);
 }
 
+function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region, isShop) {
+    const btnHeight = 40;
+    const padding = 10;
+    const y = popupY + popupHeight + padding;
+    
+    // Reset regions if this is the first draw of buttons this frame? 
+    // Since this is called per-popup, and we only show one popup, it is safe to reset.
+    window.mobileActionButtons = []; 
+
+    push();
+    textSize(16);
+    textStyle(BOLD);
+    
+    if (isShop) {
+        // BUY button
+        const btnX = popupX;
+        const btnW = popupWidth;
+        
+        fill(50, 200, 50);
+        stroke(255);
+        rect(btnX, y, btnW, btnHeight, 8);
+        
+        fill(255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        text("BUY", btnX + btnW/2, y + btnHeight/2);
+        
+        window.mobileActionButtons.push({
+            x: btnX, y: y, w: btnW, h: btnHeight,
+            action: { type: 'buy', index: region.itemIndex }
+        });
+    } else {
+        // EQUIP and SELL buttons
+        const btnW = (popupWidth - padding) / 2;
+        
+        // Equip (Left)
+        const equipX = popupX;
+        fill(50, 150, 250);
+        stroke(255);
+        rect(equipX, y, btnW, btnHeight, 8);
+        
+        fill(255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        text("EQUIP", equipX + btnW/2, y + btnHeight/2);
+        
+        window.mobileActionButtons.push({
+            x: equipX, y: y, w: btnW, h: btnHeight,
+            action: { type: 'equip', index: region.inventoryIndex }
+        });
+        
+        // Sell (Right)
+        const sellX = popupX + btnW + padding;
+        fill(250, 150, 50);
+        stroke(255);
+        rect(sellX, y, btnW, btnHeight, 8);
+        
+        fill(255);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        text("SELL", sellX + btnW/2, y + btnHeight/2);
+        
+        window.mobileActionButtons.push({
+            x: sellX, y: y, w: btnW, h: btnHeight,
+            action: { type: 'sell', index: region.inventoryIndex }
+        });
+    }
+    pop();
+}
+
 /**
  * Draw a comparison popup when hovering over a component
  * Shows all stats of the hovered component and compares to equipped component
@@ -1794,23 +1877,38 @@ function displayShop(controlledPlayer) {
 function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false) {
     if (!controlledPlayer || !regions || regions.length === 0) return;
     
-    // Find which region is being hovered
-    let hoveredRegion = null;
-    for (let region of regions) {
-        const inRegion = isShop ? 
-            (mouseX >= region.x && mouseX <= region.x + region.width &&
-             mouseY >= region.y && mouseY <= region.y + region.height) :
-            (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2);
-        
-        if (inRegion) {
-            hoveredRegion = region;
-            break;
+    let targetRegion = null;
+
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        // Mobile: Check selection
+        if (window.mobileSelection) {
+             const sel = window.mobileSelection;
+             const contextMatch = (isShop && sel.type === 'shop') || (!isShop && sel.type === 'inventory');
+             
+             if (contextMatch) {
+                targetRegion = regions.find(r => 
+                    (isShop ? r.itemIndex : r.inventoryIndex) === sel.index
+                );
+             }
+        }
+    } else {
+        // Desktop: Hover logic
+        for (let region of regions) {
+            const inRegion = isShop ? 
+                (mouseX >= region.x && mouseX <= region.x + region.width &&
+                 mouseY >= region.y && mouseY <= region.y + region.height) :
+                (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2);
+            
+            if (inRegion) {
+                targetRegion = region;
+                break;
+            }
         }
     }
     
-    if (!hoveredRegion) return;
+    if (!targetRegion) return;
     
-    const component = hoveredRegion.component || hoveredRegion.item;
+    const component = targetRegion.component || targetRegion.item;
     if (!component) return;
     
     // Get equipped component of the same type
@@ -1838,7 +1936,12 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         }
     }
     
-    const { popupX, popupY } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding);
+    // Increase popup height to accommodate buttons if mobile
+    // We handle button drawing separately but need to know position?
+    // Actually drawComponentPopupBase returns popup height based on stats.
+    // We will draw buttons BELOW that.
+    
+    const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding);
     
     textSize(14);
     text(component.name, popupX + padding, popupY + padding);
@@ -1885,7 +1988,8 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
     }
     
     // Add hint text for selling items in recovery zone (only for inventory, not shop)
-    if (!isShop && controlledPlayer.biome === 'recovery') {
+    // Mobile doesn't need this hint as it has buttons.
+    if (!isShop && controlledPlayer.biome === 'recovery' && (!isMobile)) {
         const hintY = popupY + padding + (stats.length + 1) * lineHeight + 5;
         fill(160, 160, 160);
         textStyle(ITALIC);
@@ -1895,6 +1999,11 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
     }
     
     pop();
+
+    // IF MOBILE: Draw Action Buttons
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, targetRegion, isShop);
+    }
 }
 
 function displayTeleportButton(controlledPlayer) {

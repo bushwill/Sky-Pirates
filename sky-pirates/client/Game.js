@@ -4,6 +4,7 @@
 
 // Connection and network
 let ws;
+let isMobile = false;
 let pingTimes = [];
 let connected = false;
 let reconnecting = false;
@@ -106,6 +107,9 @@ let menuVisible = false; // Whether the menu overlay is visible during gameplay 
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
+
+    // Check for mobile device
+    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     rectMode(CENTER);
     stroke(0);
@@ -264,6 +268,8 @@ function draw() {
                     let mx = (width - mw) / 2;
                     let my = (height - mh) / 2;
                     menuManager.draw(mx, my, mw, mh);
+                } else if (typeof drawMobileControls === 'function') {
+                    drawMobileControls();
                 }
             }
         }
