@@ -1074,31 +1074,8 @@ function drawPlaneInfo(player) {
     });
 
     pop();
-}
-    push();
-    translate(iconsStartX + iconSpacing, currentY + iconSize / 2);
-    drawItem(player.chassis, 0, 0, iconSize);
-    pop();
-    window.topRightComponentRegions.push({
-        component: player.chassis,
-        x: iconsStartX + iconSpacing,
-        y: currentY + iconSize / 2,
-        size: iconSize
-    });
-    
-    // Draw wings icon
-    push();
-    translate(iconsStartX + iconSpacing * 2, currentY + iconSize / 2);
-    drawItem(player.wings, 0, 0, iconSize);
-    pop();
-    window.topRightComponentRegions.push({
-        component: player.wings,
-        x: iconsStartX + iconSpacing * 2,
-        y: currentY + iconSize / 2,
-        size: iconSize
-    });
-    
-    currentY += iconSize + 20;
+
+    currentY += iconSize + (20 * s);
     
     // Draw weapon icons centered under the 3 components
     // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
@@ -1113,7 +1090,7 @@ function drawPlaneInfo(player) {
     if (player.selectedGun === 1) {
         fill(100, 255, 100);
         noStroke();
-        circle(iconSize / 2, -5, 8);
+        circle(iconSize / 2, -(5 * s), 8 * s);
     }
     pop();
     window.topRightComponentRegions.push({
@@ -1131,7 +1108,7 @@ function drawPlaneInfo(player) {
     if (player.selectedGun === 2) {
         fill(100, 255, 100);
         noStroke();
-        circle(iconSize / 2, -5, 8);
+        circle(iconSize / 2, -(5 * s), 8 * s);
     }
     pop();
     window.topRightComponentRegions.push({
