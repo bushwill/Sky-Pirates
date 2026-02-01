@@ -993,32 +993,44 @@ function drawOverSpeedFireIcon(player, drawX, drawY) {
     pop();
 }
 
+function getUIScale() {
+    const w = windowWidth || width;
+    // Scale down if width is less than standard desktop (1280px)
+    // Mobile width ~400 -> scale ~0.5
+    // Tablet ~800 -> scale ~0.8
+    if (w < 1280) {
+        return Math.min(1.0, Math.max(0.5, w / 1000));
+    }
+    return 1.0;
+}
+
 function drawPlaneInfo(player) {
     push();
     
-    const startX = 20;
-    let currentY = 20;
+    const s = getUIScale();
+    const startX = 20 * s;
+    let currentY = 20 * s;
     
     noStroke();
     textAlign(LEFT, TOP);
     
     // Money display
     fill(100, 255, 100);
-    textSize(32);
+    textSize(32 * s);
     textStyle(BOLD);
     text('$' + player.money.toLocaleString(), startX, currentY);
-    currentY += 45;
+    currentY += 45 * s;
     
     // Plane value display
     fill(200, 200, 100);
-    textSize(18);
+    textSize(18 * s);
     textStyle(NORMAL);
     text('Plane Value: $' + player.value.toLocaleString(), startX, currentY);
-    currentY += 35;
+    currentY += 35 * s;
     
     // Component icons
-    const iconSize = 40;
-    const iconSpacing = 60;
+    const iconSize = 40 * s;
+    const iconSpacing = 60 * s;
     const iconsStartX = startX + iconSize / 2; // Offset by half icon size since drawItem draws from center
     
     // Store regions for hover detection
@@ -1038,6 +1050,31 @@ function drawPlaneInfo(player) {
     });
     
     // Draw chassis icon
+    push();
+    translate(iconsStartX + iconSpacing, currentY + iconSize / 2);
+    drawItem(player.chassis, 0, 0, iconSize);
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.chassis,
+        x: iconsStartX + iconSpacing,
+        y: currentY + iconSize / 2,
+        size: iconSize
+    });
+    
+    // Draw wings icon
+    push();
+    translate(iconsStartX + iconSpacing * 2, currentY + iconSize / 2);
+    drawItem(player.wings, 0, 0, iconSize);
+    pop();
+    window.topRightComponentRegions.push({
+        component: player.wings,
+        x: iconsStartX + iconSpacing * 2,
+        y: currentY + iconSize / 2,
+        size: iconSize
+    });
+
+    pop();
+}
     push();
     translate(iconsStartX + iconSpacing, currentY + iconSize / 2);
     drawItem(player.chassis, 0, 0, iconSize);
@@ -1690,12 +1727,13 @@ function displayShop(controlledPlayer) {
     }
 
     // Shop display settings - made twice as wide, positioned on left side
-    const shopX = 20; // Left side of screen
-    const shopY = 100; // Top of screen
-    const itemWidth = 400; // Doubled from 200
-    const itemHeight = 80;
-    const itemSpacing = 10;
-    const headerHeight = 60;
+    const s = getUIScale();
+    const shopX = 20 * s; // Left side of screen
+    const shopY = 100 * s; // Top of screen
+    const itemWidth = 400 * s; // Doubled from 200
+    const itemHeight = 80 * s;
+    const itemSpacing = 10 * s;
+    const headerHeight = 60 * s;
 
     push();
     rectMode(CORNER);
@@ -1704,18 +1742,18 @@ function displayShop(controlledPlayer) {
     fill(40, 40, 50, 230);
     stroke(200, 200, 220);
     strokeWeight(2);
-    rect(shopX - 10, shopY - 10, itemWidth + 20, headerHeight + (itemHeight + itemSpacing) * currentShop.inventory.length + 20, 10);
+    rect(shopX - (10 * s), shopY - (10 * s), itemWidth + (20 * s), headerHeight + (itemHeight + itemSpacing) * currentShop.inventory.length + (20 * s), 10 * s);
 
     // Shop header
     fill(255, 255, 255);
     noStroke();
     textAlign(CENTER, TOP);
-    textSize(20);
+    textSize(20 * s);
     textStyle(BOLD);
     text("SHOP", shopX + itemWidth / 2, shopY);
 
     // Shop zone level indicator
-    textSize(14);
+    textSize(14 * s);
     textStyle(NORMAL);
     fill(150, 200, 255);
     const shopLevel = Math.abs(currentZone.x1 + currentZone.x2) / 2; // Center X position
@@ -2006,6 +2044,13 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
 }
 
 function displayTeleportButton(controlledPlayer) {
+    // If on mobile and an item stats popup is active (mobileSelection), hide these buttons
+    if (typeof isMobile !== 'undefined' && isMobile && typeof window.mobileSelection !== 'undefined' && window.mobileSelection) {
+        teleportButtonRegion = null;
+        shopButtonRegion = null;
+        return;
+    }
+
     const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
     const hasTwin = controlledPlayer && controlledPlayer.twinRecoveryZone;
     
@@ -2028,13 +2073,14 @@ function displayTeleportButton(controlledPlayer) {
     }
     
     // Button dimensions
-    const buttonWidth = 200;
-    const buttonHeight = 50;
-    const buttonSpacing = 20;
+    const s = getUIScale();
+    const buttonWidth = 200 * s;
+    const buttonHeight = 50 * s;
+    const buttonSpacing = 20 * s;
     
     // Calculate center position for button area
     const centerX = windowWidth / 2;
-    const buttonY = windowHeight - 100;
+    const buttonY = windowHeight - (100 * s);
     
     // Calculate button positions based on count
     let teleportX, shopX;
@@ -2080,17 +2126,17 @@ function displayTeleportButton(controlledPlayer) {
         fill(isTeleportHovering ? 80 : 60, 120, isTeleportHovering ? 255 : 200, 200);
         stroke(255, 255, 255, 180);
         strokeWeight(2);
-        rect(teleportX, buttonY, buttonWidth, buttonHeight, 8);
+        rect(teleportX, buttonY, buttonWidth, buttonHeight, 8 * s);
         
         fill(255, 255, 255);
         noStroke();
         textAlign(CENTER, CENTER);
-        textSize(16);
-        text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, teleportX, buttonY - 5);
+        textSize(16 * s);
+        text(`Teleport to ${controlledPlayer.twinRecoveryZone.id}`, teleportX, buttonY - (5 * s));
         
-        textSize(12);
+        textSize(12 * s);
         fill(200, 200, 200);
-        text("Press T or click", teleportX, buttonY + 15);
+        text("Press T or click", teleportX, buttonY + (15 * s));
     } else {
         teleportButtonRegion = null;
     }
@@ -2112,17 +2158,17 @@ function displayTeleportButton(controlledPlayer) {
         fill(isShopHovering ? 80 : 60, isShopHovering ? 180 : 140, 60, 200);
         stroke(255, 255, 255, 180);
         strokeWeight(2);
-        rect(shopX, buttonY, buttonWidth, buttonHeight, 8);
+        rect(shopX, buttonY, buttonWidth, buttonHeight, 8 * s);
         
         fill(255, 255, 255);
         noStroke();
         textAlign(CENTER, CENTER);
-        textSize(16);
-        text(shopOpen ? "Close Shop" : "Open Shop", shopX, buttonY - 5);
+        textSize(16 * s);
+        text(shopOpen ? "Close Shop" : "Open Shop", shopX, buttonY - (5 * s));
         
-        textSize(12);
+        textSize(12 * s);
         fill(200, 200, 200);
-        text("Press B or click", shopX, buttonY + 15);
+        text("Press B or click", shopX, buttonY + (15 * s));
     } else {
         shopButtonRegion = null;
     }
@@ -2132,6 +2178,12 @@ function displayTeleportButton(controlledPlayer) {
 }
 
 function displaySellAllButton(controlledPlayer) {
+    // If on mobile and an item stats popup is active (mobileSelection), hide this button
+    if (typeof isMobile !== 'undefined' && isMobile && typeof window.mobileSelection !== 'undefined' && window.mobileSelection) {
+        sellAllButtonRegion = null;
+        return;
+    }
+
     const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
     const hasInventory = controlledPlayer && controlledPlayer.inventory && controlledPlayer.inventory.length > 0;
     
@@ -2142,12 +2194,13 @@ function displaySellAllButton(controlledPlayer) {
     }
     
     // Button dimensions
-    const buttonWidth = 200;
-    const buttonHeight = 40;
+    const s = getUIScale();
+    const buttonWidth = 200 * s;
+    const buttonHeight = 40 * s;
     
     // Position at bottom center, below shop/teleport buttons
     const centerX = windowWidth / 2;
-    const buttonY = windowHeight - 50;
+    const buttonY = windowHeight - (50 * s);
     
     sellAllButtonRegion = {
         x: centerX,
@@ -2173,17 +2226,17 @@ function displaySellAllButton(controlledPlayer) {
     fill(isHovering ? 200 : 150, isHovering ? 160 : 120, 40, 200);
     stroke(255, 255, 255, 180);
     strokeWeight(2);
-    rect(centerX, buttonY, buttonWidth, buttonHeight, 8);
+    rect(centerX, buttonY, buttonWidth, buttonHeight, 8 * s);
     
     fill(255, 255, 255);
     noStroke();
     textAlign(CENTER, CENTER);
-    textSize(16);
-    text(`Sell All (${controlledPlayer.inventory.length} items)`, centerX, buttonY - 5);
+    textSize(16 * s);
+    text(`Sell All (${controlledPlayer.inventory.length} items)`, centerX, buttonY - (5 * s));
     
-    textSize(12);
+    textSize(12 * s);
     fill(200, 200, 200);
-    text("Click to sell", centerX, buttonY + 15);
+    text("Click to sell", centerX, buttonY + (15 * s));
     
     // Restore previous drawing state
     pop();

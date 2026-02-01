@@ -220,13 +220,50 @@ function getMobileButtons() {
 }
 
 function getMobilePauseButton() {
-    return { x: width * 0.5, y: 50, w: 80, h: 40, label: menuVisible ? 'RESUME' : 'PAUSE' };
+    // If getUIScale not defined yet, fallback to 1.0
+    const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+    return { 
+        x: width * 0.5, 
+        y: 50 * s, 
+        w: 80 * s, 
+        h: 40 * s, 
+        label: menuVisible ? 'RESUME' : 'PAUSE' 
+    };
 }
 
 function getMobileChatButton() {
-    return { x: 50, y: 50, w: 80, h: 40, label: 'CHAT' };
+    const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+    return { 
+        x: 50 * s, 
+        y: 50 * s, 
+        w: 80 * s, 
+        h: 40 * s, 
+        label: 'CHAT' 
+    };
 }
 
+
+function drawMobilePauseButton() {
+    if (typeof isMobile === 'undefined' || !isMobile || !signedIn) return;
+    
+    const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+    
+    push();
+    textAlign(CENTER, CENTER);
+    textSize(16 * s);
+    noStroke();
+    
+    const btn = getMobilePauseButton();
+    // Use button dimensions directly as they are now scaled
+    
+    fill(200, 200, 200, 200); // Higher opacity
+    rectMode(CENTER);
+    rect(btn.x, btn.y, btn.w, btn.h, 8 * s);
+    fill(0);
+    text(btn.label, btn.x, btn.y);
+    
+    pop();
+}
 
 function drawMobileControls() {
     // Always draw pause button if signed in (even if menu is visible, so we can exit)
@@ -239,14 +276,11 @@ function drawMobileControls() {
 
     // Draw Pause Button (Always visible when signed in)
     {
-        const btn = getMobilePauseButton();
-        const bx = btn.x;
-        const by = btn.y;
-        fill(200, 200, 200, 200); // Higher opacity
-        rectMode(CENTER);
-        rect(bx, by, btn.w, btn.h, 8);
-        fill(0);
-        text(btn.label, bx, by);
+        // Actually, we delegate to the dedicated function but we need to match logic
+        // But drawMobileControls might be called under the menu.
+        // We will call drawMobilePauseButton again in Game.js ON TOP of menu.
+        // Here we can draw it too or skip it. Drawing it twice doesn't hurt much.
+        drawMobilePauseButton();
     }
     
     // Hide controls if an item stats popup is selected/open
