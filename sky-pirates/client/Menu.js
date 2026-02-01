@@ -82,6 +82,15 @@ class MenuManager {
                 } else if (window.menuVisible !== undefined) {
                     window.menuVisible = false;
                 }
+
+                // Explicitly cleanup current screen (DOM elements)
+                if (this.current && this.current.hide) {
+                    this.current.hide();
+                }
+                if (this.colorPicker) {
+                    this.colorPicker.hide();
+                }
+
                 return true; 
             }
         }
