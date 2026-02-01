@@ -823,33 +823,6 @@ class LoginMenuScreen extends MenuScreen {
                  this.loginAccountBtn.draw();
             }
         }
-            
-            if (this.isAccountSession) {
-                 if (this.accountName) {
-                     textSize(14);
-                     textAlign(CENTER, BOTTOM);
-                     fill(80); // Dark Gray
-                     text("Logged in as: " + this.accountName, x + w/2, btnY - 5);
-                 }
-
-                 this.logoutBtn.setPosition(x + w/2 - 75, btnY);
-                 this.logoutBtn.setSize(150, 40);
-                 this.logoutBtn.draw();
-            } else {
-                 textSize(14);
-                 textAlign(CENTER, BOTTOM);
-                 fill(80);
-                 text("Logged in as a guest", x + w/2, btnY - 5);
-
-                 this.createAccountBtn.setPosition(x + w/2 - 160, btnY);
-                 this.createAccountBtn.setSize(150, 40);
-                 this.createAccountBtn.draw();
-
-                 this.loginAccountBtn.setPosition(x + w/2 + 10, btnY);
-                 this.loginAccountBtn.setSize(150, 40);
-                 this.loginAccountBtn.draw();
-            }
-        }
         
         // Draw tooltip if needed (after everything else to stay on top)
         if (this.hoveredAchievement) {
