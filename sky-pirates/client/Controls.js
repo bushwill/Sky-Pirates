@@ -1,3 +1,27 @@
+function touchStarted() {
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+    // Ensure audio context is started on first user interaction (mobile requirement)
+    if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
+        userStartAudio();
+    }
+    
+    // Force fullscreen on first touch if on mobile
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        let fs = fullscreen();
+        if (!fs) {
+            fullscreen(true);
+        }
+    }
+
+    // We do NOT return false here so that mousePressed is still triggered for UI logic.
+}
+
+function touchMoved() {
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+    // Prevent default scrolling behavior while playing to avoid dragging the webpage
+    return false; 
+}
+
 function mousePressed() {
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
@@ -650,7 +674,7 @@ function toggleMobileChat(forceState) {
     const input = document.getElementById('mobileChatInput');
     
     if (chatting) {
-        if (container) container.style.display = 'block';
+        if (container) container.style.display = 'flex';
         if (input) {
              input.value = current_chat; // Sync existing draft
              input.focus();

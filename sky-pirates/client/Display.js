@@ -1064,6 +1064,10 @@ function drawPlaneInfo(player) {
     // Store regions for hover detection
     if (!window.topRightComponentRegions) window.topRightComponentRegions = [];
     window.topRightComponentRegions = [];
+
+    // Check for limited vertical space (mobile or small screens)
+    // Logic: Use horizontal layout if mobile or if window height is small
+    const useHorizontalLayout = (typeof isMobile !== 'undefined' && isMobile) || (typeof windowHeight !== 'undefined' && windowHeight < 600);
     
     // Draw engine icon
     push();
@@ -1101,16 +1105,34 @@ function drawPlaneInfo(player) {
         size: iconSize
     });
 
-    currentY += iconSize + (20 * s);
-    
-    // Draw weapon icons centered under the 3 components
-    // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
-    // Center 2 weapons under 3 components by offsetting by half spacing
-    const weaponsStartX = startX + iconSize / 2 + iconSpacing / 2;
+    // Determine positions for guns based on layout mode
+    let gun1X, gun1Y, gun2X, gun2Y;
+
+    if (useHorizontalLayout) {
+        // Horizontal layout: Guns follow components on the same row
+        gun1X = iconsStartX + iconSpacing * 3;
+        gun1Y = currentY + iconSize / 2;
+        
+        gun2X = iconsStartX + iconSpacing * 4;
+        gun2Y = currentY + iconSize / 2;
+    } else {
+        // Vertical layout: Guns on a new row, centered under components
+        currentY += iconSize + (20 * s);
+        
+        // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
+        // Center 2 weapons under 3 components by offsetting by half spacing
+        const weaponsStartX = startX + iconSize / 2 + iconSpacing / 2;
+        
+        gun1X = weaponsStartX;
+        gun1Y = currentY + iconSize / 2;
+        
+        gun2X = weaponsStartX + iconSpacing;
+        gun2Y = currentY + iconSize / 2;
+    }
     
     // Draw gun1 icon
     push();
-    translate(weaponsStartX, currentY + iconSize / 2);
+    translate(gun1X, gun1Y);
     drawItem(player.gun1, 0, 0, iconSize);
     // Draw equipped indicator if this gun is selected
     if (player.selectedGun === 1) {
@@ -1121,14 +1143,14 @@ function drawPlaneInfo(player) {
     pop();
     window.topRightComponentRegions.push({
         component: player.gun1,
-        x: weaponsStartX,
-        y: currentY + iconSize / 2,
+        x: gun1X,
+        y: gun1Y,
         size: iconSize
     });
     
     // Draw gun2 icon
     push();
-    translate(weaponsStartX + iconSpacing, currentY + iconSize / 2);
+    translate(gun2X, gun2Y);
     drawItem(player.gun2, 0, 0, iconSize);
     // Draw equipped indicator if this gun is selected
     if (player.selectedGun === 2) {
@@ -1139,8 +1161,8 @@ function drawPlaneInfo(player) {
     pop();
     window.topRightComponentRegions.push({
         component: player.gun2,
-        x: weaponsStartX + iconSpacing,
-        y: currentY + iconSize / 2,
+        x: gun2X,
+        y: gun2Y,
         size: iconSize
     });
     

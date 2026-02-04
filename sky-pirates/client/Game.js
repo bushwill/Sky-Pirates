@@ -194,33 +194,53 @@ function draw() {
              // In Game.js, serverSync() handles receive but we don't send updates if not signed in usually
              // But we need to process incoming messages to get the time.
              // We'll rely on onmessage handler in ServerMessaging.js
+
+             // Maintain connection with pings to receive broadcasts (Time/Community status)
+             // This ensures cycleTime updates during screensaver or menu
+             if (millis() - lastPing > pingUpdateTime) {
+                sendPing();
+                lastPing = millis();
+            }
         }
         
         // Only draw the dynamic background if we have valid map data to know dimensions/context
         // and valid time from server. Otherwise keep the orange solid color.
         if (mapData && typeof cycleTime !== 'undefined') {
-             drawMapBackground(null, 0);
+             // Swaying Menu Camera Logic
+             // Move far to the right (X=6000) to avoid Recovery Zone (X~0)
+             // Y constrained between -200 and 200 as requested ("above the ocean")
+             const menuCamX = 6000 + Math.sin(millis() / 20000) * 1500; 
+             const menuCamY = Math.sin(millis() / 15000) * 200; 
+
+             drawMapBackground(mapData, menuCamX);
              
-            // Also draw clouds for ambience (optional, assuming 0,0 center)
+            // Also draw clouds for ambience
             if (typeof displayClouds === 'function') {
-                 displayClouds(0, 0);
+                 displayClouds(menuCamX, menuCamY);
             }
     
             // Render the Map Terrain and Entities if we have data
-            // Simulate a camera at (0, -400) which is center recovery zone area
-            // Transform: translate(width/2 - camX, height/2 - camY)
-            if (typeof drawMapTerrain === 'function') {
+            if (typeof drawMapTerrain === 'function' && typeof getMapPolygonsMap === 'function') {
                 push();
-                translate(width/2 - 0, height/2 - (-400));
+                // Simulate "Height" (Altitude) by zooming out slightly
+                // scale(0.65) gives a nice overview without being "Way too high"
+                translate(width/2, height/2);
+                scale(0.65); 
+                translate(-width/2, -height/2);
                 
                 // Draw Map
-                drawMapTerrain(mapData, 0, -400); 
+                // Must generate polygons first to include Water/Recovery zones
+                const mapPolygonsMap = getMapPolygonsMap(mapData);
+                
+                drawMapTerrain(mapPolygonsMap, menuCamX, menuCamY); 
                 
                 // Draw Entities relative to this transform
-                if (typeof displayEnemies === 'function') displayEnemies(0, -400);
-                if (typeof displayPlayers === 'function') displayPlayers(0, -400);
-                if (typeof displayProjectiles === 'function') displayProjectiles(0, -400);
-                if (typeof displayCrates === 'function') displayCrates(0, -400);
+                if (typeof displayEnemies === 'function') displayEnemies(menuCamX, menuCamY);
+                // Don't show players in menu to reduce clutter? Or keep them? User said "world with movement sway".
+                // Usually keeping them makes the world feel alive.
+                if (typeof displayPlayers === 'function') displayPlayers(menuCamX, menuCamY);
+                if (typeof displayProjectiles === 'function') displayProjectiles(menuCamX, menuCamY);
+                if (typeof displayCrates === 'function') displayCrates(menuCamX, menuCamY);
     
                 pop();
             }
@@ -414,9 +434,9 @@ function handleGameDisplay(controlledPlayer) {
         centerX = deathCameraX;
         centerY = deathCameraY;
     } else {
-        // Fallback or Menu Background
-        centerX = Math.sin(millis() / 15000) * 800;
-        centerY = -2000 + Math.cos(millis() / 20000) * 300; 
+        // Fallback or Menu Background (Matches main menu settings)
+        centerX = Math.sin(millis() / 5000) * 1500;
+        centerY = -2000 + Math.cos(millis() / 7000) * 500;
     }
 
     // 2. Draw Background (Sky + Sun)
@@ -892,3 +912,10 @@ function getCameraCenter(player, mouseScreenX, mouseScreenY) {
 
 let testing = false;
 
+
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+    // Force immediate redraw to prevent flickering or gray bars
+    // Just clearing might be enough if draw loop picks it up, but setting bg is safer
+    // Using resizeCanvas is generally preferred over createCanvas for existing canvas
+}

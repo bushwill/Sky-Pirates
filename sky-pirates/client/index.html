@@ -25,9 +25,14 @@
       background: rgba(0, 0, 0, 0.8);
       padding: 5px;
       box-sizing: border-box;
+      /* Flexbox logic for mobile layout */
+      justify-content: space-between;
+      align-items: center;
+      gap: 5px; 
     }
     #mobileChatInput {
-      width: 75%;
+      flex-grow: 1; /* Take remaining space */
+      width: auto; /* Let flex handle width */
       height: 100%;
       font-size: 16px;
       border: none;
@@ -35,9 +40,10 @@
       padding: 0 10px;
     }
     #mobileChatSend {
-      width: 20%;
+      width: 80px; /* Fixed width for button */
+      flex-shrink: 0; /* Don't shrink */
       height: 100%;
-      margin-left: 2%;
+      margin-left: 0; /* Handled by gap */
       background: #4CAF50;
       color: white;
       border: none;
