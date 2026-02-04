@@ -92,7 +92,7 @@ export class FireworkRocket extends Projectile {
                 pVy,
                 angle,
                 this.damage * 0.2,
-                this.size,
+                this.size / 4,
                 this.owner,
                 particleRange, 
                 3000, // lifetime
@@ -121,7 +121,7 @@ export class FireworkRocket extends Projectile {
                 pVy,
                 angle,
                 this.damage * 0.1, // Less damage for inner sparks
-                this.size * 0.8,   // Smaller
+                this.size / 4,
                 this.owner,
                 particleRange * 0.8, // Slightly shorter range for inner
                 3000, // lifetime

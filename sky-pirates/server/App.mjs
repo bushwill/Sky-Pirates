@@ -603,7 +603,22 @@ function updateProjectiles() {
   });
 }
 
+function handleProjectileExplosion(projectile) {
+  if (projectile.markedForDeletion) return;
+  projectile.markedForDeletion = true;
+
+  if (typeof projectile.onExpire === 'function') {
+    const newProjectiles = projectile.onExpire();
+    if (newProjectiles && newProjectiles.length > 0) {
+      projectiles.push(...newProjectiles);
+    }
+  }
+  projectiles = projectiles.filter((p) => p !== projectile);
+}
+
 function updateProjectile(projectile) {
+  if (projectile.markedForDeletion) return;
+
   const deltaTime = 0.01 * timeSpeed;
   if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
     projectiles = projectiles.filter((p) => p !== projectile);
@@ -615,13 +630,7 @@ function updateProjectile(projectile) {
   const expiredByDistance = projectile.distanceTraveled >= projectile.maxDistance;
 
   if (expiredByDistance || expiredByTime) {
-    if (typeof projectile.onExpire === 'function') {
-      const newProjectiles = projectile.onExpire();
-      if (newProjectiles && newProjectiles.length > 0) {
-        projectiles.push(...newProjectiles);
-      }
-    }
-    projectiles = projectiles.filter((p) => p !== projectile);
+    handleProjectileExplosion(projectile);
     return;
   }
 
@@ -641,6 +650,45 @@ function updateProjectile(projectile) {
   if (projectile.biome === 'water' && (projectile.type === 'fire' || projectile.type === 'fireworks_fire')) {
     projectiles = projectiles.filter((p) => p !== projectile);
     return;
+  }
+  
+  // Projectile-vs-Projectile Collision Logic
+  // Check collisions with other projectiles (activate rockets, destroy fire)
+  // Optimization: Only check from "solid" / impacting projectiles to avoid N^2 in particle clouds
+  const isSolid = ['bullet', 'rocket', 'firework_rocket'].includes(projectile.type);
+  if (isSolid) {
+      for (const other of projectiles) {
+          if (other === projectile) continue;
+          if (other.markedForDeletion) continue;
+          
+          // Allow friendly fire on rockets? Usually yes for manual detonation.
+          // But prevent bullet from destroying own fire particles immediately
+          if (other.owner === projectile.owner && (other.type === 'fire' || other.type === 'fireworks_fire')) continue; 
+
+          // Use swept collision to prevent tunneling (fast bullets passing through rockets)
+          if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, other.x, other.y, other.size)) {
+               // Case 1: Hitting a Firework Rocket -> Activate it
+               if (other.type === 'firework_rocket') {
+                   handleProjectileExplosion(other);
+                   // Hitting projectile usually absorbs the impactor too
+                   handleProjectileExplosion(projectile);
+                   return;
+               }
+               // Case 2: Hitting Fire -> Destroy Fire
+               if (other.type === 'fire' || other.type === 'fireworks_fire') {
+                   handleProjectileExplosion(other); // Destroy fire (no explosion on fire usually)
+                   
+                   // If Impactor is Rocket -> Explode
+                   if (projectile.type === 'rocket' || projectile.type === 'firework_rocket') {
+                       handleProjectileExplosion(projectile);
+                       return;
+                   }
+                   // If Bullet -> Consume bullet?
+                   handleProjectileExplosion(projectile);
+                   return;
+               }
+          }
+      }
   }
 
   // Skip all collision checks if this projectile is too young based on its own damageDelay property
@@ -1971,6 +2019,9 @@ function updateHull(entity) {
       const alreadyPendingRespawn = pendingRespawns.some(pr => pr.player.username === entity.username);
 
       if (!alreadyPendingRespawn) {
+        // Drop a random part (component or weapon) as a crate
+        dropRandomPlayerPart(entity);
+
         if (entity.money >= entity.value) handleRevive(entity);
         else handleDeath(entity);
       }
@@ -2067,6 +2118,29 @@ function processPendingRespawns() {
       pendingRespawns.splice(i, 1);
     }
   }
+}
+
+function dropRandomPlayerPart(player) {
+  // Collect all valid equipable items from the player
+  const parts = [player.engine, player.chassis, player.wings, player.gun1, player.gun2].filter(p => p);
+  
+  if (parts.length === 0) return;
+  
+  // Pick one at random
+  const part = parts[Math.floor(Math.random() * parts.length)];
+  
+  // Create a clone to ensure independence from the player's current equipment
+  // (In case they respawn and keep the original)
+  const clone = Object.assign(Object.create(Object.getPrototypeOf(part)), part);
+  
+  // Determine Type: Weapons usually have 'damage' or fireRate
+  let crateType = 'component';
+  if (part.damage !== undefined || part.fireRate !== undefined) {
+      crateType = 'weapon';
+  }
+  
+  // Drop centered on player
+  crates.push(new Crate(player.x, player.y, crateType, clone));
 }
 
 function handleDeath(entity) {
@@ -2643,6 +2717,19 @@ function handleIncomingMessage(ws, message) {
       break;
     case 'check_session':
       handleCheckSession(ws, message);
+      break;
+    case 'request_community_update':
+      const communityList = players.map(p => ({
+          username: p.username,
+          r: p.r,
+          g: p.g,
+          b: p.b
+      }));
+      sendMessage(ws, { 
+          type: 'community_update', 
+          community: communityList, 
+          time: cycleTime 
+      });
       break;
     case 'update':
       handleUpdate(ws, message);

@@ -1,4 +1,6 @@
 function mousePressed() {
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
     if (menuVisible && menuManager) {
         let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
@@ -57,6 +59,8 @@ function mousePressed() {
 }
 
 function keyPressed() {
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+
     // First: handle Escape toggle (only when signed in)
     if (keyCode === ESCAPE) {
         if (chatting) {
@@ -203,6 +207,33 @@ function mouseWheel(event) {
     if ((menuVisible || !signedIn) && menuManager && menuManager.current && menuManager.current.mouseWheel) {
         menuManager.current.mouseWheel(event);
         return false;
+    }
+
+    // Scroll to Zoom (PC only)
+    if (typeof isMobile === 'undefined' || !isMobile) {
+        // Zoom Sensitivity
+        const zoomSpeed = 0.001;
+        
+        // Update Zoom
+        if (typeof window.cameraZoom !== 'number' || isNaN(window.cameraZoom)) window.cameraZoom = 1.0;
+        
+        // Ensure event.delta is valid
+        let delta = 0;
+        if (typeof event.delta === 'number') delta = event.delta;
+        else if (typeof event.deltaY === 'number') delta = event.deltaY;
+        
+        window.cameraZoom -= delta * zoomSpeed;
+        
+        // Constrain Zoom
+        // Min scale (widest view) depends on screen width
+        let safeMaxView = (typeof window.MAX_ZOOM_VIEW_WIDTH === 'number') ? window.MAX_ZOOM_VIEW_WIDTH : 2500;
+        
+        const minZoom = (width && safeMaxView) ? (width / safeMaxView) : 0.5;
+        const maxZoom = 2.0; // Max magnification (200%)
+        
+        window.cameraZoom = constrain(window.cameraZoom, minZoom, maxZoom);
+        
+        return false; // Prevent default browser scrolling
     }
 }
 
@@ -609,8 +640,12 @@ function touchMoved() {
 }
 
 /* Mobile Helper Functions */
-function toggleMobileChat() {
-    chatting = !chatting;
+function toggleMobileChat(forceState) {
+    if (typeof forceState !== 'undefined') {
+        chatting = forceState;
+    } else {
+        chatting = !chatting;
+    }
     const container = document.getElementById('mobileChatContainer');
     const input = document.getElementById('mobileChatInput');
     
@@ -642,20 +677,45 @@ window.addEventListener('load', function() {
                      chat_message = current_chat;
                      current_chat = "";
                      input.value = "";
-                     toggleMobileChat(); // Close chat
                 }
+                toggleMobileChat(false); // Close chat
             }
+        });
+
+        // Close chat when keyboard is dismissed or user clicks outside (blur)
+        input.addEventListener('blur', () => {
+             // Delay to allow send button click to register
+             setTimeout(() => {
+                 toggleMobileChat(false);
+             }, 200);
         });
     }
     
     if (sendBtn) {
-        sendBtn.addEventListener('click', () => {
+        const sendMessage = () => {
              if (current_chat.length > 0) {
                  chat_message = current_chat;
                  current_chat = "";
                  if (input) input.value = "";
-                 toggleMobileChat();
-            }
+             }
+             toggleMobileChat(false);
+        };
+
+        sendBtn.addEventListener('click', (e) => {
+             e.preventDefault();
+             sendMessage();
+        });
+        
+        // Prevent immediate blur when pressing the button with mouse
+        sendBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle touch interaction explicitly to ensure it works before blur
+        sendBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevents blur and synthetic click
+            sendMessage();
         });
     }
 });
+function mouseMoved() { lastInputTime = millis(); }

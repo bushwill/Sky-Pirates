@@ -115,7 +115,7 @@ export function createFireworkLauncher(level, random = true) {
     const damage = randomFactor * (40.0 + level * 5.0); // Explosion damage handled in projectiles
     const cooldownTime = 0; // No cooldown, limited by heat
     const projectileSpeed = randomFactor * (300.0 + level * 10.0);
-    const projectileSize = randomFactor * 1.0;
+    const projectileSize = randomFactor * 4.0; // Increased from 1.0 to 4.0 for better collision detection
     // Inverted: Starts wide (15 deg), gets narrow (~5 deg at Lvl 10)
     const maxAngle = randomFactor * Math.max(0.01, Math.PI / 12 - (level - 1) * Math.PI / 160);
     const value = randomFactor * (120 + adjustedLevel * 150);

@@ -298,6 +298,7 @@ function handleDecodedMessage(decodedMessage) {
             if (decodedMessage.time !== undefined) {
                 cycleTime = decodedMessage.time; 
             }
+            
             if (decodedMessage.dayDuration !== undefined) {
                 window.DAY_DURATION = decodedMessage.dayDuration;
             }
@@ -368,6 +369,22 @@ function handleDecodedMessage(decodedMessage) {
                 events = decodedMessage.events;
                 // Auto-clear old displayed events tracking if list is empty?
                 if (events.length === 0) displayedEventIds.clear();
+            }
+            break;
+
+        case 'community_update':
+            // Update community list and time of day
+            if (decodedMessage.community) {
+                window.allPlayers = decodedMessage.community;
+            }
+            if (decodedMessage.time !== undefined) {
+                window.cycleTime = decodedMessage.time;
+            }
+            if (typeof menuManager !== 'undefined' && menuManager) {
+                menuManager.hasReceivedPlayerData = true;
+                if (menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].hasReceivedPlayerData = true;
+                }
             }
             break;
 
@@ -481,6 +498,12 @@ function handleDecodedMessage(decodedMessage) {
             }
             if (decodedMessage.community && Array.isArray(decodedMessage.community)) {
                 window.allPlayers = decodedMessage.community;
+            }
+            if (typeof menuManager !== 'undefined' && menuManager) {
+                menuManager.hasReceivedPlayerData = true;
+                if (menuManager.screens && menuManager.screens['login']) {
+                    menuManager.screens['login'].hasReceivedPlayerData = true;
+                }
             }
             break;
 
@@ -991,4 +1014,10 @@ function clearAllSkyPiratesCookies() {
     deleteCookie('skypirates_party');
     deleteCookie('skypirates_settings');
     console.log('All Sky Pirates cookies cleared');
+}
+function requestCommunityUpdate() {
+    if (connected && ws && ws.readyState === WebSocket.OPEN) {
+        const msg = msgpack.encode({ type: 'request_community_update' });
+        ws.send(msg);
+    }
 }

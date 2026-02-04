@@ -371,22 +371,31 @@ function polygonWinding(verts) {
         noStroke();
         fill(255, 255, 255, starAlpha);
         
+        // Apply Zoom Scaling to Stars
+        let zoomScale = 1.0;
+        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) {
+            zoomScale = window.cameraZoom;
+        }
+
         for (const star of window.staticStars) {
              // Simple twinkling
              const flicker = Math.sin((millis() / 500) + star.blinkOffset) * 50; 
              fill(255, 255, 255, starAlpha + flicker);
              
-             // Parallax for stars (slower than celestial body)
-             // Star X needs to wrap or cover screen
-             // Simplified: Just draw relative to screen + slight offset
-             // stars are "infinite distance" so they shouldn't move much with X, but mapBounds logic suggests camera moves
-             // If camera moves left (centerX decreases), stars should move right slightly? or stay fixed?
-             // Usually fixed relative to screen for simple 2D, or slight parallax.
-             // Let's do slight parallax. 
+             // Parallax for stars
              let drawX = (star.x - (parallaxOffsetX * 0.1)) % windowWidth;
              if (drawX < 0) drawX += windowWidth;
+             let drawY = star.y;
+
+             // Apply Zoom from Center
+             let relX = drawX - windowWidth / 2;
+             let relY = drawY - windowHeight / 2;
              
-             circle(drawX, star.y, star.size);
+             let finalX = (windowWidth / 2) + (relX * zoomScale);
+             let finalY = (windowHeight / 2) + (relY * zoomScale);
+             let finalSize = star.size * zoomScale;
+             
+             circle(finalX, finalY, finalSize);
         }
         pop();
     }
@@ -414,16 +423,35 @@ function polygonWinding(verts) {
         if (heightFactor < 0.2) {
             fadeAlpha = heightFactor / 0.2;
         }
+
+        // Apply Zoom Scaling to Celestial Bodies (Sun/Moon/Stars)
+        let zoomScale = 1.0;
+        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) {
+            zoomScale = window.cameraZoom;
+        }
         
+        // Transform body position relative to center
+        let relX = bodyX - windowWidth / 2;
+        // Move pivot down for sky elements so they don't fly off screen as fast when zooming in
+        // or just keep them centered if they are just background.
+        // But usually "zooming in" means looking closer at the horizon.
+        
+        // Let's scale relative to center of screen for now
+        let relY = bodyY - windowHeight / 2;
+        
+        let finalBodyX = (windowWidth / 2) + (relX * zoomScale);
+        let finalBodyY = (windowHeight / 2) + (relY * zoomScale);
+        let finalScale = zoomScale;
+
         // Draw Sun
-        const sunRadius = 60;
+        const sunRadius = 60 * finalScale;
         noStroke();
         fill(255, 255, 200, 80 * fadeAlpha);
-        circle(bodyX, bodyY, sunRadius * 2.5);
+        circle(finalBodyX, finalBodyY, sunRadius * 2.5);
         fill(255, 255, 150, 120 * fadeAlpha);
-        circle(bodyX, bodyY, sunRadius * 1.8);
+        circle(finalBodyX, finalBodyY, sunRadius * 1.8);
         fill(255, 255, 100, 255 * fadeAlpha);
-        circle(bodyX, bodyY, sunRadius);
+        circle(finalBodyX, finalBodyY, sunRadius);
 
     } else {
         // Moon Cycle
@@ -438,19 +466,32 @@ function polygonWinding(verts) {
             fadeAlpha = heightFactor / 0.2;
         }
         
+        // Apply Zoom Scaling (same as Sun)
+        let zoomScale = 1.0;
+        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) {
+            zoomScale = window.cameraZoom;
+        }
+        
+        let relX = bodyX - windowWidth / 2;
+        let relY = bodyY - windowHeight / 2;
+        
+        let finalBodyX = (windowWidth / 2) + (relX * zoomScale);
+        let finalBodyY = (windowHeight / 2) + (relY * zoomScale);
+        let finalScale = zoomScale;
+
         // Draw Moon
-        const moonRadius = 50;
+        const moonRadius = 50 * finalScale;
         noStroke();
         fill(200, 200, 255, 50 * fadeAlpha); // Glow
-        circle(bodyX, bodyY, moonRadius * 2.2);
+        circle(finalBodyX, finalBodyY, moonRadius * 2.2);
         fill(240, 240, 255, 255 * fadeAlpha); // Main body
-        circle(bodyX, bodyY, moonRadius);
+        circle(finalBodyX, finalBodyY, moonRadius);
         
         // Craters
         fill(200, 200, 230, 255 * fadeAlpha);
-        circle(bodyX - 10, bodyY - 5, 15);
-        circle(bodyX + 15, bodyY + 10, 10);
-        circle(bodyX + 5, bodyY - 15, 8);
+        circle(finalBodyX - (10 * finalScale), finalBodyY - (5 * finalScale), 15 * finalScale);
+        circle(finalBodyX + (15 * finalScale), finalBodyY + (10 * finalScale), 10 * finalScale);
+        circle(finalBodyX + (5 * finalScale), finalBodyY - (15 * finalScale), 8 * finalScale);
     }
   }
 

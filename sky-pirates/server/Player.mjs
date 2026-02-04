@@ -385,11 +385,15 @@ function deserializeComponent(data) {
 
       // Fix for legacy Firework Launchers (incorrect lifetime/range)
       if (data.name && data.name.includes('Firework Launcher')) {
-         if (!projectileLifetime || projectileLifetime > 1000) {
-             projectileLifetime = 750;
+         // Fix 1: Handle missing or default (5000) stats -> set to standard 1500
+         // Fix 2: Handle data corrupted by previous "fix" (750) -> restore to 1500
+         if (!projectileLifetime || projectileLifetime >= 5000 || projectileLifetime === 750) {
+             projectileLifetime = 1500;
              // Recalculate range based on speed and new lifetime
              // Range = Speed (m/s) * Lifetime (s)
-             projectileRange = data.projectileSpeed * (projectileLifetime / 1000);
+             if (data.projectileSpeed) {
+                 projectileRange = data.projectileSpeed * (projectileLifetime / 1000);
+             }
          }
       }
 

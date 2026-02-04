@@ -39,6 +39,16 @@ class MenuManager {
     }
 
     draw(x, y, w, h) {
+        // Periodically request community data if in menu
+        if (typeof millis === 'function' && typeof requestCommunityUpdate === 'function') {
+            if (!this.lastCommunityUpdate) this.lastCommunityUpdate = 0;
+            // Update every 10 seconds
+            if (millis() - this.lastCommunityUpdate > 10000) {
+                 this.lastCommunityUpdate = millis();
+                 requestCommunityUpdate();
+            }
+        }
+
         if (this.current) {
             this.current.draw(x, y, w, h);
             
@@ -481,16 +491,9 @@ class AccountAuthMenuScreen extends MenuScreen {
 
     keyPressed(k) {
          if (k === 'Enter') {
-             this.choose();
+             this.submit();
              return;
          }
-         
-         const anyFocused = this.usernameField.focused || this.passwordField.focused || (this.mode === 'create' && this.confirmPasswordField && this.confirmPasswordField.focused);
-         
-         if (anyFocused) return;
-
-         if (k === 'ArrowUp') this.navigate(-1);
-         else if (k === 'ArrowDown') this.navigate(1);
     }
     
     keyTyped(k) {
@@ -1498,17 +1501,18 @@ class LoginMenuScreen extends MenuScreen {
 
     keyPressed(k) {
         if (k === 'Enter') {
-            this.tryLogin();
+            if (signedIn) {
+                // Close pause menu
+                if (typeof setMenuVisible === 'function') {
+                    setMenuVisible(false);
+                } else if (typeof menuVisible !== 'undefined') {
+                    menuVisible = false;
+                }
+            } else {
+                this.tryLogin();
+            }
             return;
         }
-        
-        // If inputs are focused, prevent menu navigation
-        if (this.usernameField.focused || this.partyField.focused) {
-            return;
-        }
-
-        if (k === 'ArrowUp') this.navigate(-1);
-        if (k === 'ArrowDown') this.navigate(1);
     }
     keyTyped(k) {
         // Handled by DOM inputs and 'input' event listeners
@@ -1716,8 +1720,8 @@ class SettingsMenuScreen extends MenuScreen {
 
         // Responsive layout calculations
         const optionsCount = signedIn ? 4 : 5;
-        let headerH = 160 * s;
-        let optionSpacing = 100 * s;
+        let headerH = 140 * s; // Reduced header height slightly
+        let optionSpacing = 85 * s; // Reduced default spacing
         let showDescriptions = true;
         
         // If content is too tall, compress layout
@@ -1727,7 +1731,7 @@ class SettingsMenuScreen extends MenuScreen {
              optionSpacing = Math.max(50 * s, availableH / optionsCount);
              
              // If heavily compressed, hide descriptions to avoid overlap
-             if (optionSpacing < 80 * s) {
+             if (optionSpacing < 65 * s) { // Adjusted threshold
                  showDescriptions = false;
              }
         }
@@ -1750,8 +1754,9 @@ class SettingsMenuScreen extends MenuScreen {
             textSize(14 * s);
             fill(100);
             textAlign(CENTER, TOP);
-            text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + 60 * s);
-            text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + 80 * s);
+            // Hug the button closely
+            text("Dynamic: Camera follows your mouse cursor", x + w / 2, optionY + buttonH + 2 * s);
+            text("Fixed: Camera stays centered on your plane", x + w / 2, optionY + buttonH + 16 * s);
         }
 
         // Draw screen shake toggle
@@ -1765,7 +1770,7 @@ class SettingsMenuScreen extends MenuScreen {
             textSize(14 * s);
             fill(100);
             textAlign(CENTER, TOP);
-            text("Adds subtle camera sway based on speed", x + w / 2, optionY + 60 * s);
+            text("Adds subtle camera sway based on speed", x + w / 2, optionY + buttonH + 2 * s);
         }
 
         // Draw particles toggle
@@ -1779,7 +1784,7 @@ class SettingsMenuScreen extends MenuScreen {
             textSize(14 * s);
             fill(100);
             textAlign(CENTER, TOP);
-            text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + 60 * s);
+            text("Reduces quality if too many particles (Recommended)", x + w / 2, optionY + buttonH + 2 * s);
         }
 
         // Only show reset progress button when not signed in
@@ -1797,7 +1802,7 @@ class SettingsMenuScreen extends MenuScreen {
                 textSize(14 * s);
                 fill(100);
                 textAlign(CENTER, TOP);
-                text("Delete saved game and start fresh", x + w / 2, optionY + 60 * s);
+                text("Delete saved game and start fresh", x + w / 2, optionY + buttonH + 2 * s);
             }
         } else {
             // If signed in, skip the reset button
@@ -1867,9 +1872,6 @@ class SettingsMenuScreen extends MenuScreen {
     }
 
     keyPressed(k) {
-        if (k === 'ArrowUp') this.navigate(-1);
-        if (k === 'ArrowDown') this.navigate(1);
-        if (k === 'Enter') this.choose();
         if (k === 'Escape') this.backButton.callback();
     }
 

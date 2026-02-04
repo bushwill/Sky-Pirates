@@ -3,7 +3,9 @@ window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: .
 window.mobileActionButtons = []; // Array of click regions for action buttons
 
 function getGameScale() {
-    return (typeof isMobile !== 'undefined' && isMobile) ? 0.65 : 1.0;
+    if (typeof isMobile !== 'undefined' && isMobile) return 0.65;
+    if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) return window.cameraZoom;
+    return 1.0;
 }
 
 function getVisibleScreenBounds() {
@@ -554,18 +556,21 @@ function displayProjectile(projectile, drawX = 0, drawY = -400) {
         stroke(0);
         strokeWeight(1);
         
-        // Rocket Body
+        // Rocket Body (Scaled to match hitbox size: Width ~ 2*size)
+        // Previous was 6*s width for size 1 (Width 6). New size is 4.
+        // We want Width ~10-12. So 2.5 * s (2.5 * 4 = 10).
         fill(projectile.r, projectile.g, projectile.b);
-        rect(0, 0, 6 * s, 3 * s);
+        rect(0, 0, 2.0 * s, 1.0 * s);
         
         // Rocket Head
         fill(255, 0, 0);
-        triangle(3 * s, -1.5 * s, 3 * s, 3 * s, 5 * s, 0);
+        // Triangle attached to front of body (body ends at 1.0*s)
+        triangle(1.0 * s, -0.5 * s, 1.0 * s, 0.5 * s, 2.0 * s, 0);
 
         // Occasional trail particle
         if (Math.random() < 0.5) {
             // Spawn at the back of the rocket
-            const offset = 12 * s; 
+            const offset = 1.0 * s; 
             const px = projectile.x - Math.cos(projectile.angle) * offset;
             const py = projectile.y - Math.sin(projectile.angle) * offset;
             
@@ -1215,21 +1220,33 @@ function getComponentStats(component, equippedComponent = null) {
 }
 
 // Helper function to draw component popup background and header
-function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, padding) {
+function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, padding, anchorPos = null) {
     const popupHeight = padding * 2 + lineHeight * (stats.length + 1);
     
-    // Position popup near mouse, but keep it on screen
-    let popupX = mouseX + 20;
-    let popupY = mouseY + 20;
+    // Position popup near mouse/anchor, but keep it on screen
+    let baseX = anchorPos ? anchorPos.x : mouseX;
+    let baseY = anchorPos ? anchorPos.y : mouseY;
     
+    // Default offset
+    let popupX = baseX + 20;
+    let popupY = baseY + 20;
+    
+    // If anchored (Stable UI), center horizontally relative to target if possible, or just standard clamp
+    // If mobile anchor is used, we usually want it centered near the item
+    if (anchorPos) {
+        // Try to center logic for mobile anchors?
+        // Or just keep the '+20' offset but stable.
+        // Let's stick to standard logic but stable base coordinates first.
+    }
+
     // Check right edge
     if (popupX + popupWidth > windowWidth) {
-        popupX = mouseX - popupWidth - 20;
+        popupX = baseX - popupWidth - 20;
     }
     
     // Check bottom edge
     if (popupY + popupHeight > windowHeight) {
-        popupY = mouseY - popupHeight - 20;
+        popupY = baseY - popupHeight - 20;
     }
 
     // Creating a hard clamp to screen boundaries as a final fallback
@@ -1278,12 +1295,22 @@ function drawTopRightComponentStats(player) {
     
     if (!targetComponent) return;
     
+    // Stable anchoring for mobile
+    let anchor = null;
+    if (typeof isMobile !== 'undefined' && isMobile && targetComponent) {
+        // Find region for this component
+        const region = window.topRightComponentRegions.find(r => r.component === targetComponent);
+        if (region) {
+            anchor = { x: region.x, y: region.y };
+        }
+    }
+
     const stats = getComponentStats(targetComponent);
     const popupWidth = 250;
     const lineHeight = 20;
     const padding = 10;
     
-    const { popupX, popupY } = drawComponentPopupBase(targetComponent.name, stats, popupWidth, lineHeight, padding);
+    const { popupX, popupY } = drawComponentPopupBase(targetComponent.name, stats, popupWidth, lineHeight, padding, anchor);
     
     textSize(16);
     text(targetComponent.name, popupX + padding, popupY + padding);
@@ -2030,12 +2057,19 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         }
     }
     
-    // Increase popup height to accommodate buttons if mobile
-    // We handle button drawing separately but need to know position?
-    // Actually drawComponentPopupBase returns popup height based on stats.
-    // We will draw buttons BELOW that.
-    
-    const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding);
+    // Stable anchoring for mobile to prevent buttons moving under finger
+    let anchor = null;
+    if (typeof isMobile !== 'undefined' && isMobile && targetRegion) {
+        if (targetRegion.width !== undefined) {
+             // Shop Rect (Top-Left)
+             anchor = { x: targetRegion.x + targetRegion.width/2, y: targetRegion.y + targetRegion.height/2 };
+        } else {
+             // Inventory (Center)
+             anchor = { x: targetRegion.x, y: targetRegion.y };
+        }
+    }
+
+    const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding, anchor);
     
     textSize(14);
     text(component.name, popupX + padding, popupY + padding);
@@ -2306,8 +2340,19 @@ function displayAppInfo() {
     noStroke();
     textSize(16);
     textAlign(CENTER);
+    
+    // Ping & Version
     text("Ping: " + Math.round(avgPing), windowWidth - 50, windowHeight - 40);
-    text("V Alpha", windowWidth - 50, windowHeight - 20);
+    text("V Beta", windowWidth - 50, windowHeight - 20);
+    
+    // Bad Connection Indicator
+    if (avgPing > 150) {
+        let alpha = (avgPing > 300) ? 255 : 150 + Math.sin(millis()/200)*100; // Blink if really bad
+        fill(255, 50, 50, alpha);
+        textAlign(RIGHT);
+        text("⚠️ Poor Connection", windowWidth - 90, windowHeight - 40);
+    }
+    
     pop();
 }
 

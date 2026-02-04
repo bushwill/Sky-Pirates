@@ -47,9 +47,9 @@ let sellAllButtonRegion = null;
 let shopOpen = false; // Track if shop is open or closed
 
 // Day/Night Cycle (Shared with server, updated by packet)
-let cycleTime = 0; // 0 to 30 mins (in ms)
-const DAY_DURATION = 16 * 60 * 1000;
-const NIGHT_DURATION = 8 * 60 * 1000;
+var cycleTime = 0; // 0 to 30 mins (in ms)
+var DAY_DURATION = 16 * 60 * 1000;
+var NIGHT_DURATION = 8 * 60 * 1000;
 
 // Chat and messaging
 let chat_messages = [];
@@ -57,6 +57,11 @@ let notice_messages = [];
 
 // Account state
 let isAccountSession = false;
+
+// Scaled Camera
+// Attach to window to ensure visibility across scripts (Controls.js)
+window.cameraZoom = 1.0;
+window.MAX_ZOOM_VIEW_WIDTH = 2500; // Standardized width that limits field of view
 
 // Player state
 let username;
@@ -99,6 +104,10 @@ let currentBobY = 0;
 let menuManager;
 let colorPicker;
 let menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
+
+// Screensaver state
+window.lastInputTime = 0; // Exposed global for Controls.js
+let screensaverOpacity = 0;
 
 // Global setter for menu visibility (accessible from other scripts)
 window.setMenuVisible = function(visible) {
@@ -151,11 +160,24 @@ function setup() {
     // Start at login
     menuManager.show('login');
 
+    lastInputTime = millis();
+
     // Connect AFTER UI is ready to ensure session status updates are handled correctly
     connectWebSocket();
 }
 
 function draw() {
+    // Screensaver logic
+    // Only active if in a menu (Main Menu or Pause Menu) AND inactive for > 60s
+    const SCREENSAVER_TIMEOUT = 60 * 1000;
+    const inMenu = !signedIn || menuVisible;
+    let targetScreensaverAlpha = (inMenu && (millis() - lastInputTime > SCREENSAVER_TIMEOUT)) ? 1.0 : 0.0;
+    
+    // Force reset if input detected recently (even if fading out)
+    if (millis() - lastInputTime < 100) targetScreensaverAlpha = 0.0;
+    
+    screensaverOpacity = lerp(screensaverOpacity, targetScreensaverAlpha, 0.05);
+    
     // Determine background color based on cycle time before map draw overrides it
     // If MapDraw.js drawMapBackground is called, it might cover this.
     // If not signed in, we still want to show the day/night cycle if possible.
@@ -212,7 +234,43 @@ function draw() {
         let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
-        menuManager.draw(mx, my, mw, mh);
+        
+        // Screensaver active? Fade menu out
+        if (screensaverOpacity < 0.99) {
+            push();
+            if (typeof drawingContext !== 'undefined') drawingContext.globalAlpha = 1.0 - screensaverOpacity;
+            menuManager.draw(mx, my, mw, mh);
+            
+            // Hide DOM elements (inputs) if the menu is too transparent
+            if (screensaverOpacity > 0.1) {
+                if (colorPicker) colorPicker.hide();
+                if (menuManager.current && menuManager.current.hide) {
+                    menuManager.current.hide();
+                }
+            }
+            pop();
+        }
+
+        // Draw Screensaver Title & Ensure inputs hidden if screensaver is full
+        if (screensaverOpacity >= 0.99) {
+             if (colorPicker) colorPicker.hide();
+             if (menuManager.current && menuManager.current.hide) {
+                 menuManager.current.hide();
+             }
+        }
+
+        if (screensaverOpacity > 0.01) {
+            push();
+            if (typeof drawingContext !== 'undefined') drawingContext.globalAlpha = screensaverOpacity;
+            textAlign(CENTER, TOP);
+            textSize(64);
+            fill(255);
+            stroke(0);
+            strokeWeight(4);
+            // Draw mostly at top, slight bob
+            text("Sky Pirates", width / 2, 50 + Math.sin(millis()/1000) * 5);
+            pop();
+        }
         return;
     } else {
         if (colorPicker) colorPicker.hide();
@@ -284,10 +342,27 @@ function draw() {
                     let mx = (width - mw) / 2;
                     let my = (height - mh) / 2;
                     
-                    push();
-                    translate(0,0); // Reset transform ensures menu draws on top of everything
-                    menuManager.draw(mx, my, mw, mh);
-                    pop();
+                    if (screensaverOpacity < 0.99) {
+                        push();
+                        translate(0,0); // Reset transform ensures menu draws on top of everything
+                        if (typeof drawingContext !== 'undefined') drawingContext.globalAlpha = 1.0 - screensaverOpacity;
+                        menuManager.draw(mx, my, mw, mh);
+                        
+                        // Hide DOM elements (inputs) if the menu is too transparent
+                        if (screensaverOpacity > 0.1) {
+                            if (colorPicker) colorPicker.hide();
+                            if (menuManager.current && menuManager.current.hide) {
+                                menuManager.current.hide();
+                            }
+                        }
+                        pop();
+                    } else {
+                         // Screensaver active: hide inputs
+                         if (colorPicker) colorPicker.hide();
+                         if (menuManager.current && menuManager.current.hide) {
+                             menuManager.current.hide();
+                         }
+                    }
                 } 
             }
         }
@@ -348,10 +423,34 @@ function handleGameDisplay(controlledPlayer) {
     drawMapBackground(mapData, centerX);
 
     push(); // Start Zoom Layer
+    
+    let activeZoom = 1.0;
     if (typeof isMobile !== 'undefined' && isMobile) {
-        translate(width / 2, height / 2);
-        scale(0.65); 
-        translate(-width / 2, -height / 2);
+        activeZoom = 0.65;
+        translate(windowWidth / 2, windowHeight / 2);
+        scale(activeZoom); 
+        translate(-windowWidth / 2, -windowHeight / 2);
+    } else {
+        // Enforce minimum zoom to prevent unfair field of view on large screens
+        // Scale must be at least width / MAX_VIEW allowed
+        let safeMaxView = (typeof window.MAX_ZOOM_VIEW_WIDTH === 'number') ? window.MAX_ZOOM_VIEW_WIDTH : 2500;
+        let minAllowedZoom = (width && safeMaxView) ? (width / safeMaxView) : 0.5;
+        
+        // Ensure valid numbers
+        if (typeof window.cameraZoom !== 'number' || isNaN(window.cameraZoom)) window.cameraZoom = 1.0;
+        if (isNaN(minAllowedZoom)) minAllowedZoom = 0.5;
+
+        // Clamp user zoom setting, but ensure we don't lock it if window resizes
+        if (window.cameraZoom < minAllowedZoom) window.cameraZoom = minAllowedZoom;
+        
+        activeZoom = window.cameraZoom;
+        
+        // Final safety check for rendering
+        if (isNaN(activeZoom) || activeZoom <= 0.01) activeZoom = 1.0;
+
+        translate(windowWidth / 2, windowHeight / 2);
+        scale(activeZoom); 
+        translate(-windowWidth / 2, -windowHeight / 2);
     }
     
     // Check if respawn delay has ended
@@ -457,7 +556,9 @@ function handleGameDisplay(controlledPlayer) {
     pop(); // End Zoom Layer
 
     // Draw UI Elements (Unscaled HUD)
-    if (controlledPlayer && signedIn) {
+    // Only if menu is NOT visible AND screensaver is NOT active
+    // Note: If menuVisible is true, HUD is hidden. If screensaver is active (opacity > 0.1), menus fade out but we still hide HUD.
+    if (controlledPlayer && signedIn && !menuVisible) {
         // Draw HUD elements here so they aren't scaled by mobile zoom
         if (typeof drawPlaneInfo === 'function') drawPlaneInfo(controlledPlayer);
         if (typeof drawCompass === 'function') drawCompass(controlledPlayer);
@@ -470,6 +571,19 @@ function handleGameDisplay(controlledPlayer) {
         }
     }
 
+    // Screensaver Title Overlay (In Game)
+    if (screensaverOpacity > 0.01) {
+        push();
+        if (typeof drawingContext !== 'undefined') drawingContext.globalAlpha = screensaverOpacity;
+        textAlign(CENTER, TOP);
+        textSize(64);
+        fill(255);
+        stroke(0);
+        strokeWeight(4);
+        text("Sky Pirates", width / 2, 50 + Math.sin(millis()/1000) * 5);
+        pop();
+    }
+
     displayChat();
     displayNoticeMessages();
     displayAppInfo();
@@ -479,11 +593,25 @@ function displayHelpPrompt() {
     // Display help menu prompt for first 10 seconds
     if (millis() - signedInTime < 10000 && !helpWindow && !menuVisible) {
         push();
-        textSize(16);
+        
+        let zoomScale = 1.0;
+        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) {
+            zoomScale = window.cameraZoom;
+        }
+
+        // Scale text size
+        textSize(16 * zoomScale);
         textAlign(CENTER, CENTER);
         fill(255);
         stroke(0);
-        text("Early Access / Press H key to show help window", windowWidth / 2, windowHeight * 0.2);
+        
+        // Scale position relative to screen center
+        // Target is normally 20% down from top
+        let targetY = windowHeight * 0.2;
+        let centerY = windowHeight / 2;
+        let finalY = centerY + (targetY - centerY) * zoomScale;
+        
+        text("Early Access / Press H key to show help window", windowWidth / 2, finalY);
         pop();
     }
 }

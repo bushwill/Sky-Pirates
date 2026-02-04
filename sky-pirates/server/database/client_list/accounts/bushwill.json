@@ -7,7 +7,7 @@
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 448,
+      "progress": 501,
       "milestones": [
         {
           "unlocked": true,
@@ -15,8 +15,8 @@
           "target": 300
         },
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1770184464331,
           "target": 500
         },
         {
@@ -34,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 153,
+      "progress": 187,
       "milestones": [
         {
           "unlocked": true,
@@ -55,11 +55,11 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 7,
+      "progress": 12,
       "milestones": [
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1770183690689,
           "target": 10
         },
         {
@@ -82,7 +82,7 @@
     "fish_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 15,
+      "progress": 17,
       "milestones": [
         {
           "target": 50
