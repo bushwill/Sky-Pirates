@@ -13,14 +13,10 @@
       background-color: #1b1b1b;
       overflow: hidden;
       height: 100%;
-      /* Disable selection and tap highlight for mobile game feel */
+      /* Disable tap highlight */
       -webkit-tap-highlight-color: transparent;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      -khtml-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      user-select: none;
+      /* Prevent default touch actions (scroll/zoom) for better game response */
+      touch-action: none;
     }
     input, textarea {
       /* Re-enable selection for text inputs */

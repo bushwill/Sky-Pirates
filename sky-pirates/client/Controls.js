@@ -516,9 +516,10 @@ function touchStarted(event) {
     }
     
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        // Mobile Interactions
-        const mx = touches[0].x;
-        const my = touches[0].y;
+        // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
+        for (let i = 0; i < touches.length; i++) {
+        const mx = touches[i].x;
+        const my = touches[i].y;
         
         // Pause Button - Check regardless of menu state for exit behavior
         const pauseBtn = getMobilePauseButton();
@@ -538,7 +539,7 @@ function touchStarted(event) {
         }
 
         // If menu is open, don't process potential game controls underneath
-        if (menuVisible) return false;
+        if (menuVisible) continue; // Skip to next touch or end
 
         // Chat Button
         const chatBtn = getMobileChatButton();
@@ -577,6 +578,7 @@ function touchStarted(event) {
         
         // Action Buttons
         if (typeof window.mobileActionButtons !== 'undefined' && window.mobileActionButtons.length > 0) {
+            let actionHit = false;
             for (let btn of window.mobileActionButtons) {
                 if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
                     const action = btn.action;
@@ -588,9 +590,11 @@ function touchStarted(event) {
                          sendSellItemMessage(action.index);
                     }
                     window.mobileSelection = null;
-                    return false;
+                    actionHit = true;
+                    break;
                 }
             }
+            if (actionHit) return false;
         }
         
         // Check Selection Hits
@@ -623,9 +627,13 @@ function touchStarted(event) {
         if (uiHit) return false;
         
         // Clear selection if tapping empty space
-        if (window.mobileSelection) {
+        if (window.mobileSelection && !uiHit && !menuVisible) {
              window.mobileSelection = null;
         }
+
+        } // End of touch loop
+
+        if (menuVisible) return false;
 
         updateMobileControls();
         return false;
