@@ -625,12 +625,7 @@ function touchStarted(event) {
     // Allow touch interactions for gameplay if signed in (non-mobile fallback)
     if (signedIn && !menuVisible && (!isMobile)) {
         keys.mouse = true;
-    }typeof lastInputTime !== 'undefined') lastInputTime = millis();
-    window.lastInputTime = millis();
-
-    if (
-    // Prevent default browser behavior
-    // return false; 
+    }
 }
 
 function touchEnded() {
@@ -645,6 +640,9 @@ function touchEnded() {
 }
 
 function touchMoved() {
+    window.lastInputTime = millis();
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+
     if ((menuVisible || !signedIn) && menuManager && menuManager.current && menuManager.current.touchMoved) {
         let result = menuManager.current.touchMoved();
         if (result === false) return false;
