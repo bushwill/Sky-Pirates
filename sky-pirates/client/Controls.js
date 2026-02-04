@@ -552,8 +552,12 @@ function touchStarted(event) {
         // Action Buttons
         if (typeof window.mobileActionButtons !== 'undefined' && window.mobileActionButtons.length > 0) {
             let actionHit = false;
+            const actionPadding = 20; // Extra hit area for action buttons
+            
             for (let btn of window.mobileActionButtons) {
-                if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) {
+                if (mx >= btn.x - actionPadding && mx <= btn.x + btn.w + actionPadding && 
+                    my >= btn.y - actionPadding && my <= btn.y + btn.h + actionPadding) {
+                    
                     const action = btn.action;
                      if (action.type === 'buy') {
                          purchaseShopItem(action.index);
@@ -564,6 +568,8 @@ function touchStarted(event) {
                     }
                     window.mobileSelection = null;
                     actionHit = true;
+                    // Debounce to prevent fallthrough clicks
+                    window.lastActionTime = millis();
                     break;
                 }
             }
@@ -616,6 +622,10 @@ function touchStarted(event) {
 
     // Handle Menu Interactions
     if ((menuVisible || !signedIn) && menuManager) {
+        if (typeof menuManager.touchStarted === 'function') {
+            if (menuManager.touchStarted()) return false;
+        }
+    }
 
     // Allow touch interactions for gameplay if signed in (non-mobile fallback)
     if (signedIn && !menuVisible && (!isMobile)) {

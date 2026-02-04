@@ -46,9 +46,10 @@ function sortInventory(inventory) {
  */
 function handleShopClick(mx, my) {
     if (typeof isMobile !== 'undefined' && isMobile) {
+        const padding = 20; // Increase touch area
         for (let region of shopRegions) {
-            if (mx >= region.x && mx <= region.x + region.width &&
-                my >= region.y && my <= region.y + region.height) {
+            if (mx >= region.x - padding && mx <= region.x + region.width + padding &&
+                my >= region.y - padding && my <= region.y + region.height + padding) {
                 // Select item
                 window.mobileSelection = {
                     type: 'shop',
@@ -86,10 +87,12 @@ function handleInventoryClick(mx, my) {
     for (let region of inventoryRegions) {
         // Since inventory items are drawn in CENTER mode, determine the bounding box.
         const halfSize = region.size / 2;
-        const left = region.x - halfSize;
-        const right = region.x + halfSize;
-        const top = region.y - halfSize;
-        const bottom = region.y + halfSize;
+        const padding = (typeof isMobile !== 'undefined' && isMobile) ? 20 : 0; // Mobile padding
+
+        const left = region.x - halfSize - padding;
+        const right = region.x + halfSize + padding;
+        const top = region.y - halfSize - padding;
+        const bottom = region.y + halfSize + padding;
 
         if (mx >= left && mx <= right && my >= top && my <= bottom) {
             if (typeof isMobile !== 'undefined' && isMobile) {
@@ -126,8 +129,13 @@ function handleInventoryClick(mx, my) {
 function handleEquippedClick(mx, my) {
     if (typeof window.topRightComponentRegions === 'undefined') return false;
     
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 20 : 0;
+
     for (let region of window.topRightComponentRegions) {
-         if (dist(mx, my, region.x, region.y) <= region.size / 2) {
+         // Using square bounds with padding instead of circle dist for easier touch
+         if (mx >= region.x - region.size/2 - padding && mx <= region.x + region.size/2 + padding &&
+             my >= region.y - region.size/2 - padding && my <= region.y + region.size/2 + padding) {
+         // if (dist(mx, my, region.x, region.y) <= region.size / 2 + padding) {
              if (typeof isMobile !== 'undefined' && isMobile) {
                  window.mobileSelection = {
                      type: 'equipped',
