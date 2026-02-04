@@ -1042,41 +1042,43 @@ function drawPlaneInfo(player) {
     noStroke();
     textAlign(LEFT, TOP);
     
+    // Check for limited vertical space (mobile or small screens)
+    // Logic: Use horizontal layout if mobile or if window height is small
+    const useCompactMode = (typeof isMobile !== 'undefined' && isMobile) || (typeof windowHeight !== 'undefined' && windowHeight < 600);
+    
+    // ADJUST Y IF MOBILE to avoid overlap with top-left elements or notifications
+    // But reduce initial Y start if compact
+    if (useCompactMode) {
+        currentY = 40 * s; // Offset from top (notch safe area)
+    }
+
+    noStroke();
+    textAlign(LEFT, TOP);
+    
     // Money display
     fill(100, 255, 100);
-    textSize(32 * s);
+    textSize(useCompactMode ? 24 * s : 32 * s);
     textStyle(BOLD);
     text('$' + player.money.toLocaleString(), startX, currentY);
-    currentY += 45 * s;
+    currentY += useCompactMode ? 30 * s : 45 * s;
     
     // Plane value display
     fill(200, 200, 100);
-    textSize(18 * s);
+    textSize(useCompactMode ? 14 * s : 18 * s);
     textStyle(NORMAL);
     text('Plane Value: $' + player.value.toLocaleString(), startX, currentY);
-    currentY += 35 * s;
+    currentY += useCompactMode ? 25 * s : 35 * s;
     
     // Component icons
-    const iconSize = 40 * s;
-    const iconSpacing = 60 * s;
+    const iconSize = useCompactMode ? 32 * s : 40 * s;
+    const iconSpacing = useCompactMode ? 45 * s : 60 * s;
     const iconsStartX = startX + iconSize / 2; // Offset by half icon size since drawItem draws from center
     
     // Store regions for hover detection
     if (!window.topRightComponentRegions) window.topRightComponentRegions = [];
     window.topRightComponentRegions = [];
 
-    // Check for limited vertical space (mobile or small screens)
-    // Logic: Use horizontal layout if mobile or if window height is small
-    const useHorizontalLayout = (typeof isMobile !== 'undefined' && isMobile) || (typeof windowHeight !== 'undefined' && windowHeight < 600);
-    
-    // ADJUST Y IF MOBILE to avoid overlap with top-left elements or notifications
-    // Mobile browsers often have UI bars or notches that might obscure top elements
-    // Increased offset significantly to clear potential status bars or browser UI
-    if (useHorizontalLayout) {
-        currentY += 50 * s; 
-    }
-    
-    // Draw engine icon
+     // Draw engine icon
     push();
     translate(iconsStartX, currentY + iconSize / 2);
     drawItem(player.engine, 0, 0, iconSize);
@@ -1112,8 +1114,10 @@ function drawPlaneInfo(player) {
         size: iconSize
     });
 
-    // Vertical layout (Reverted): Guns on a new row, centered under components
-    currentY += iconSize + (20 * s);
+    // Vertical layout: Guns on a new row, centered under components
+    const rowGap = useCompactMode ? 10 * s : (20 * s);
+    currentY += iconSize + rowGap;
+
     
     // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
     // Center 2 weapons under 3 components by offsetting by half spacing
