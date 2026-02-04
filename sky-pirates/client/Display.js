@@ -1069,6 +1069,13 @@ function drawPlaneInfo(player) {
     // Logic: Use horizontal layout if mobile or if window height is small
     const useHorizontalLayout = (typeof isMobile !== 'undefined' && isMobile) || (typeof windowHeight !== 'undefined' && windowHeight < 600);
     
+    // ADJUST Y IF MOBILE to avoid overlap with top-left elements or notifications
+    // Mobile browsers often have UI bars or notches that might obscure top elements
+    // Increased offset significantly to clear potential status bars or browser UI
+    if (useHorizontalLayout) {
+        currentY += 50 * s; 
+    }
+    
     // Draw engine icon
     push();
     translate(iconsStartX, currentY + iconSize / 2);
@@ -1105,30 +1112,18 @@ function drawPlaneInfo(player) {
         size: iconSize
     });
 
-    // Determine positions for guns based on layout mode
-    let gun1X, gun1Y, gun2X, gun2Y;
-
-    if (useHorizontalLayout) {
-        // Horizontal layout: Guns follow components on the same row
-        gun1X = iconsStartX + iconSpacing * 3;
-        gun1Y = currentY + iconSize / 2;
-        
-        gun2X = iconsStartX + iconSpacing * 4;
-        gun2Y = currentY + iconSize / 2;
-    } else {
-        // Vertical layout: Guns on a new row, centered under components
-        currentY += iconSize + (20 * s);
-        
-        // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
-        // Center 2 weapons under 3 components by offsetting by half spacing
-        const weaponsStartX = startX + iconSize / 2 + iconSpacing / 2;
-        
-        gun1X = weaponsStartX;
-        gun1Y = currentY + iconSize / 2;
-        
-        gun2X = weaponsStartX + iconSpacing;
-        gun2Y = currentY + iconSize / 2;
-    }
+    // Vertical layout (Reverted): Guns on a new row, centered under components
+    currentY += iconSize + (20 * s);
+    
+    // Components span: iconsStartX to (iconsStartX + 2*iconSpacing)
+    // Center 2 weapons under 3 components by offsetting by half spacing
+    const weaponsStartX = startX + iconSize / 2 + iconSpacing / 2;
+    
+    let gun1X = weaponsStartX;
+    let gun1Y = currentY + iconSize / 2;
+    
+    let gun2X = weaponsStartX + iconSpacing;
+    let gun2Y = currentY + iconSize / 2;
     
     // Draw gun1 icon
     push();

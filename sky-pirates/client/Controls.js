@@ -1,5 +1,8 @@
 function touchStarted() {
+    // Explicitly update window.lastInputTime for global visibility
+    window.lastInputTime = millis();
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+
     // Ensure audio context is started on first user interaction (mobile requirement)
     if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
         userStartAudio();

@@ -918,4 +918,10 @@ function windowResized() {
     // Force immediate redraw to prevent flickering or gray bars
     // Just clearing might be enough if draw loop picks it up, but setting bg is safer
     // Using resizeCanvas is generally preferred over createCanvas for existing canvas
+
+    // Add a delayed resize for Mobile orientation changes which often animate
+    // and report incorrect sizes explicitly at the start of the event
+    setTimeout(() => {
+        resizeCanvas(windowWidth, windowHeight);
+    }, 500);
 }

@@ -421,47 +421,68 @@ class AccountAuthMenuScreen extends MenuScreen {
         noStroke();
         rect(x, y, w, h, 30); // Background panel
 
+        const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
+        // Determine layout/spacing based on available height or mobile flag
+        // Use reduced spacing if on mobile or restricted height
+        const isCompact = (typeof isMobile !== 'undefined' && isMobile) || h < 600;
+        
+        const titleSize = isCompact ? 24 : 32;
+        const titleY = isCompact ? 20 : 40;
+        const startY = isCompact ? 60 : 120;
+        const spacing = isCompact ? 45 : 60;
+        const msgSpacing = isCompact ? 30 : 60;
+        const btnSpacing = isCompact ? 35 : 50;
+        const fieldH = isCompact ? 30 : 40;
+
         fill(0);
-        textSize(32);
+        textSize(titleSize);
         textAlign(CENTER, TOP);
-        text(this.title, x + w / 2, y + 40);
+        text(this.title, x + w / 2, y + titleY);
 
         // Fields
         let contentX = x + w / 2 - 120;
-        let contentY = y + 120;
+        let contentY = y + startY;
 
         this.usernameField.x = contentX;
         this.usernameField.y = contentY;
+        this.usernameField.h = fieldH;
         this.usernameField.draw();
 
-        contentY += 60;
+        contentY += spacing;
         this.passwordField.x = contentX;
         this.passwordField.y = contentY;
+        this.passwordField.h = fieldH;
         this.passwordField.draw();
 
         if (this.mode === 'create' && this.confirmPasswordField) {
-             contentY += 60;
+             contentY += spacing;
              this.confirmPasswordField.x = contentX;
              this.confirmPasswordField.y = contentY;
+             this.confirmPasswordField.h = fieldH;
              this.confirmPasswordField.draw();
         }
 
         // Message
-        contentY += 60;
-        textSize(16);
+        contentY += msgSpacing;
+        textSize(isCompact ? 14 : 16);
         fill(this.msg.startsWith("Success") ? [0,150,0] : [200,0,0]);
         textAlign(CENTER, TOP);
         text(this.msg, x + w / 2, contentY);
 
         // Buttons
-        contentY += 40;
-        this.submitButton.setPosition(x + w / 2 - 100, contentY);
-        this.submitButton.setSize(200, 40);
+        // If compact, stack buttons closer
+        contentY += isCompact ? 25 : 40;
+        
+        let btnW = 200;
+        let btnH = isCompact ? 30 : 40;
+
+        this.submitButton.setPosition(x + w / 2 - btnW/2, contentY);
+        this.submitButton.setSize(btnW, btnH);
         this.submitButton.draw();
 
-        contentY += 50;
-        this.backButton.setPosition(x + w / 2 - 100, contentY);
-        this.backButton.setSize(200, 40);
+        contentY += btnSpacing;
+        this.backButton.setPosition(x + w / 2 - btnW/2, contentY);
+        this.backButton.setSize(btnW, btnH);
         this.backButton.draw();
     }
 
