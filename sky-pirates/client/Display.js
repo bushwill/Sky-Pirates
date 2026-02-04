@@ -1622,9 +1622,13 @@ function displayMessages(player, drawX, drawY) {
         textStyle(ITALIC);
         textSize(12);
         fill(0, 0, 0);
-        rect(drawX, drawY + 20, current_chat.length * 7 + 10, 20);
+        rectMode(CENTER);
+        rect(drawX, drawY + 25, current_chat.length * 8 + 20, 24, 4); 
+        rectMode(CORNER); 
         fill(255, 255, 255);
-        text(current_chat, drawX, drawY + 20);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        text(current_chat, drawX, drawY + 25);
         pop();
     }
     pop();

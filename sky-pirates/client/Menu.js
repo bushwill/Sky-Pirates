@@ -980,8 +980,14 @@ class LoginMenuScreen extends MenuScreen {
 
              if (useSplitLayout) {
                  // Right Column Layout
-                 // Start Y higher up?
-                 listYOffset = y + (130 * s);
+                 // Pushing down to align with left-column elements
+                 // Align the top of list buttons with the top of the username field
+                 // Start Y higher up? No, move down.
+                 // Username field Y is userFieldY. 
+                 // Gun list button starts at listYOffset.
+                 // So set listYOffset = userFieldY.
+                 listYOffset = userFieldY;
+                 
                  // Side-by-side in right column? Right column is centered at w*0.75.
                  // Space available is w/2 roughly.
                  
@@ -1086,13 +1092,13 @@ class LoginMenuScreen extends MenuScreen {
                  fill(80);
                  text("Logged in as a guest", btnCenterX, btnY - (5 * s));
                  
-                 let authBtnW = 150 * s;
+                 let authBtnW = 180 * s;
                  let authBtnH = 40 * s;
                  
                  // In split layout, maybe stack them if width is tight?
                  // Or shrink them? 150px wide is kinda big for half-column on phone.
                  if (useSplitLayout) {
-                     authBtnW = 110 * s; // Smaller
+                     authBtnW = 140 * s; // Larger
                      authBtnH = 35 * s;
                  }
 
@@ -1502,6 +1508,7 @@ class LoginMenuScreen extends MenuScreen {
         }
 
         // Check if narrow mode
+        // Match draw logic exactly: if (x - gap - sideW < 0 || x + w + gap + sideW > width)
         let isNarrow = false;
         if (x - gap - sideW < 0 || x + w + gap + sideW > width) {
             isNarrow = true;
@@ -1514,7 +1521,11 @@ class LoginMenuScreen extends MenuScreen {
             if (my >= y && my <= y + tabH && mx >= x && mx <= x + w) {
                 let tabs = ['Main', 'Community', 'Achievements'];
                 let tabW = w / tabs.length;
+                
+                // Clamp index to valid range to prevent floating point edge cases
                 let clickedIndex = Math.floor((mx - x) / tabW);
+                clickedIndex = Math.max(0, Math.min(clickedIndex, tabs.length - 1));
+                
                 if (clickedIndex >= 0 && clickedIndex < tabs.length) {
                     let clickedTabLabel = tabs[clickedIndex];
                     let clickedTabKey = clickedTabLabel === 'Achievements' ? 'achievements' : clickedTabLabel.toLowerCase();

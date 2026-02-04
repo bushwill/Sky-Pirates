@@ -250,7 +250,8 @@ function draw() {
         }
 
         // Calculate login menu dimensions
-        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : Math.max(500, width * 0.45);
+        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
+        if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
         let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
         let mx = (width - mw) / 2;
         let my = (height - mh) / 2;
@@ -923,5 +924,5 @@ function windowResized() {
     // and report incorrect sizes explicitly at the start of the event
     setTimeout(() => {
         resizeCanvas(windowWidth, windowHeight);
-    }, 500);
+    }, 1000);
 }
