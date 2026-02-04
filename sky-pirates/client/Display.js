@@ -2233,6 +2233,7 @@ function displayTeleportButton(controlledPlayer) {
             width: buttonWidth,
             height: buttonHeight
         };
+        window.teleportButtonRegion = teleportButtonRegion;
         
         const isTeleportHovering = mouseX >= teleportX - buttonWidth / 2 &&
             mouseX <= teleportX + buttonWidth / 2 &&
@@ -2265,6 +2266,7 @@ function displayTeleportButton(controlledPlayer) {
             width: buttonWidth,
             height: buttonHeight
         };
+        window.shopButtonRegion = shopButtonRegion;
         
         const isShopHovering = mouseX >= shopX - buttonWidth / 2 &&
             mouseX <= shopX + buttonWidth / 2 &&
@@ -2324,6 +2326,7 @@ function displaySellAllButton(controlledPlayer) {
         width: buttonWidth,
         height: buttonHeight
     };
+    window.sellAllButtonRegion = sellAllButtonRegion;
     
     const isHovering = mouseX >= centerX - buttonWidth / 2 &&
         mouseX <= centerX + buttonWidth / 2 &&

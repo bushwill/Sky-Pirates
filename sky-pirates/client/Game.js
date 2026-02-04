@@ -4,7 +4,7 @@
 
 // Connection and network
 let ws;
-let isMobile = false;
+var isMobile = false;
 let pingTimes = [];
 let connected = false;
 let reconnecting = false;
@@ -39,12 +39,25 @@ let shops = [];
 let displayedEventIds = new Set(); // Track which events we've already displayed
 
 // UI regions for click detection
-let inventoryRegions = []; // { item, x, y, size }
-let shopRegions = []; // { component, price, shopIndex, itemIndex, x, y, size }
-let teleportButtonRegion = null;
-let shopButtonRegion = null;
-let sellAllButtonRegion = null;
-let shopOpen = false; // Track if shop is open or closed
+var inventoryRegions = []; // { item, x, y, size }
+var shopRegions = []; // { component, price, shopIndex, itemIndex, x, y, size }
+var teleportButtonRegion = null;
+var shopButtonRegion = null;
+var sellAllButtonRegion = null;
+var shopOpen = false; // Track if shop is open or closed
+
+// Expose these regions globally so Controls.js (which is a module or script) can access them
+window.inventoryRegions = inventoryRegions;
+window.shopRegions = shopRegions;
+window.teleportButtonRegion = teleportButtonRegion;
+window.shopButtonRegion = shopButtonRegion;
+window.sellAllButtonRegion = sellAllButtonRegion;
+
+// Helper to keep window vars in sync (since simplistic assignment above only copies initial nulls/arrays)
+// We need to update these whenever we update the local vars in draw or other functions.
+// Actually, it's better to just ensure Controls.js looks for window.teleportButtonRegion if the local one isn't found,
+// OR we replace local vars with window vars throughout Game.js.
+// For safety, let's keep local vars but push them to window in the draw loop or where they are updated.
 
 // Day/Night Cycle (Shared with server, updated by packet)
 var cycleTime = 0; // 0 to 30 mins (in ms)
@@ -73,12 +86,12 @@ let selectedGun1 = 0;
 let selectedGun2 = 1;
 
 // UI state
-let helpWindow = false;
-let signedIn = false;
+var helpWindow = false;
+var signedIn = false;
 let signedInTime = 0;
 let chat_message;
-let current_chat = "";
-let chatting = false;
+var current_chat = "";
+var chatting = false;
 let clientEstimating = true;
 
 // Respawn delay state
@@ -101,9 +114,9 @@ let currentBobX = 0;
 let currentBobY = 0;
 
 // Menu and color picker setup
-let menuManager;
-let colorPicker;
-let menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
+var menuManager;
+var colorPicker;
+var menuVisible = false; // Whether the menu overlay is visible during gameplay (toggle with ESC)
 
 // Screensaver state
 window.lastInputTime = 0; // Exposed global for Controls.js

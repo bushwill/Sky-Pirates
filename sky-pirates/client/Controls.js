@@ -552,18 +552,27 @@ function touchStarted(event) {
         if (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion) {
             const teleportClicked = handleTeleportButtonClick(mx, my);
             if (teleportClicked) return false;
+        } else if (typeof window.teleportButtonRegion !== 'undefined' && window.teleportButtonRegion) {
+             const teleportClicked = handleTeleportButtonClick(mx, my);
+             if (teleportClicked) return false;
         }
         
         // Check shop toggle button
         if (typeof shopButtonRegion !== 'undefined' && shopButtonRegion) {
             const shopButtonClicked = handleShopButtonClick(mx, my);
             if (shopButtonClicked) return false;
+        } else if (typeof window.shopButtonRegion !== 'undefined' && window.shopButtonRegion) {
+             const shopButtonClicked = handleShopButtonClick(mx, my);
+             if (shopButtonClicked) return false;
         }
 
         // Check sell all button
         if (typeof sellAllButtonRegion !== 'undefined' && sellAllButtonRegion) {
             const sellAllClicked = handleSellAllButtonClick(mx, my);
             if (sellAllClicked) return false;
+        } else if (typeof window.sellAllButtonRegion !== 'undefined' && window.sellAllButtonRegion) {
+             const sellAllClicked = handleSellAllButtonClick(mx, my);
+             if (sellAllClicked) return false;
         }
         
         // Action Buttons
