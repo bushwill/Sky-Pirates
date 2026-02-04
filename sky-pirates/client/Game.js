@@ -741,6 +741,11 @@ function handleTeleportButtonClick(mouseX, mouseY) {
         mouseY <= teleportButtonRegion.y + teleportButtonRegion.height / 2 + padding;
 
     if (isInside) {
+        // Debounce to prevent double-firing
+        if (typeof lastTeleportClickTime === 'undefined') window.lastTeleportClickTime = 0;
+        if (millis() - window.lastTeleportClickTime < 500) return true;
+        window.lastTeleportClickTime = millis();
+
         handleTeleportRequest();
         return true; // Button was clicked
     }
@@ -759,6 +764,11 @@ function handleShopButtonClick(mouseX, mouseY) {
         mouseY <= shopButtonRegion.y + shopButtonRegion.height / 2 + padding;
 
     if (isInside) {
+        // Debounce to prevent double-toggling (open -> close -> open)
+        if (typeof lastShopClickTime === 'undefined') window.lastShopClickTime = 0;
+        if (millis() - window.lastShopClickTime < 500) return true;
+        window.lastShopClickTime = millis();
+
         shopOpen = !shopOpen; // Toggle shop state
         console.log(`Shop ${shopOpen ? 'opened' : 'closed'}`);
         return true; // Button was clicked
@@ -778,6 +788,11 @@ function handleSellAllButtonClick(mouseX, mouseY) {
         mouseY <= sellAllButtonRegion.y + sellAllButtonRegion.height / 2 + padding;
 
     if (isInside) {
+        // Debounce
+        if (typeof lastSellClickTime === 'undefined') window.lastSellClickTime = 0;
+        if (millis() - window.lastSellClickTime < 500) return true;
+        window.lastSellClickTime = millis();
+
         sendSellAllMessage();
         console.log('Sell All button clicked');
         return true; // Button was clicked

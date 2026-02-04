@@ -484,37 +484,8 @@ function touchStarted(event) {
         return true;
     }
 
-    // Handle Menu Interactions
-    if ((menuVisible || !signedIn) && menuManager) {
-        // Pass to manager
-        if (menuManager.touchStarted) {
-             // If manager has a touchStarted, use it (optional, mainly for scroll tracking in current screen)
-             // But we really want to trigger click logic
-        }
-        
-        // Treat tap as mouse press for menu buttons
-        // Logic must match mousePressed() dimensions
-        let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
-        if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
-        let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
-        let mx = (width - mw) / 2;
-        let my = (height - mh) / 2;
-
-        if (typeof touches !== 'undefined' && touches.length > 0) {
-             // Route via Manager to handle Close button + Screen logic
-             if (menuManager.mousePressed(touches[0].x, touches[0].y, mx, my, mw, mh)) {
-                 // Handled
-             }
-             
-             // Also call current.touchStarted for scrolling initialization
-             if (menuManager.current && menuManager.current.touchStarted) {
-                 menuManager.current.touchStarted();
-             }
-        }
-        
-        return false;
-    }
-    
+    // CHECK MOBILE CONTROLS FIRST (HUD)
+    // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
         // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
         for (let i = 0; i < touches.length; i++) {
@@ -526,19 +497,21 @@ function touchStarted(event) {
         if (Math.abs(mx - pauseBtn.x) < pauseBtn.w/2 + 30 &&
             Math.abs(my - pauseBtn.y) < pauseBtn.h/2 + 30) {
              
-             // Toggle logic
-             if (menuVisible) {
-                 menuVisible = false;
-                 // Don't show login immediately when closing
-                 // if (menuManager && menuManager.current && menuManager.current.hide) menuManager.current.hide(); 
-             } else {
-                 menuVisible = true;
-                 if (menuManager) menuManager.show('login');
+             // Toggle logic (Debounced)
+             if (typeof window.lastPauseToggleTime === 'undefined') window.lastPauseToggleTime = 0;
+             if (millis() - window.lastPauseToggleTime > 500) {
+                 window.lastPauseToggleTime = millis();
+                 if (menuVisible) {
+                     menuVisible = false;
+                 } else {
+                     menuVisible = true;
+                     if (menuManager) menuManager.show('login');
+                 }
              }
              return false;
         }
 
-        // If menu is open, don't process potential game controls underneath
+        // If menu is open, handle menu interactions via manager later, but SKIP game controls
         if (menuVisible) continue; // Skip to next touch or end
 
         // Chat Button
@@ -633,11 +606,16 @@ function touchStarted(event) {
 
         } // End of touch loop
 
-        if (menuVisible) return false;
-
-        updateMobileControls();
-        return false;
+        if (menuVisible) {
+            // fallthrough to menu handling
+        } else {
+             updateMobileControls();
+             return false;
+        }
     }
+
+    // Handle Menu Interactions
+    if ((menuVisible || !signedIn) && menuManager) {
 
     // Allow touch interactions for gameplay if signed in (non-mobile fallback)
     if (signedIn && !menuVisible && (!isMobile)) {
