@@ -2195,8 +2195,8 @@ function displayTeleportButton(controlledPlayer) {
     const buttonSpacing = 20 * s;
     
     // Calculate center position for button area
-    const centerX = windowWidth / 2;
-    const buttonY = windowHeight - (100 * s);
+    const centerX = width / 2;
+    const buttonY = height - (100 * s);
     
     // Calculate button positions based on count
     let teleportX, shopX;
@@ -2317,8 +2317,8 @@ function displaySellAllButton(controlledPlayer) {
     const buttonHeight = 40 * s;
     
     // Position at bottom center, below shop/teleport buttons
-    const centerX = windowWidth / 2;
-    const buttonY = windowHeight - (50 * s);
+    const centerX = width / 2;
+    const buttonY = height - (50 * s);
     
     sellAllButtonRegion = {
         x: centerX,
