@@ -787,12 +787,15 @@ class LoginMenuScreen extends MenuScreen {
         
         textSize(20 * s);
         // Show different header/subheader depending on whether this is the pre-login screen or the in-game pause menu
-        if (signedIn) {
-            text(this.pauseHeader, x + w / 2, y + (100 * s));
-            text(this.pauseSubheader, x + w / 2, y + (140 * s));
-        } else {
-            text(this.loginHeader, x + w / 2, y + (100 * s));
-            text(this.loginSubheader, x + w / 2, y + (140 * s));
+        // In split layout (compact mobile), hide these headers to prevent overlapping with columns
+        if (!useSplitLayout) {
+             if (signedIn) {
+                 text(this.pauseHeader, x + w / 2, y + (100 * s));
+                 text(this.pauseSubheader, x + w / 2, y + (140 * s));
+             } else {
+                 text(this.loginHeader, x + w / 2, y + (100 * s));
+                 text(this.loginSubheader, x + w / 2, y + (140 * s));
+             }
         }
 
         // --- Layout Calculation ---
