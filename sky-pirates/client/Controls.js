@@ -1,30 +1,3 @@
-function touchStarted() {
-    // Explicitly update window.lastInputTime for global visibility
-    window.lastInputTime = millis();
-    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
-
-    // Ensure audio context is started on first user interaction (mobile requirement)
-    if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
-        userStartAudio();
-    }
-    
-    // Force fullscreen on first touch if on mobile
-    if (typeof isMobile !== 'undefined' && isMobile) {
-        let fs = fullscreen();
-        if (!fs) {
-            fullscreen(true);
-        }
-    }
-
-    // We do NOT return false here so that mousePressed is still triggered for UI logic.
-}
-
-function touchMoved() {
-    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
-    // Prevent default scrolling behavior while playing to avoid dragging the webpage
-    return false; 
-}
-
 function mousePressed() {
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
@@ -489,6 +462,23 @@ function getScaledInputCoordinates(screenX, screenY) {
 }
 
 function touchStarted(event) {
+    // Explicitly update window.lastInputTime for global visibility
+    window.lastInputTime = millis();
+    if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
+
+    // Ensure audio context is started on first user interaction (mobile requirement)
+    if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
+        userStartAudio();
+    }
+    
+    // Force fullscreen on first touch if on mobile
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        let fs = fullscreen();
+        if (!fs) {
+            fullscreen(true);
+        }
+    }
+
     // Allow default browser behavior for inputs (text fields, etc.)
     if (event && event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) {
         return true;
@@ -635,7 +625,10 @@ function touchStarted(event) {
     // Allow touch interactions for gameplay if signed in (non-mobile fallback)
     if (signedIn && !menuVisible && (!isMobile)) {
         keys.mouse = true;
-    }
+    }typeof lastInputTime !== 'undefined') lastInputTime = millis();
+    window.lastInputTime = millis();
+
+    if (
     // Prevent default browser behavior
     // return false; 
 }

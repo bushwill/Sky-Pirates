@@ -171,10 +171,10 @@ function draw() {
     // Only active if in a menu (Main Menu or Pause Menu) AND inactive for > 60s
     const SCREENSAVER_TIMEOUT = 60 * 1000;
     const inMenu = !signedIn || menuVisible;
-    let targetScreensaverAlpha = (inMenu && (millis() - lastInputTime > SCREENSAVER_TIMEOUT)) ? 1.0 : 0.0;
+    let targetScreensaverAlpha = (inMenu && (millis() - window.lastInputTime > SCREENSAVER_TIMEOUT)) ? 1.0 : 0.0;
     
     // Force reset if input detected recently (even if fading out)
-    if (millis() - lastInputTime < 100) targetScreensaverAlpha = 0.0;
+    if (millis() - window.lastInputTime < 100) targetScreensaverAlpha = 0.0;
     
     screensaverOpacity = lerp(screensaverOpacity, targetScreensaverAlpha, 0.05);
     

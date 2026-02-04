@@ -770,26 +770,21 @@ class LoginMenuScreen extends MenuScreen {
         fill(0);
         textSize(40 * s);
 
-        // Only position/show color picker when not already signed in
-        if (!signedIn && this.colorPicker) {
-            // Hide if not main tab? handled by hide in draw?
-            // Actually color picker is DOM element.
-            if (this.activeTab === 'main') {
-               this.colorPicker.show();
-               this.colorPicker.position(x + w / 2 + (120 * s), y + (183 * s));
-            } else {
-               this.colorPicker.hide();
-            }
-        } else if (this.colorPicker) {
-            this.colorPicker.hide();
-        }
+        // --- Determine Layout Mode ---
+        // "when the screen is too small, and theres more horizontal room than vertical"
+        // Also respect "if theres an existing game save and we dont display gun selection, just center"
+        const showGuns = !signedIn && (!this.hasSavedState || this.serverSaveExists === false);
+        const isMobileLandscape = (w > h) && (h < 600 || (typeof isMobile !== 'undefined' && isMobile));
+        const useSplitLayout = showGuns && isMobileLandscape;
 
+        // --- Header Text ---
         textAlign(CENTER, CENTER);
         if (window.WS_ADDRESS === 'ws://localhost:3001') {
             text("SKY PIRATES (test environment)", x + w / 2, y + (50 * s));
         } else {
             text("SKY PIRATES", x + w / 2, y + (50 * s));
         }
+        
         textSize(20 * s);
         // Show different header/subheader depending on whether this is the pre-login screen or the in-game pause menu
         if (signedIn) {
@@ -800,17 +795,66 @@ class LoginMenuScreen extends MenuScreen {
             text(this.loginSubheader, x + w / 2, y + (140 * s));
         }
 
-        // Draw input field logic... (username, party)
-        // Need to ensure we only show DOM inputs if main tab is active
-        // But drawMainContent is only called if activeTab is main.
-        
-        // Scale input dimensions
+        // --- Layout Calculation ---
+        let leftCenterX, rightCenterX;
         let fieldW = 240 * s;
         let fieldH = 40 * s;
-        let halfFieldW = fieldW / 2;
         
-        this.usernameField.x = x + w / 2 - halfFieldW;
-        this.usernameField.y = y + (170 * s);
+        // Compact field height for mobile
+        if (isMobileLandscape) {
+             fieldH = 32 * s; 
+        }
+
+        let halfFieldW = fieldW / 2;
+
+        if (useSplitLayout) {
+             leftCenterX = x + w * 0.25;
+             rightCenterX = x + w * 0.75;
+        } else {
+             leftCenterX = x + w / 2;
+             rightCenterX = x + w / 2; 
+        }
+
+        // --- Color Picker ---
+        // Only position/show color picker when not already signed in
+        if (!signedIn && this.colorPicker) {
+            if (this.activeTab === 'main') {
+               this.colorPicker.show();
+               // Position relative to username field area
+               // Standard: Right of center
+               // Split: Right of Left Column? Or Left of Left Column?
+               if (useSplitLayout) {
+                   // Place to right of username field in left column
+                   this.colorPicker.position(leftCenterX + halfFieldW + (10 * s), y + (170 * s));
+               } else {
+                   this.colorPicker.position(x + w / 2 + (120 * s), y + (183 * s));
+               }
+            } else {
+               this.colorPicker.hide();
+            }
+        } else if (this.colorPicker) {
+            this.colorPicker.hide();
+        }
+
+        // --- Input Fields (User, Party) ---
+        
+        // Y Positions
+        let userFieldY = y + (170 * s);
+        let partyFieldY = y + (220 * s);
+        
+        if (useSplitLayout) {
+             // Shift up slightly in split view to make room
+             userFieldY = y + (170 * s); // Keep same?
+             partyFieldY = y + (210 * s); // Tighter
+             // If extremely short height, compress more
+             if (h < 400) {
+                 userFieldY = y + (150 * s);
+                 partyFieldY = y + (190 * s);
+             }
+        }
+
+        this.usernameField.x = leftCenterX - halfFieldW;
+        this.usernameField.y = userFieldY;
         this.usernameField.w = fieldW;
         this.usernameField.h = fieldH;
         
@@ -821,33 +865,40 @@ class LoginMenuScreen extends MenuScreen {
             textAlign(LEFT, CENTER);
             textSize(18 * s);
             const displayName = username || this.usernameField.value || '(unknown)';
-            text(displayName, this.usernameField.x + (8 * s), this.usernameField.y + this.usernameField.h / 2);
+            // Center text logic varies safely? CENTER, CENTER text is drawn at X,Y. 
+            // My text logic below uses left align.
+            // If centered layout: x + w/2 -> this.usernameField.x + 8*s which is left-aligned relative to field box
+            text(displayName, this.usernameField.x + (8 * s), this.usernameField.y + fieldH / 2);
         } else {
             this.usernameField.draw();
         }
         
         // Draw party field below username
-        this.partyField.x = x + w / 2 - halfFieldW;
-        this.partyField.y = y + (220 * s);
+        this.partyField.x = leftCenterX - halfFieldW;
+        this.partyField.y = partyFieldY;
         this.partyField.w = fieldW;
         this.partyField.h = fieldH;
         this.partyField.draw();
 
-        // Login button - updated to match new position (right of party field)
-        // Adjust logic: Make it sit beside if space, or below if very small?
-        // Original: right of party field
+        // --- Login / Play Button ---
         let loginBtnW = 120 * s;
-        let loginBtnH = 40 * s;
-        
-        // If very narrow, stack below OR if we are in Narrow Mode we almost certainly want to stack below
-        // The original logic checked 'w'.
+        let loginBtnH = fieldH; // Match field height
         let loginBtnX, loginBtnY;
-        if (w < 400 * s) { // This threshold might trip in narrow mode
-             loginBtnX = x + w / 2 - (loginBtnW / 2);
-             loginBtnY = y + (270 * s); // shifted down
+        
+        if (useSplitLayout) {
+             // In split layout, put below party field in left column
+             loginBtnX = leftCenterX - (loginBtnW / 2);
+             loginBtnY = partyFieldY + fieldH + (15 * s);
         } else {
-             loginBtnX = x + w / 2 + halfFieldW + (10 * s);
-             loginBtnY = y + (220 * s);
+            // Standard centered layout logic
+            if (w < 400 * s) { 
+                 loginBtnX = x + w / 2 - (loginBtnW / 2);
+                 loginBtnY = y + (270 * s); // shifted down - stack
+            } else {
+                 // Side-by-side with Party Field
+                 loginBtnX = x + w / 2 + halfFieldW + (10 * s);
+                 loginBtnY = y + (220 * s);
+            }
         }
 
         this.loginButton.setPosition(loginBtnX, loginBtnY);
@@ -860,21 +911,31 @@ class LoginMenuScreen extends MenuScreen {
         }
         this.loginButton.draw();
         
-        // --- Draw settings button in top-right corner ---
-        // Warning: in narrow mode, 'y' is shifted down by tabH? No, y is passed as contentY.
-        // But settings button might look weird inside content area.
-        // It's ok.
+        // --- Settings Button (Top Right) ---
         let settingsBtnW = 110 * s;
         let settingsBtnH = 40 * s;
-        let settingsBtnX = x + w - (130 * s); // 130px from right edge
-        let settingsBtnY = y + (20 * s); // 20px from top
+        let settingsBtnX = x + w - (130 * s); 
+        let settingsBtnY = y + (20 * s); 
         this.settingsButton.setPosition(settingsBtnX, settingsBtnY);
         this.settingsButton.setSize(settingsBtnW, settingsBtnH);
-        this.settingsButton.selected = false; // Not part of navigation
+        this.settingsButton.selected = false; 
         this.settingsButton.draw();
 
-        // Error message / status text
+        // --- Status Messages ---
         let showLoginMsg = true;
+        let statusY;
+
+        if (useSplitLayout) {
+             // Put status at bottom of Left Column
+             statusY = h - (30 * s);
+             if (signedIn) statusY = h - (30 * s); 
+             // Relative to window bottom or modal bottom? 'h' is modal height (contentH). 'y' is start Y.
+             statusY = y + h - (30 * s);
+             // Actually, fit it below Login Button?
+             statusY = loginBtnY + loginBtnH + (25 * s);
+        } else {
+             statusY = (w < 400 * s) ? y + (320 * s) : y + (280 * s);
+        }
 
         if (signedIn) {
             showLoginMsg = false;
@@ -882,12 +943,10 @@ class LoginMenuScreen extends MenuScreen {
             textSize(14 * s);
             fill(80);
             
-            let statusY = (w < 400 * s) ? y + (320 * s) : y + (280 * s);
-            
             if (this.isAccountSession && this.accountName) {
-                text("Logged in as: " + this.accountName, x + w / 2, statusY);
+                text("Logged in as: " + this.accountName, useSplitLayout ? leftCenterX : x + w / 2, statusY);
             } else {
-                 text("Logged in as a guest", x + w / 2, statusY);
+                 text("Logged in as a guest", useSplitLayout ? leftCenterX : x + w / 2, statusY);
             }
         }
 
@@ -895,30 +954,74 @@ class LoginMenuScreen extends MenuScreen {
             textAlign(CENTER, CENTER);
             fill(0); 
             textSize(16 * s);
-            let statusY = (w < 400 * s) ? y + (320 * s) : y + (280 * s);
-            text(this.loginMsg, x + w / 2, statusY); 
+            text(this.loginMsg, useSplitLayout ? leftCenterX : x + w / 2, statusY); 
         }
 
-        // --- Draw weapon lists ---
-        if (!signedIn && (!this.hasSavedState || this.serverSaveExists === false)) {
+        // --- Weapon Lists ---
+        if (showGuns) {
             let listSpacing = 54 * s;
-            let listYOffset = (w < 400 * s) ? y + (360 * s) : y + (360 * s); // Could adjust if needed
             let gunListW = 180 * s, gunListH = 44 * s;
-            let gunListPad = 40 * s; // 40
+            let gunListPad = 40 * s; 
             
             // Adjust for really narrow screens
-            if (w < 400 * s) { 
+            if (w < 400 * s && !useSplitLayout) { 
                 gunListPad = 5 * s;
                 gunListW = 150 * s;
+            } else if (useSplitLayout) {
+                 gunListW = 160 * s; // Slightly smaller for split view?
+                 gunListPad = 10 * s;
+                 // Tighter vertical spacing
+                 listSpacing = 48 * s;
+                 gunListH = 40 * s;
             }
 
-            // Gun1 list (left)
-            let gun1X = x + w / 2 - gunListW - gunListPad;
+            let listYOffset;
+            let gun1X, gun2X;
+
+             if (useSplitLayout) {
+                 // Right Column Layout
+                 // Start Y higher up?
+                 listYOffset = y + (130 * s);
+                 // Side-by-side in right column? Right column is centered at w*0.75.
+                 // Space available is w/2 roughly.
+                 
+                 // Check if enough width in right column for side-by-side
+                 // Need (gunListW * 2 + pad) < w/2?
+                 if ((gunListW * 2 + gunListPad) < (w * 0.45)) {
+                     // Side by side in right column
+                     gun1X = rightCenterX - gunListW - (gunListPad / 2);
+                     gun2X = rightCenterX + (gunListPad / 2);
+                 } else {
+                     // Stacked in right column? Or interleaved?
+                     // If really narrow, stack them vertically or overlap slightly?
+                     // Let's stack them vertically if width is tight
+                     gun1X = rightCenterX - gunListW/2;
+                     gun2X = rightCenterX - gunListW/2;
+                     // But offset Y?
+                     // This might push off screen if height is small.
+                     // Let's assume user has "horizontal room".
+                     // Ideally side-by-side. 
+                     // Let's force side-by-side but reduce margin
+                     gunListPad = 5 * s;
+                     gun1X = rightCenterX - gunListW - gunListPad;
+                     gun2X = rightCenterX + gunListPad;
+                 }
+                 
+             } else {
+                 // Original Centered Layout
+                 listYOffset = (w < 400 * s) ? y + (360 * s) : y + (360 * s);
+                 gun1X = x + w / 2 - gunListW - gunListPad;
+                 gun2X = x + w / 2 + gunListPad;
+             }
+
+            // Gun1 list
             let gun1Y = listYOffset;
             textSize(22 * s);
             fill(0);
             textAlign(CENTER, CENTER);
+            // Title
             text("Gun 1", gun1X + gunListW / 2, gun1Y - (34 * s));
+            
             for (let i = 0; i < this.gun1Options.length; i++) {
                 let opt = this.gun1Options[i];
                 opt.setPosition(gun1X, gun1Y + i * listSpacing);
@@ -928,13 +1031,19 @@ class LoginMenuScreen extends MenuScreen {
                 opt.draw();
             }
 
-            // Gun2 list (right)
-            let gun2X = x + w / 2 + gunListPad;
+            // Gun2 list
+            // If stacked in right column, push Y down
             let gun2Y = listYOffset;
+            if (useSplitLayout && ((gunListW * 2 + gunListPad) >= (w * 0.45))) {
+                 // Stacked logic if needed, but per request "more horizontal room"
+                 // So we assume side-by-side fits.
+            }
+            
             textSize(22 * s);
             fill(0);
             textAlign(CENTER, CENTER);
             text("Gun 2", gun2X + gunListW / 2, gun2Y - (34 * s));
+            
             for (let i = 0; i < this.gun2Options.length; i++) {
                 let opt = this.gun2Options[i];
                 opt.setPosition(gun2X, gun2Y + i * listSpacing);
@@ -945,41 +1054,59 @@ class LoginMenuScreen extends MenuScreen {
             }
         }
         
-        // Drawn account management buttons or logout button
+        // --- Account Buttons / Logout ---
         if (!signedIn) {
-            let btnY = y + h - (60 * s);
+            let btnY; 
             
+            if (useSplitLayout) {
+                 // Put at bottom of Left Column
+                 // If status message is there, put below it?
+                 // Or put at absolute bottom of column
+                 btnY = y + h - (50 * s); 
+            } else {
+                 btnY = y + h - (60 * s);
+            }
+            
+            let btnCenterX = useSplitLayout ? leftCenterX : (x + w/2);
+
             if (this.isAccountSession) {
                  if (this.accountName) {
                      textSize(14 * s);
                      textAlign(CENTER, BOTTOM);
-                     fill(80); // Dark Gray
-                     text("Logged in as: " + this.accountName, x + w/2, btnY - (5 * s));
+                     fill(80); 
+                     text("Logged in as: " + this.accountName, btnCenterX, btnY - (5 * s));
                  }
 
-                 this.logoutBtn.setPosition(x + w/2 - (75 * s), btnY);
+                 this.logoutBtn.setPosition(btnCenterX - (75 * s), btnY);
                  this.logoutBtn.setSize(150 * s, 40 * s);
                  this.logoutBtn.draw();
             } else {
                  textSize(14 * s);
                  textAlign(CENTER, BOTTOM);
                  fill(80);
-                 text("Logged in as a guest", x + w/2, btnY - (5 * s));
+                 text("Logged in as a guest", btnCenterX, btnY - (5 * s));
                  
                  let authBtnW = 150 * s;
                  let authBtnH = 40 * s;
+                 
+                 // In split layout, maybe stack them if width is tight?
+                 // Or shrink them? 150px wide is kinda big for half-column on phone.
+                 if (useSplitLayout) {
+                     authBtnW = 110 * s; // Smaller
+                     authBtnH = 35 * s;
+                 }
 
-                 this.createAccountBtn.setPosition(x + w/2 - authBtnW - (10 * s), btnY);
+                 this.createAccountBtn.setPosition(btnCenterX - authBtnW - (5 * s), btnY);
                  this.createAccountBtn.setSize(authBtnW, authBtnH);
                  this.createAccountBtn.draw();
 
-                 this.loginAccountBtn.setPosition(x + w/2 + (10 * s), btnY);
+                 this.loginAccountBtn.setPosition(btnCenterX + (5 * s), btnY);
                  this.loginAccountBtn.setSize(authBtnW, authBtnH);
                  this.loginAccountBtn.draw();
             }
         }
         
-        // Draw tooltip if needed (after everything else to stay on top)
+        // Draw tooltip
         if (this.hoveredAchievement) {
             this.drawAchievementTooltip(this.hoveredAchievement);
         }
