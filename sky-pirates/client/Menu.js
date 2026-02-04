@@ -39,16 +39,6 @@ class MenuManager {
     }
 
     draw(x, y, w, h) {
-        // Periodically request community data if in menu
-        if (typeof millis === 'function' && typeof requestCommunityUpdate === 'function') {
-            if (!this.lastCommunityUpdate) this.lastCommunityUpdate = 0;
-            // Update every 10 seconds
-            if (millis() - this.lastCommunityUpdate > 10000) {
-                 this.lastCommunityUpdate = millis();
-                 requestCommunityUpdate();
-            }
-        }
-
         if (this.current) {
             this.current.draw(x, y, w, h);
             

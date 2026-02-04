@@ -523,8 +523,8 @@ function touchStarted(event) {
         
         // Pause Button - Check regardless of menu state for exit behavior
         const pauseBtn = getMobilePauseButton();
-        if (Math.abs(mx - pauseBtn.x) < pauseBtn.w/2 + 20 &&
-            Math.abs(my - pauseBtn.y) < pauseBtn.h/2 + 20) {
+        if (Math.abs(mx - pauseBtn.x) < pauseBtn.w/2 + 30 &&
+            Math.abs(my - pauseBtn.y) < pauseBtn.h/2 + 30) {
              
              // Toggle logic
              if (menuVisible) {
@@ -543,8 +543,8 @@ function touchStarted(event) {
 
         // Chat Button
         const chatBtn = getMobileChatButton();
-        if (Math.abs(mx - chatBtn.x) < chatBtn.w/2 &&
-            Math.abs(my - chatBtn.y) < chatBtn.h/2) {
+        if (Math.abs(mx - chatBtn.x) < chatBtn.w/2 + 30 &&
+            Math.abs(my - chatBtn.y) < chatBtn.h/2 + 30) {
              toggleMobileChat();
              return false;
         }

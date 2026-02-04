@@ -13,6 +13,7 @@ let playerUpdateTime = 50; // Fixed update rate (20Hz) for consistent input hand
 let lastPlayerUpdate = 0;
 let pingUpdateTime = 1000; // Reduced ping rate to 1/sec
 let lastPing = 0;
+let lastCommunityUpdate = 0;
 let gameUpdateTime = 10;
 let lastGameUpdate = 0;
 
@@ -213,6 +214,14 @@ function draw() {
              if (millis() - lastPing > pingUpdateTime) {
                 sendPing();
                 lastPing = millis();
+            }
+            
+            // Request community update (players online + time of day) for screensaver/menu
+            if (typeof requestCommunityUpdate === 'function') {
+                 if (millis() - lastCommunityUpdate > 10000) {
+                      requestCommunityUpdate();
+                      lastCommunityUpdate = millis();
+                 }
             }
         }
         
@@ -723,10 +732,13 @@ function handleShopToggleRequest() {
 function handleTeleportButtonClick(mouseX, mouseY) {
     if (!teleportButtonRegion) return false;
 
-    const isInside = mouseX >= teleportButtonRegion.x - teleportButtonRegion.width / 2 &&
-        mouseX <= teleportButtonRegion.x + teleportButtonRegion.width / 2 &&
-        mouseY >= teleportButtonRegion.y - teleportButtonRegion.height / 2 &&
-        mouseY <= teleportButtonRegion.y + teleportButtonRegion.height / 2;
+    // Add padding for mobile touches to improve responsiveness
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+
+    const isInside = mouseX >= teleportButtonRegion.x - teleportButtonRegion.width / 2 - padding &&
+        mouseX <= teleportButtonRegion.x + teleportButtonRegion.width / 2 + padding &&
+        mouseY >= teleportButtonRegion.y - teleportButtonRegion.height / 2 - padding &&
+        mouseY <= teleportButtonRegion.y + teleportButtonRegion.height / 2 + padding;
 
     if (isInside) {
         handleTeleportRequest();
@@ -739,10 +751,12 @@ function handleTeleportButtonClick(mouseX, mouseY) {
 function handleShopButtonClick(mouseX, mouseY) {
     if (!shopButtonRegion) return false;
 
-    const isInside = mouseX >= shopButtonRegion.x - shopButtonRegion.width / 2 &&
-        mouseX <= shopButtonRegion.x + shopButtonRegion.width / 2 &&
-        mouseY >= shopButtonRegion.y - shopButtonRegion.height / 2 &&
-        mouseY <= shopButtonRegion.y + shopButtonRegion.height / 2;
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+
+    const isInside = mouseX >= shopButtonRegion.x - shopButtonRegion.width / 2 - padding &&
+        mouseX <= shopButtonRegion.x + shopButtonRegion.width / 2 + padding &&
+        mouseY >= shopButtonRegion.y - shopButtonRegion.height / 2 - padding &&
+        mouseY <= shopButtonRegion.y + shopButtonRegion.height / 2 + padding;
 
     if (isInside) {
         shopOpen = !shopOpen; // Toggle shop state
@@ -756,10 +770,12 @@ function handleShopButtonClick(mouseX, mouseY) {
 function handleSellAllButtonClick(mouseX, mouseY) {
     if (!sellAllButtonRegion) return false;
 
-    const isInside = mouseX >= sellAllButtonRegion.x - sellAllButtonRegion.width / 2 &&
-        mouseX <= sellAllButtonRegion.x + sellAllButtonRegion.width / 2 &&
-        mouseY >= sellAllButtonRegion.y - sellAllButtonRegion.height / 2 &&
-        mouseY <= sellAllButtonRegion.y + sellAllButtonRegion.height / 2;
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+
+    const isInside = mouseX >= sellAllButtonRegion.x - sellAllButtonRegion.width / 2 - padding &&
+        mouseX <= sellAllButtonRegion.x + sellAllButtonRegion.width / 2 + padding &&
+        mouseY >= sellAllButtonRegion.y - sellAllButtonRegion.height / 2 - padding &&
+        mouseY <= sellAllButtonRegion.y + sellAllButtonRegion.height / 2 + padding;
 
     if (isInside) {
         sendSellAllMessage();
