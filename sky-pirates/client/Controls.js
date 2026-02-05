@@ -470,10 +470,14 @@ function touchStarted(event) {
     window.lastInputTime = millis();
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
+    window.lastButtonTap = 'touchStarted:AfterTime';
+
     // Ensure audio context is started on first user interaction (mobile requirement)
     if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
         userStartAudio();
     }
+
+    window.lastButtonTap = 'touchStarted:AfterAudio';
 
     // Force fullscreen on first touch if on mobile
     if (typeof isMobile !== 'undefined' && isMobile) {
@@ -483,10 +487,15 @@ function touchStarted(event) {
         }
     }
 
+    window.lastButtonTap = 'touchStarted:AfterFullscreen';
+
     // Allow default browser behavior for inputs (text fields, etc.)
     if (event && event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) {
+        window.lastButtonTap = 'touchStarted:InputElement';
         return true;
     }
+
+    window.lastButtonTap = 'touchStarted:BeforeMobileCheck';
 
     // CHECK MOBILE CONTROLS FIRST (HUD)
     // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
