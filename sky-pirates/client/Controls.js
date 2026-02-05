@@ -1,11 +1,6 @@
 function mousePressed() {
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
-    // On mobile, skip mousePressed entirely - touchStarted handles everything
-    if (typeof isMobile !== 'undefined' && isMobile) {
-        return;
-    }
-
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
     if (menuVisible && menuManager) {
         let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
@@ -507,9 +502,19 @@ function touchStarted(event) {
              if (millis() - window.lastPauseToggleTime > 500) {
                  window.lastPauseToggleTime = millis();
                  if (menuVisible) {
-                     menuVisible = false;
+                     if (typeof setMenuVisible === 'function') {
+                         setMenuVisible(false);
+                     } else {
+                         menuVisible = false;
+                         if (typeof window.menuVisible !== 'undefined') window.menuVisible = false;
+                     }
                  } else {
-                     menuVisible = true;
+                     if (typeof setMenuVisible === 'function') {
+                         setMenuVisible(true);
+                     } else {
+                         menuVisible = true;
+                         if (typeof window.menuVisible !== 'undefined') window.menuVisible = true;
+                     }
                      if (menuManager) menuManager.show('login');
                  }
              }
