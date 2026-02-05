@@ -462,6 +462,10 @@ function getScaledInputCoordinates(screenX, screenY) {
 }
 
 function touchStarted(event) {
+    // DEBUG: This should ALWAYS execute on any touch
+    window.lastButtonTap = 'touchStarted:CALLED';
+    window.lastTapCoords = { x: touches.length > 0 ? touches[0].x : -1, y: touches.length > 0 ? touches[0].y : -1 };
+    
     // Explicitly update window.lastInputTime for global visibility
     window.lastInputTime = millis();
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
