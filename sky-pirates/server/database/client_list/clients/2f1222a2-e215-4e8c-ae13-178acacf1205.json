@@ -1,0 +1,55 @@
+{
+  "type": "account",
+  "accountName": "noelle",
+  "gameSaveId": "bed09d5a-2854-4f9d-9f17-4a31a2f9e7af",
+  "created": 1769982914713,
+  "lastSeen": 1769983390566,
+  "achievements": {
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 159,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 9,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
+        }
+      ]
+    }
+  }
+}

@@ -34,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 274,
+      "progress": 346,
       "milestones": [
         {
           "unlocked": true,
@@ -57,7 +57,7 @@
     "enemy_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 25,
+      "progress": 28,
       "milestones": [
         {
           "unlocked": true,
@@ -82,11 +82,13 @@
       ]
     },
     "fish_killer": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 27,
+      "completed": true,
+      "unlockedAt": 1770259999577,
+      "progress": 50,
       "milestones": [
         {
+          "unlocked": true,
+          "unlockedAt": 1770259999577,
           "target": 50
         }
       ]
