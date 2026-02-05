@@ -2195,7 +2195,10 @@ function displayTeleportButton(controlledPlayer) {
     const buttonSpacing = 20 * s;
     
     // Calculate center position for button area
-    const centerX = width / 2;
+    // Offset buttons to the right on mobile to avoid overlapping with movement controls
+    const mobileXOffset = (typeof isMobile !== 'undefined' && isMobile) ? 100 * s : 0;
+    const centerX = width / 2 + mobileXOffset;
+    
     // Move buttons down more on mobile for easier reach (smaller offset = closer to bottom)
     const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 100 * s : 100 * s;
     const buttonY = height - bottomOffset;
@@ -2316,7 +2319,10 @@ function displaySellAllButton(controlledPlayer) {
     // Button dimensions
     const s = getUIScale();
     const buttonWidth = 200 * s;
-    const buttonHeight = 40 * s;
+    // Offset buttons to the right on mobile to avoid overlapping with movement controls
+    const mobileXOffset = (typeof isMobile !== 'undefined' && isMobile) ? 100 * s : 0;
+    const centerX = width / 2 + mobileXOffset;
+    s;
     
     // Position at bottom center, below shop/teleport buttons
     const centerX = width / 2;
