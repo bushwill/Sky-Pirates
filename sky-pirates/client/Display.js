@@ -2,21 +2,6 @@
 window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: ..., index: ... }
 window.mobileActionButtons = []; // Array of click regions for action buttons
 
-// Debug overlay function
-function drawDebugOverlay() {
-    if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        push();
-        fill(255, 255, 0);
-        noStroke();
-        textSize(16);
-        textAlign(LEFT);
-        text('menuVisible: ' + menuVisible, 10, 30);
-        text('teleportRegion: ' + (teleportButtonRegion ? 'YES' : 'NO'), 10, 50);
-        text('shopRegion: ' + (shopButtonRegion ? 'YES' : 'NO'), 10, 70);
-        pop();
-    }
-}
-
 function getGameScale() {
     if (typeof isMobile !== 'undefined' && isMobile) return 0.65;
     if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom)) return window.cameraZoom;

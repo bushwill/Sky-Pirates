@@ -487,7 +487,6 @@ function touchStarted(event) {
     // CHECK MOBILE CONTROLS FIRST (HUD)
     // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        console.log('Mobile touch handling, menuVisible:', menuVisible, 'touches:', touches.length);
         // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
         for (let i = 0; i < touches.length; i++) {
         const mx = touches[i].x;
@@ -523,10 +522,7 @@ function touchStarted(event) {
         }
 
         // If menu is open, handle menu interactions via manager later, but SKIP game controls
-        if (menuVisible) {
-            console.log('Skipping game controls because menuVisible =', menuVisible);
-            continue; // Skip to next touch or end
-        }
+        if (menuVisible) continue; // Skip to next touch or end
 
         // Chat Button
         const chatBtn = getMobileChatButton();
@@ -535,14 +531,10 @@ function touchStarted(event) {
              toggleMobileChat();
              return false;
         }
-ole.log('Checking teleport button, region:', teleportButtonRegion, 'touch at:', mx, my);
+
+        // Check teleport button first
+        if (teleportButtonRegion) {
             const teleportClicked = handleTeleportButtonClick(mx, my);
-            if (teleportClicked) {
-                console.log('Teleport button clicked!');
-                return false; // Consume event
-            }
-        } else {
-            console.log('No teleportButtonRegion available');onst teleportClicked = handleTeleportButtonClick(mx, my);
             if (teleportClicked) {
                 return false; // Consume event
             }
