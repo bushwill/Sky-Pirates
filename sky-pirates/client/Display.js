@@ -1,6 +1,8 @@
 // Global state for mobile selection
 window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: ..., index: ... }
 window.mobileActionButtons = []; // Array of click regions for action buttons
+window.lastButtonTap = 'NONE'; // Debug: track last button tapped
+window.lastTapCoords = { x: 0, y: 0 }; // Debug: track last tap coordinates
 
 // Debug overlay function
 function drawDebugOverlay() {
@@ -10,21 +12,24 @@ function drawDebugOverlay() {
             fill(255, 255, 0);
             stroke(0);
             strokeWeight(2);
-            textSize(18);
+            textSize(16);
             textAlign(LEFT);
             
-            text('menuVisible: ' + (typeof menuVisible !== 'undefined' ? menuVisible : 'undef'), 10, 40);
-            text('tpRegion: ' + (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion ? 'YES' : 'NO'), 10, 65);
-            text('shopRegion: ' + (typeof shopButtonRegion !== 'undefined' && shopButtonRegion ? 'YES' : 'NO'), 10, 90);
+            text('menuVisible: ' + (typeof menuVisible !== 'undefined' ? menuVisible : 'undef'), 10, 30);
+            text('tpRegion: ' + (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion ? 'YES' : 'NO'), 10, 50);
+            text('shopRegion: ' + (typeof shopButtonRegion !== 'undefined' && shopButtonRegion ? 'YES' : 'NO'), 10, 70);
             
-            // Get biome safely
+            // Get biome using same logic as Game.js (players.find)
             let biomeText = 'NONE';
-            if (typeof player !== 'undefined' && player && player.biome) {
-                biomeText = player.biome;
-            } else if (typeof players !== 'undefined' && typeof username !== 'undefined' && players[username] && players[username].biome) {
-                biomeText = players[username].biome;
+            if (typeof players !== 'undefined' && typeof username !== 'undefined') {
+                const cp = players.find(p => p.username === username);
+                if (cp && cp.biome) {
+                    biomeText = cp.biome;
+                }
             }
-            text('biome: ' + biomeText, 10, 115);
+            text('biome: ' + biomeText, 10, 90);
+            text('lastTap: ' + window.lastButtonTap, 10, 110);
+            text('tapXY: ' + window.lastTapCoords.x.toFixed(0) + ',' + window.lastTapCoords.y.toFixed(0), 10, 130);
             
             pop();
         }

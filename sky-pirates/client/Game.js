@@ -734,7 +734,11 @@ function handleShopToggleRequest() {
 }
 
 function handleTeleportButtonClick(mouseX, mouseY) {
-    if (!teleportButtonRegion) return false;
+    window.lastTapCoords = { x: mouseX, y: mouseY };
+    if (!teleportButtonRegion) {
+        window.lastButtonTap = 'TP:NoRegion';
+        return false;
+    }
 
     // Add padding for mobile touches to improve responsiveness
     const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
@@ -747,18 +751,27 @@ function handleTeleportButtonClick(mouseX, mouseY) {
     if (isInside) {
         // Debounce to prevent double-firing
         if (typeof lastTeleportClickTime === 'undefined') window.lastTeleportClickTime = 0;
-        if (millis() - window.lastTeleportClickTime < 500) return true;
+        if (millis() - window.lastTeleportClickTime < 500) {
+            window.lastButtonTap = 'TP:Debounced';
+            return true;
+        }
         window.lastTeleportClickTime = millis();
 
+        window.lastButtonTap = 'TP:CLICKED!';
         handleTeleportRequest();
         return true; // Button was clicked
     }
 
+    window.lastButtonTap = 'TP:Outside';
     return false; // Button was not clicked
 }
 
 function handleShopButtonClick(mouseX, mouseY) {
-    if (!shopButtonRegion) return false;
+    window.lastTapCoords = { x: mouseX, y: mouseY };
+    if (!shopButtonRegion) {
+        window.lastButtonTap = 'SHOP:NoRegion';
+        return false;
+    }
 
     const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
 
@@ -770,14 +783,19 @@ function handleShopButtonClick(mouseX, mouseY) {
     if (isInside) {
         // Debounce to prevent double-toggling (open -> close -> open)
         if (typeof lastShopClickTime === 'undefined') window.lastShopClickTime = 0;
-        if (millis() - window.lastShopClickTime < 500) return true;
+        if (millis() - window.lastShopClickTime < 500) {
+            window.lastButtonTap = 'SHOP:Debounced';
+            return true;
+        }
         window.lastShopClickTime = millis();
 
+        window.lastButtonTap = 'SHOP:CLICKED!';
         shopOpen = !shopOpen; // Toggle shop state
         console.log(`Shop ${shopOpen ? 'opened' : 'closed'}`);
         return true; // Button was clicked
     }
 
+    window.lastButtonTap = 'SHOP:Outside';
     return false; // Button was not clicked
 }
 
