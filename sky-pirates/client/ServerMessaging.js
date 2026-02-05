@@ -645,12 +645,22 @@ function sendPlayerData(player = null) {
     }
     // Use the global camera position if available, which includes screen shake and offsets
     else if (typeof globalCameraX !== 'undefined' && typeof globalCameraY !== 'undefined') {
-        t_x = mouseX - windowWidth / 2 + globalCameraX;
-        t_y = mouseY - windowHeight / 2 + globalCameraY;
+        let activeZoom = 1.0;
+        if (typeof window.currentGameZoom === 'number' && window.currentGameZoom > 0) {
+            activeZoom = window.currentGameZoom;
+        }
+        
+        t_x = (mouseX - windowWidth / 2) / activeZoom + globalCameraX;
+        t_y = (mouseY - windowHeight / 2) / activeZoom + globalCameraY;
     } else {
         // Fallback to basic player-centered calculation
-        t_x = mouseX - windowWidth / 2;
-        t_y = mouseY - windowHeight / 2;
+        let activeZoom = 1.0;
+        if (typeof window.currentGameZoom === 'number' && window.currentGameZoom > 0) {
+            activeZoom = window.currentGameZoom;
+        }
+
+        t_x = (mouseX - windowWidth / 2) / activeZoom;
+        t_y = (mouseY - windowHeight / 2) / activeZoom;
         if (player) {
             t_x += player.x;
             t_y += player.y;
