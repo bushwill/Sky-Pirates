@@ -102,14 +102,14 @@ function handleInventoryClick(mx, my) {
                     item: region.item,
                     index: region.inventoryIndex
                 };
-                return;
+                return true;
             }
 
             // Use the stored inventory index from the region
             itemIndex = region.inventoryIndex;
             if (itemIndex === undefined || itemIndex === -1) {
                 console.warn("Item index not found in inventory region.");
-                return;
+                return true;
             }
             
             // If in recovery zone and holding shift, sell the item
@@ -121,9 +121,10 @@ function handleInventoryClick(mx, my) {
                 console.log(`Inventory item '${region.item.name}' clicked at (${mx}, ${my}). Equipping item...`);
                 sendEquipMessage(itemIndex);
             }
-            break;
+            return true;
         }
     }
+    return false;
 }
 
 function handleEquippedClick(mx, my) {

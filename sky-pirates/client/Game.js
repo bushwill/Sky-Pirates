@@ -182,6 +182,9 @@ function setup() {
 }
 
 function draw() {
+    // Reset mobile action buttons every frame to prevent ghost inputs
+    window.mobileActionButtons = [];
+    
     // Screensaver logic
     // Only active if in a menu (Main Menu or Pause Menu) AND inactive for > 60s
     const SCREENSAVER_TIMEOUT = 60 * 1000;

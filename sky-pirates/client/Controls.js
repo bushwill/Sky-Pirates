@@ -53,9 +53,17 @@ function mousePressed() {
 
         // Then check inventory
         if (inventoryRegions.length > 0) {
-            handleInventoryClick(mouseX, mouseY);
+            if (handleInventoryClick(mouseX, mouseY)) return;
         }
+
+        // If no UI element was clicked, assume shooting/action (PC)
+        keys['mouse'] = true;
     }
+}
+
+function mouseReleased() {
+    // Always release mouse key to prevent stuck firing
+    keys['mouse'] = false;
 }
 
 function keyPressed() {
@@ -573,12 +581,9 @@ function touchStarted(event) {
             // Get scaled coordinates for elements inside the Zoom Layer
             const scaledClick = getScaledInputCoordinates(mx, my);
 
-            // Equipped Click checks HUD elements (Unscaled) -> Use Raw Coords
-            if (handleEquippedClick(mx, my)) uiHit = true;
-
             // Shop is unscaled now, so use raw mx/my
-            // Check if input falls within the shop panel bounds (prevents click-through)
-            if (!uiHit && typeof window.shopBounds !== 'undefined' && window.shopBounds) {
+            // Prioritize Shop interaction over HUD (Equipped items) if they overlap
+            if (typeof window.shopBounds !== 'undefined' && window.shopBounds) {
                  if (mx >= window.shopBounds.x && mx <= window.shopBounds.x + window.shopBounds.w &&
                      my >= window.shopBounds.y && my <= window.shopBounds.y + window.shopBounds.h) {
                      
@@ -590,6 +595,9 @@ function touchStarted(event) {
                      uiHit = true;
                  }
             }
+
+            // Equipped Click checks HUD elements (Unscaled) -> Use Raw Coords
+            if (!uiHit && handleEquippedClick(mx, my)) uiHit = true;
 
             // Inventory is in Zoom Layer -> Use Scaled Coords
             if (!uiHit && typeof inventoryRegions !== 'undefined') {
