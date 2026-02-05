@@ -148,7 +148,7 @@ function setup() {
     // Mouse events are also handled by p5.js mousePressed/mouseReleased
     // window.addEventListener("mousedown", handleMouseDown);
     // window.addEventListener("mouseup", handleMouseUp);
-
+    
     // Load settings from cookies
     if (typeof loadSettings === 'function') {
         const loadedSettings = loadSettings();
@@ -500,6 +500,7 @@ function handleGameDisplay(controlledPlayer) {
 
         // Expose active zoom for other systems (e.g. input handling)
         window.currentGameZoom = activeZoom;
+        // console.log("Zoom updated:", window.currentGameZoom); // Uncomment for spammy debug
 
         translate(windowWidth / 2, windowHeight / 2);
         scale(activeZoom); 

@@ -734,15 +734,6 @@ function displayEvent(event, centerX = 0, centerY = -400) {
         const projectileSpeed = event.velocity || 100;
         const projectileSize = event.size || 1;
         
-        console.log('Gunshot event:', {
-            projectileSpeed,
-            projectileSize,
-            angle: event.angle,
-            x: event.x,
-            y: event.y,
-            fullEvent: event
-        });
-        
         // Random speed factor between 0.5 and 1.5
         const speedFactor = 0.5 + Math.random();
         
@@ -2048,11 +2039,28 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         }
     } else {
         // Desktop: Hover logic
+        
+        // Calculate transformed mouse coordinates for zoomed layer items (Inventory)
+        let worldMx = mouseX;
+        let worldMy = mouseY;
+        
+        if (!isShop) {
+             let activeZoom = 1.0;
+             if (typeof window.currentGameZoom === 'number' && window.currentGameZoom > 0) {
+                 activeZoom = window.currentGameZoom;
+             }
+             
+             const cx = width / 2;
+             const cy = height / 2;
+             worldMx = (mouseX - cx) / activeZoom + cx;
+             worldMy = (mouseY - cy) / activeZoom + cy;
+        }
+
         for (let region of regions) {
             const inRegion = isShop ? 
                 (mouseX >= region.x && mouseX <= region.x + region.width &&
                  mouseY >= region.y && mouseY <= region.y + region.height) :
-                (dist(mouseX, mouseY, region.x, region.y) <= region.size / 2);
+                (dist(worldMx, worldMy, region.x, region.y) <= region.size / 2);
             
             if (inRegion) {
                 targetRegion = region;

@@ -605,7 +605,8 @@ function touchStarted(event) {
                     const halfSize = region.size / 2;
                     if (scaledClick.x >= region.x - halfSize && scaledClick.x <= region.x + halfSize &&
                         scaledClick.y >= region.y - halfSize && scaledClick.y <= region.y + halfSize) {
-                        handleInventoryClick(scaledClick.x, scaledClick.y);
+                        // Pass RAW coordinates (mx, my) because handleInventoryClick now performs the scaling internally
+                        handleInventoryClick(mx, my);
                         uiHit = true;
                         break;
                     }

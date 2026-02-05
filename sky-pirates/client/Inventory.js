@@ -98,11 +98,6 @@ function handleInventoryClick(mx, my) {
     const worldMx = (mx - cx) / activeZoom + cx;
     const worldMy = (my - cy) / activeZoom + cy;
     
-    // Debug logging for zoom issues
-    if (mouseIsPressed && frameCount % 60 === 0) {
-        console.log(`Click Debug: Zoom=${activeZoom}, ScreenM=(${Math.round(mx)},${Math.round(my)}), WorldM=(${Math.round(worldMx)},${Math.round(worldMy)})`);
-    }
-
     // Iterate over each recorded inventory item region.
     for (let region of inventoryRegions) {
         // Since inventory items are drawn in CENTER mode, determine the bounding box.
@@ -124,9 +119,6 @@ function handleInventoryClick(mx, my) {
                 };
                 return true;
             }
-
-            // Debug hit
-            console.log(`Inventory Hit! Item: ${region.item.name}`);
 
             // Use the stored inventory index from the region
             itemIndex = region.inventoryIndex;
