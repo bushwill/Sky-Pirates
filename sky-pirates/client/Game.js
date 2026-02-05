@@ -622,6 +622,20 @@ function handleGameDisplay(controlledPlayer) {
             if (typeof displayShop === 'function') displayShop(controlledPlayer);
             if (typeof displayTeleportButton === 'function') displayTeleportButton(controlledPlayer);
             if (typeof displaySellAllButton === 'function') displaySellAllButton(controlledPlayer);
+        } else {
+            // Clear UI regions when leaving recovery zone to prevent ghost clicks
+            if (typeof window !== 'undefined') {
+                window.sellAllButtonRegion = null;
+                window.shopButtonRegion = null;
+                window.teleportButtonRegion = null;
+                window.shopBounds = null;
+                if (window.shopRegions && window.shopRegions.length > 0) window.shopRegions = [];
+            }
+            // Update local scope variables if they exist
+            sellAllButtonRegion = null;
+            shopButtonRegion = null;
+            teleportButtonRegion = null;
+            shopRegions = [];
         }
     }
 
