@@ -3273,6 +3273,12 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
         player.playerId = targetGameSaveId;
         // Update username to the current login username
         player.username = username;
+        
+        // Sync RGB from client choice (overwrite save)
+        player.r = r;
+        player.g = g;
+        player.b = b;
+        
         sendNoticeMessageAll(username + " rejoined!", "server");
       }
     }

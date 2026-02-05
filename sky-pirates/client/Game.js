@@ -733,8 +733,8 @@ function handleShopToggleRequest() {
 function handleTeleportButtonClick(mouseX, mouseY) {
     if (!teleportButtonRegion) return false;
 
-    // Add padding for mobile touches to improve responsiveness
-    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+    // Use tighter padding for mobile (0) to ensure precise clicks
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 0 : 0;
 
     const isInside = mouseX >= teleportButtonRegion.x - teleportButtonRegion.width / 2 - padding &&
         mouseX <= teleportButtonRegion.x + teleportButtonRegion.width / 2 + padding &&
@@ -757,7 +757,8 @@ function handleTeleportButtonClick(mouseX, mouseY) {
 function handleShopButtonClick(mouseX, mouseY) {
     if (!shopButtonRegion) return false;
 
-    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+    // Use tighter padding for mobile (0) to ensure precise clicks
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 0 : 0;
 
     const isInside = mouseX >= shopButtonRegion.x - shopButtonRegion.width / 2 - padding &&
         mouseX <= shopButtonRegion.x + shopButtonRegion.width / 2 + padding &&
@@ -781,7 +782,8 @@ function handleShopButtonClick(mouseX, mouseY) {
 function handleSellAllButtonClick(mouseX, mouseY) {
     if (!sellAllButtonRegion) return false;
 
-    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 30 : 0;
+    // Use tighter hit detection for mobile since button is large enough
+    const padding = (typeof isMobile !== 'undefined' && isMobile) ? 0 : 0;
 
     const isInside = mouseX >= sellAllButtonRegion.x - sellAllButtonRegion.width / 2 - padding &&
         mouseX <= sellAllButtonRegion.x + sellAllButtonRegion.width / 2 + padding &&

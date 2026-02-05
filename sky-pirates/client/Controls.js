@@ -577,8 +577,18 @@ function touchStarted(event) {
             if (handleEquippedClick(mx, my)) uiHit = true;
 
             // Shop is unscaled now, so use raw mx/my
-            if (!uiHit && typeof shopRegions !== 'undefined' && shopRegions.length > 0) {
-                if (handleShopClick(mx, my)) uiHit = true;
+            // Check if input falls within the shop panel bounds (prevents click-through)
+            if (!uiHit && typeof window.shopBounds !== 'undefined' && window.shopBounds) {
+                 if (mx >= window.shopBounds.x && mx <= window.shopBounds.x + window.shopBounds.w &&
+                     my >= window.shopBounds.y && my <= window.shopBounds.y + window.shopBounds.h) {
+                     
+                     // Attempt to click specific items
+                     if (typeof shopRegions !== 'undefined' && shopRegions.length > 0) {
+                        handleShopClick(mx, my);
+                     }
+                     // Always consume the event if within shop panel
+                     uiHit = true;
+                 }
             }
 
             // Inventory is in Zoom Layer -> Use Scaled Coords
@@ -620,7 +630,18 @@ function touchStarted(event) {
 
     // Allow touch interactions for gameplay if signed in (non-mobile fallback)
     if (signedIn && !menuVisible && (!isMobile)) {
-        keys.mouse = true;
+        // Prevent shooting if interacting with Shop UI
+        let hitShop = false;
+        if (typeof window.shopBounds !== 'undefined' && window.shopBounds) {
+             if (mouseX >= window.shopBounds.x && mouseX <= window.shopBounds.x + window.shopBounds.w &&
+                 mouseY >= window.shopBounds.y && mouseY <= window.shopBounds.y + window.shopBounds.h) {
+                 hitShop = true;
+             }
+        }
+        
+        if (!hitShop) {
+            keys.mouse = true;
+        }
     }
 }
 

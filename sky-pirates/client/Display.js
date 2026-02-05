@@ -1770,6 +1770,7 @@ function displayShop(controlledPlayer) {
         if (shopRegions.length > 0) {
             shopRegions = [];
         }
+        window.shopBounds = null;
         return;
     }
 
@@ -1782,12 +1783,14 @@ function displayShop(controlledPlayer) {
 
     if (!currentZone) {
         shopRegions = [];
+        window.shopBounds = null;
         return;
     }
 
     const currentShop = shops.find(shop => shop.recoveryZoneId === currentZone.id);
     if (!currentShop || !currentShop.inventory || currentShop.inventory.length === 0) {
         shopRegions = [];
+        window.shopBounds = null;
         return;
     }
 
@@ -1848,10 +1851,16 @@ function displayShop(controlledPlayer) {
     rectMode(CORNER);
 
     // Shop background panel
+    const bgX = shopX - (10 * s);
+    const bgY = shopY - (10 * s);
+    const bgW = itemWidth + (20 * s);
+    const bgH = headerHeight + (itemHeight + itemSpacing) * currentShop.inventory.length + (20 * s);
+    window.shopBounds = { x: bgX, y: bgY, w: bgW, h: bgH };
+
     fill(40, 40, 50, 230);
     stroke(200, 200, 220);
     strokeWeight(2);
-    rect(shopX - (10 * s), shopY - (10 * s), itemWidth + (20 * s), headerHeight + (itemHeight + itemSpacing) * currentShop.inventory.length + (20 * s), 10 * s);
+    rect(bgX, bgY, bgW, bgH, 10 * s);
 
     // Shop header
     fill(255, 255, 255);

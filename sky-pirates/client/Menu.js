@@ -1411,10 +1411,15 @@ class LoginMenuScreen extends MenuScreen {
             let delta = currentY - this.lastTouchY;
             this.lastTouchY = currentY;
             
+            let tx = touches[0].x;
+            let ty = touches[0].y;
+
+            // Logic: In narrow mode, only scroll the active tab. In wide mode (main), scroll both if touched.
+            const canScrollAchievements = this.activeTab === 'achievements' || this.activeTab === 'main';
+            const canScrollCommunity = this.activeTab === 'community' || this.activeTab === 'main';
+
             // Check bounds for right panel (achievements)
-            if (this.achievements && this.achievements.length > 0) {
-                let tx = touches[0].x;
-                let ty = touches[0].y;
+            if (canScrollAchievements && this.achievements && this.achievements.length > 0) {
                 if (tx > this.rightPanelBounds.x && tx < this.rightPanelBounds.x + this.rightPanelBounds.w &&
                     ty > this.rightPanelBounds.y && ty < this.rightPanelBounds.y + this.rightPanelBounds.h) {
                     this.achievementScroll += delta;
@@ -1423,12 +1428,12 @@ class LoginMenuScreen extends MenuScreen {
             }
             
             // Check bounds for left panel
-            let tx = touches[0].x;
-            let ty = touches[0].y;
-            if (tx > this.leftPanelBounds.x && tx < this.leftPanelBounds.x + this.leftPanelBounds.w &&
-                ty > this.leftPanelBounds.y && ty < this.leftPanelBounds.y + this.leftPanelBounds.h) {
-                 this.playerScroll += delta;
-                 return false;
+            if (canScrollCommunity) {
+                if (tx > this.leftPanelBounds.x && tx < this.leftPanelBounds.x + this.leftPanelBounds.w &&
+                    ty > this.leftPanelBounds.y && ty < this.leftPanelBounds.y + this.leftPanelBounds.h) {
+                     this.playerScroll += delta;
+                     return false;
+                }
             }
         }
     }
