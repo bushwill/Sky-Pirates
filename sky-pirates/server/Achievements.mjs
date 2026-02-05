@@ -234,7 +234,7 @@ export class TwoBirdsOneStoneAchievement extends Achievement {
 
 export class MileHighClubAchievement extends Achievement {
     constructor() {
-        super('mile_high_club', 'Above the Clouds!', 'Reach an altitude of 6500m.');
+        super('mile_high_club', 'Above the Clouds!', 'Reach an altitude of 7000m.');
     }
 }
 
@@ -246,7 +246,7 @@ export class PacifistRunAchievement extends Achievement {
 
 export class SharpshooterAchievement extends Achievement {
     constructor() {
-        super('sharpshooter', 'Sharpshooter', 'Hit a target from over 1000m away.');
+        super('sharpshooter', 'Sharpshooter', 'Hit a target from over 1250m away.');
     }
 }
 
@@ -264,31 +264,31 @@ export class FireworksAchievement extends Achievement {
 
 export class PuristAchievement extends Achievement {
     constructor() {
-        super('purist', 'Purist', 'Reach 100km using only base pirate gear.');
+        super('purist', 'True Pirate', 'Reach 100km using only base pirate gear.');
     }
 }
 
 export class CoreLoyalistAchievement extends Achievement {
     constructor() {
-        super('core_loyalist', 'Core Engineer', 'Equip 3 Level 10 components from Core without using other brands.');
+        super('core_loyalist', 'Core Loyalist', 'Equip 3 Level 10 components from Core without using other brands.');
     }
 }
 
 export class KamenLoyalistAchievement extends Achievement {
     constructor() {
-        super('kamen_loyalist', 'Kamen Disciple', 'Equip 3 Level 10 components from Kamen without using other brands.');
+        super('kamen_loyalist', 'Kamen Loyalist', 'Equip 3 Level 10 components from Kamen without using other brands.');
     }
 }
 
 export class AeroLoyalistAchievement extends Achievement {
     constructor() {
-        super('aero_loyalist', 'Aero Ace', 'Equip 3 Level 10 components from Aero without using other brands.');
+        super('aero_loyalist', 'Aero Loyalist', 'Equip 3 Level 10 components from Aero without using other brands.');
     }
 }
 
 export class NovaLoyalistAchievement extends Achievement {
     constructor() {
-        super('nova_loyalist', 'Nova Tech', 'Equip 3 Level 10 components from Nova without using other brands.');
+        super('nova_loyalist', 'Nova Loyalist', 'Equip 3 Level 10 components from Nova without using other brands.');
     }
 }
 

@@ -127,6 +127,11 @@ class MenuManager {
     }
 
     touchStarted() {
+         // Pass touch start event to current screen if it supports it (for scrolling logic)
+         if (this.current && typeof this.current.touchStarted === 'function') {
+             this.current.touchStarted();
+         }
+
          // Forward to mousePressed with first touch, BUT we must calculate menu bounds
          if (typeof touches !== 'undefined' && touches.length > 0) {
               const mx = touches[0].x;
@@ -1408,6 +1413,12 @@ class LoginMenuScreen extends MenuScreen {
     touchMoved() {
         if (typeof touches !== 'undefined' && touches.length > 0) {
             let currentY = touches[0].y;
+            
+            // Safety check if touchStarted didn't catch the start
+            if (typeof this.lastTouchY === 'undefined') {
+                this.lastTouchY = currentY;
+            }
+
             let delta = currentY - this.lastTouchY;
             this.lastTouchY = currentY;
             

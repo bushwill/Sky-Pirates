@@ -499,7 +499,7 @@ const ACHIEVEMENT_DIST_CHECK_INTERVAL = 1000;
 setInterval(() => {
     players.forEach(player => {
         // Achievement Check: Max Altitude (Above the Clouds!)
-        if (player.y < -6500) {
+        if (player.y < -7000) {
             if (player.achievements && player.achievements['mile_high_club']) {
                 player.achievements['mile_high_club'].complete(player);
             }
@@ -747,7 +747,7 @@ function updateProjectile(projectile) {
       }
       
       // Sharpshooter Check
-      if (projectile.owner && projectile.distanceTraveled > 1000) { // 1000m
+      if (projectile.owner && projectile.distanceTraveled > 1250) { // 1250m
           const ownerPlayer = players.find(p => p.username === projectile.owner);
           if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
               ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
@@ -794,7 +794,7 @@ function updateProjectile(projectile) {
       }
 
       // Sharpshooter Check
-      if (projectile.owner && projectile.distanceTraveled > 1000) { // 1000m
+      if (projectile.owner && projectile.distanceTraveled > 1250) { // 1250m
           const ownerPlayer = players.find(p => p.username === projectile.owner);
           if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
             ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
