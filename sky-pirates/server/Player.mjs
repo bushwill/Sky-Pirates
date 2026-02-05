@@ -25,6 +25,10 @@ export class Player extends Plane {
     this.maxCrates = 50;
     this.pacifist = true; // Tracks if the player has dealt damage this life/session
 
+    // Achievement Flags
+    this.baseGearRun = true; // Tracks if player has only ever used base gear
+    this.brandLoyalty = null; // Tracks the "chosen" manufacturer for the run
+    this.failedBrandLoyalty = false; // Tracks if player has mixed manufacturers
     
     // Navy aggro tracking
     this.navyTargeted = false; // Whether this player is currently targeted by navy
@@ -89,6 +93,11 @@ export class Player extends Plane {
     // Restore achievements
     player.achievements = state.achievements || {};
     
+    // Restore run flags
+    player.baseGearRun = (typeof state.baseGearRun !== 'undefined') ? state.baseGearRun : true;
+    player.brandLoyalty = state.brandLoyalty || null;
+    player.failedBrandLoyalty = !!state.failedBrandLoyalty;
+
     // Stats tracking setup
     player.lastX = player.x;
     player.lastY = player.y;
@@ -110,6 +119,34 @@ export class Player extends Plane {
 
     // Update plane stats after restoring all components
     player.updatePlane();
+
+    // Verify achievement flags against current equipment (Integrity Check)
+    // This handles legacy saves or state discrepancies
+    const componentsToCheck = [player.chassis, player.engine, player.wings];
+    
+    componentsToCheck.forEach(comp => {
+         if (!comp || !comp.name) return;
+         
+         const nameParts = comp.name.split(' ');
+         const make = nameParts[0];
+         const levelIndex = nameParts.indexOf('Lvl') + 1;
+         const level = (levelIndex > 0 && levelIndex < nameParts.length) ? parseInt(nameParts[levelIndex]) : 1;
+         
+         // 1. Purist Check
+         if (make !== 'Pirate' || level > 1) {
+             player.baseGearRun = false;
+         }
+         
+         // 2. Loyalist Check
+         const isDefaultItem = (make === 'Pirate' && level === 1);
+         if (!isDefaultItem) {
+             if (player.brandLoyalty === null) {
+                 player.brandLoyalty = make;
+             } else if (player.brandLoyalty !== make) {
+                 player.failedBrandLoyalty = true;
+             }
+         }
+    });
 
     console.log(`Restored player ${player.username} from saved state`);
     return player;
@@ -144,6 +181,12 @@ export class Player extends Plane {
     this.chassis.hull = this.chassis.maxHull; // Reset hull to chassis hull
     this.engine.heat = 0; // Reset engine heat
     this.engine.power = 0; // Reset engine power to minimum
+
+    // Reset achievement flags on respawn (New Life)
+    this.pacifist = true;
+    this.baseGearRun = true;
+    this.brandLoyalty = null;
+    this.failedBrandLoyalty = false;
 
     this.detachAllCrates(); // Clear all crdates when respawning
     this.updateWeight(); // Update weight after respawn
@@ -189,6 +232,42 @@ export class Player extends Plane {
       console.log("install: new_component not in inventory:", new_component, this.inventory);
       return false;
     }
+
+    // --- Achievement Logic Checking ---
+    // Only check for main structural components (not guns)
+    if (new_component instanceof Chassis || new_component instanceof Engine || new_component instanceof Wings) {
+        // Parse Component Name for Make and Level
+        // Format: "{Make} Standard {Type} Lvl {Level}"
+        // Example: "Pirate Standard Engine Lvl 1"
+        const nameParts = new_component.name.split(' ');
+        const make = nameParts[0]; 
+        const levelIndex = nameParts.indexOf('Lvl') + 1;
+        const level = (levelIndex > 0 && levelIndex < nameParts.length) ? parseInt(nameParts[levelIndex]) : 1;
+
+        // 1. Purist Check (Base Gear Only)
+        // If it's NOT Pirate or Level is > 1, the run is tainted
+        if (make !== 'Pirate' || level > 1) {
+            this.baseGearRun = false;
+        }
+
+        // 2. Loyalist Check (One Manufacturer)
+        // Ignoring the starting gear (Pirate Lvl 1) implies we only care about upgrades or changes.
+        // However, if we want "One manufacturer run", it likely means "If you pick Core, stick to Core".
+        // Start Strategy: The first NON-DEFAULT item you equip establishes your loyalty.
+        const isDefaultItem = (make === 'Pirate' && level === 1);
+        
+        if (!isDefaultItem) {
+            if (this.brandLoyalty === null) {
+                // First deviation establishes loyalty
+                this.brandLoyalty = make;
+            } else if (this.brandLoyalty !== make) {
+                // Betrayal!
+                this.failedBrandLoyalty = true;
+            }
+        }
+    }
+    // ------------------------------------
+
     if (new_component instanceof Chassis) {
       oldComponent = this.chassis; // Store the old chassis
       this.chassis = new_component;
@@ -297,7 +376,11 @@ export class Player extends Plane {
       vx: +this.vx.toFixed(2),
       vy: +this.vy.toFixed(2),
       angle: +this.angle.toFixed(3),
-      r: this.r,
+      r: this.r, 
+      baseGearRun: this.baseGearRun, // Persist for achievements
+      brandLoyalty: this.brandLoyalty,
+      failedBrandLoyalty: this.failedBrandLoyalty,
+
       g: this.g,
       b: this.b,
       biome: this.biome,

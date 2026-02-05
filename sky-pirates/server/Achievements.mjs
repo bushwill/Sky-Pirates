@@ -250,6 +250,48 @@ export class SharpshooterAchievement extends Achievement {
     }
 }
 
+export class BarbecueAchievement extends Achievement {
+    constructor() {
+        super('barbecue', 'Barbecue', 'Kill a fish midair with fire.');
+    }
+}
+
+export class FireworksAchievement extends Achievement {
+    constructor() {
+        super('fireworks', 'Pyrotechnician', 'Detonate a firework rocket mid-air with a shot.');
+    }
+}
+
+export class PuristAchievement extends Achievement {
+    constructor() {
+        super('purist', 'Purist', 'Reach 100km using only base pirate gear.');
+    }
+}
+
+export class CoreLoyalistAchievement extends Achievement {
+    constructor() {
+        super('core_loyalist', 'Core Engineer', 'Equip 3 Level 10 components from Core without using other brands.');
+    }
+}
+
+export class KamenLoyalistAchievement extends Achievement {
+    constructor() {
+        super('kamen_loyalist', 'Kamen Disciple', 'Equip 3 Level 10 components from Kamen without using other brands.');
+    }
+}
+
+export class AeroLoyalistAchievement extends Achievement {
+    constructor() {
+        super('aero_loyalist', 'Aero Ace', 'Equip 3 Level 10 components from Aero without using other brands.');
+    }
+}
+
+export class NovaLoyalistAchievement extends Achievement {
+    constructor() {
+        super('nova_loyalist', 'Nova Tech', 'Equip 3 Level 10 components from Nova without using other brands.');
+    }
+}
+
 // Global registry of achievement CLASSES, not instances
 export const ACHIEVEMENT_CLASSES = [
     EnemyKillerAchievement,
@@ -262,7 +304,14 @@ export const ACHIEVEMENT_CLASSES = [
     TwoBirdsOneStoneAchievement,
     MileHighClubAchievement,
     PacifistRunAchievement,
-    SharpshooterAchievement
+    SharpshooterAchievement,
+    BarbecueAchievement,
+    FireworksAchievement,
+    PuristAchievement,
+    CoreLoyalistAchievement,
+    KamenLoyalistAchievement,
+    AeroLoyalistAchievement,
+    NovaLoyalistAchievement
 ];
 
 export function syncPlayerAchievements(player, rawAchievements = {}) {

@@ -511,6 +511,35 @@ setInterval(() => {
             if (player.pacifist && player.achievements && player.achievements['pacifist_run']) {
                 player.achievements['pacifist_run'].complete(player);
             }
+            // Achievement Check: Purist (Reach 100km with base gear)
+            if (player.baseGearRun && player.achievements && player.achievements['purist']) {
+                player.achievements['purist'].complete(player);
+            }
+        }
+
+        // Achievement Check: Brand Loyalty (Split by manufacturer)
+        // Equip 3 Level 10 components from a single manufacturer
+        if (player.achievements && player.brandLoyalty && !player.failedBrandLoyalty) {
+             const brand = player.brandLoyalty;
+             // Map brand name to achievement ID key
+             const achKey = `${brand.toLowerCase()}_loyalist`;
+
+             if (player.achievements[achKey] && !player.achievements[achKey].completed) {
+                // Parse component stats to verify
+                const checkComponent = (comp, requiredBrand) => {
+                    if (!comp || !comp.name) return false;
+                    // Expected: "{Brand} Standard {Type} Lvl 10"
+                    return comp.name.startsWith(requiredBrand) && comp.name.endsWith("Lvl 10");
+                };
+
+                const validChassis = checkComponent(player.chassis, brand);
+                const validEngine = checkComponent(player.engine, brand);
+                const validWings = checkComponent(player.wings, brand);
+
+                if (validChassis && validEngine && validWings) {
+                    player.achievements[achKey].complete(player);
+                }
+             }
         }
     });
 }, ACHIEVEMENT_DIST_CHECK_INTERVAL);
@@ -669,6 +698,14 @@ function updateProjectile(projectile) {
           if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, other.x, other.y, other.size)) {
                // Case 1: Hitting a Firework Rocket -> Activate it
                if (other.type === 'firework_rocket') {
+                   // Achievement: Pyrotechnician (Detonate a firework rocket)
+                   if (projectile.owner) {
+                        const shooter = players.find(p => p.username === projectile.owner);
+                        if (shooter && shooter.achievements && shooter.achievements['fireworks']) {
+                            shooter.achievements['fireworks'].complete(shooter);
+                        }
+                   }
+
                    handleProjectileExplosion(other);
                    // Hitting projectile usually absorbs the impactor too
                    handleProjectileExplosion(projectile);
@@ -816,6 +853,13 @@ function updateProjectile(projectile) {
                if (animal.type === 'fish' && !animalInWater) {
                   if (killer.achievements['sky_angler']) {
                       killer.achievements['sky_angler'].complete(killer);
+                  }
+
+                  // Barbecue: Kill a fish midair with fire
+                  if (projectile.fireDamage > 0 || projectile.type === 'fire' || projectile.type === 'fireworks_fire') {
+                    if (killer.achievements['barbecue']) {
+                        killer.achievements['barbecue'].complete(killer);
+                    }
                   }
               }
 

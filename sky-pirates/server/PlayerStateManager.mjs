@@ -57,6 +57,9 @@ export function savePlayerState(playerId, player) {
       selectedGun: player.selectedGun,
       lastRecoveryZone: player.lastRecoveryZone,
       pacifist: player.pacifist, // Save Pacifist status
+      baseGearRun: player.baseGearRun, // ACHIEVEMENT: Purist
+      brandLoyalty: player.brandLoyalty, // ACHIEVEMENT: Brand Ambassador
+      failedBrandLoyalty: player.failedBrandLoyalty, // ACHIEVEMENT: Brand Ambassador
       // Serialize components
       chassis: serializeComponent(player.chassis),
       engine: serializeComponent(player.engine),
