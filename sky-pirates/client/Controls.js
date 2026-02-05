@@ -480,12 +480,13 @@ function touchStarted(event) {
     window.lastButtonTap = 'touchStarted:AfterAudio';
 
     // Force fullscreen on first touch if on mobile
-    if (typeof isMobile !== 'undefined' && isMobile) {
-        let fs = fullscreen();
-        if (!fs) {
-            fullscreen(true);
-        }
-    }
+    // DISABLED: This was blocking touch events from propagating
+    // if (typeof isMobile !== 'undefined' && isMobile) {
+    //     let fs = fullscreen();
+    //     if (!fs) {
+    //         fullscreen(true);
+    //     }
+    // }
 
     window.lastButtonTap = 'touchStarted:AfterFullscreen';
 
