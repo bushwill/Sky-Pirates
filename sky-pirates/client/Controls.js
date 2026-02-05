@@ -487,10 +487,13 @@ function touchStarted(event) {
     // CHECK MOBILE CONTROLS FIRST (HUD)
     // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
+        window.lastButtonTap = 'TouchLoop:Start';
         // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
         for (let i = 0; i < touches.length; i++) {
             const mx = touches[i].x;
             const my = touches[i].y;
+            window.lastTapCoords = { x: mx, y: my };
+            window.lastButtonTap = 'TouchLoop:InLoop';
 
             // Pause Button - Check regardless of menu state for exit behavior
             const pauseBtn = getMobilePauseButton();
@@ -522,21 +525,28 @@ function touchStarted(event) {
             }
 
             // If menu is open, handle menu interactions via manager later, but SKIP game controls
-            if (menuVisible) continue; // Skip to next touch or end
+            if (menuVisible) {
+                window.lastButtonTap = 'TouchLoop:MenuSkip';
+                continue; // Skip to next touch or end
+            }
+
+            window.lastButtonTap = 'TouchLoop:CheckingButtons';
 
             // Chat Button
             const chatBtn = getMobileChatButton();
             if (Math.abs(mx - chatBtn.x) < chatBtn.w / 2 + 30 &&
                 Math.abs(my - chatBtn.y) < chatBtn.h / 2 + 30) {
                 toggleMobileChat();
-                return false;
-            }
-
-            // Check teleport button first
-            if (teleportButtonRegion) {
+                window.lastButtonTap = 'TouchLoop:CallingTP';
                 const teleportClicked = handleTeleportButtonClick(mx, my);
                 if (teleportClicked) {
                     return false; // Consume event
+                }
+            }
+
+            // Check shop toggle button
+            if (shopButtonRegion) {
+                window.lastButtonTap = 'TouchLoop:CallingShop';/ Consume event
                 }
             }
 
