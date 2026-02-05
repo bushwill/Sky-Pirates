@@ -658,6 +658,9 @@ function displayHelpPrompt() {
         text("Early Access / Press H key to show help window", windowWidth / 2, finalY);
         pop();
     }
+    
+    // Debug overlay for mobile
+    if (typeof drawDebugOverlay === 'function') drawDebugOverlay();
 }
 
 // Draws the help window overlay
