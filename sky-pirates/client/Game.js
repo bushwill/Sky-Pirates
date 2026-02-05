@@ -742,7 +742,7 @@ function handleTeleportButtonClick(mouseX, mouseY) {
 
     if (isInside) {
         // Debounce to prevent double-firing
-        if (typeof lastTeleportClickTime === 'undefined') window.lastTeleportClickTime = 0;
+        if (typeof window.lastTeleportClickTime === 'undefined') window.lastTeleportClickTime = 0;
         if (millis() - window.lastTeleportClickTime < 500) return true;
         window.lastTeleportClickTime = millis();
 
@@ -765,7 +765,7 @@ function handleShopButtonClick(mouseX, mouseY) {
 
     if (isInside) {
         // Debounce to prevent double-toggling (open -> close -> open)
-        if (typeof lastShopClickTime === 'undefined') window.lastShopClickTime = 0;
+        if (typeof window.lastShopClickTime === 'undefined') window.lastShopClickTime = 0;
         if (millis() - window.lastShopClickTime < 500) return true;
         window.lastShopClickTime = millis();
 
@@ -789,7 +789,7 @@ function handleSellAllButtonClick(mouseX, mouseY) {
 
     if (isInside) {
         // Debounce
-        if (typeof lastSellClickTime === 'undefined') window.lastSellClickTime = 0;
+        if (typeof window.lastSellClickTime === 'undefined') window.lastSellClickTime = 0;
         if (millis() - window.lastSellClickTime < 500) return true;
         window.lastSellClickTime = millis();
 

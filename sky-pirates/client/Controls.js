@@ -1,37 +1,9 @@
 function mousePressed() {
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
-    // Check Mobile HUD Buttons (Priority over Menu)
-    if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        // Pause Button
-        if (typeof getMobilePauseButton !== 'undefined') {
-            const pauseBtn = getMobilePauseButton();
-            if (Math.abs(mouseX - pauseBtn.x) < pauseBtn.w/2 + 30 &&
-                Math.abs(mouseY - pauseBtn.y) < pauseBtn.h/2 + 30) {
-                
-                if (typeof window.lastPauseToggleTime === 'undefined') window.lastPauseToggleTime = 0;
-                if (millis() - window.lastPauseToggleTime > 500) {
-                    window.lastPauseToggleTime = millis();
-                    if (menuVisible) {
-                        menuVisible = false;
-                    } else {
-                        menuVisible = true;
-                        if (menuManager) menuManager.show('login');
-                    }
-                }
-                return; // Handled
-            }
-        }
-
-        // Chat Button (Only if menu not visible)
-        if (!menuVisible && typeof getMobileChatButton !== 'undefined') {
-            const chatBtn = getMobileChatButton();
-            if (Math.abs(mouseX - chatBtn.x) < chatBtn.w/2 + 30 &&
-                Math.abs(mouseY - chatBtn.y) < chatBtn.h/2 + 30) {
-                toggleMobileChat();
-                return; // Handled
-            }
-        }
+    // On mobile, skip mousePressed entirely - touchStarted handles everything
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        return;
     }
 
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
@@ -556,30 +528,27 @@ function touchStarted(event) {
         }
 
         // Check teleport button first
-        if (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion) {
+        if (teleportButtonRegion) {
             const teleportClicked = handleTeleportButtonClick(mx, my);
-            if (teleportClicked) return false;
-        } else if (typeof window.teleportButtonRegion !== 'undefined' && window.teleportButtonRegion) {
-             const teleportClicked = handleTeleportButtonClick(mx, my);
-             if (teleportClicked) return false;
+            if (teleportClicked) {
+                return false; // Consume event
+            }
         }
         
         // Check shop toggle button
-        if (typeof shopButtonRegion !== 'undefined' && shopButtonRegion) {
+        if (shopButtonRegion) {
             const shopButtonClicked = handleShopButtonClick(mx, my);
-            if (shopButtonClicked) return false;
-        } else if (typeof window.shopButtonRegion !== 'undefined' && window.shopButtonRegion) {
-             const shopButtonClicked = handleShopButtonClick(mx, my);
-             if (shopButtonClicked) return false;
+            if (shopButtonClicked) {
+                return false; // Consume event
+            }
         }
 
         // Check sell all button
-        if (typeof sellAllButtonRegion !== 'undefined' && sellAllButtonRegion) {
+        if (sellAllButtonRegion) {
             const sellAllClicked = handleSellAllButtonClick(mx, my);
-            if (sellAllClicked) return false;
-        } else if (typeof window.sellAllButtonRegion !== 'undefined' && window.sellAllButtonRegion) {
-             const sellAllClicked = handleSellAllButtonClick(mx, my);
-             if (sellAllClicked) return false;
+            if (sellAllClicked) {
+                return false; // Consume event
+            }
         }
         
         // Action Buttons
@@ -649,9 +618,6 @@ function touchStarted(event) {
             // fallthrough to menu handling
         } else {
              updateMobileControls();
-             // Manually trigger mousePressed logic as fallback for UI clicks 
-             // (handles cases where touches array coords might be slightly off relative to UI)
-             mousePressed();
              return false;
         }
     }
