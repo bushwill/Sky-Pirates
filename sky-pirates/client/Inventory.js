@@ -85,12 +85,11 @@ function handleInventoryClick(mx, my) {
     
     // Transform input coordinates to match the zoomed drawing context
     let activeZoom = 1.0;
-    if (typeof isMobile !== 'undefined' && isMobile) {
+    // Use the exposed current zoom if available (handles clamping logic from Game.js)
+    if (typeof window.currentGameZoom === 'number' && window.currentGameZoom > 0) {
+        activeZoom = window.currentGameZoom;
+    } else if (typeof isMobile !== 'undefined' && isMobile) {
         activeZoom = 0.65;
-    } else {
-        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom) && window.cameraZoom > 0.01) {
-            activeZoom = window.cameraZoom;
-        }
     }
 
     // Apply inverse transformation: World = (Screen - Center) / Zoom + Center

@@ -474,6 +474,9 @@ function handleGameDisplay(controlledPlayer) {
     let activeZoom = 1.0;
     if (typeof isMobile !== 'undefined' && isMobile) {
         activeZoom = 0.65;
+        // Expose active zoom for other systems (e.g. input handling)
+        window.currentGameZoom = activeZoom;
+        
         translate(windowWidth / 2, windowHeight / 2);
         scale(activeZoom); 
         translate(-windowWidth / 2, -windowHeight / 2);
@@ -494,6 +497,9 @@ function handleGameDisplay(controlledPlayer) {
         
         // Final safety check for rendering
         if (isNaN(activeZoom) || activeZoom <= 0.01) activeZoom = 1.0;
+
+        // Expose active zoom for other systems (e.g. input handling)
+        window.currentGameZoom = activeZoom;
 
         translate(windowWidth / 2, windowHeight / 2);
         scale(activeZoom); 
