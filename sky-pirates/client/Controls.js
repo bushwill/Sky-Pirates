@@ -257,34 +257,34 @@ function getMobileButtons() {
     const startY = height - 80; // Moved down from height-100
 
     // Check for narrow screen overlap (stack right buttons if needed)
-    const stackRightButtons = width < 550;
+    const stackRightButtons = width < 600;
 
     let rightButtons = [];
     if (stackRightButtons) {
         // Stack vertically on right edge
         let rX = width - 50;
         let rStartY = height - 120;
-        let rGap = 70;
+        let rGap = 65;
         rightButtons = [
-            { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
-            { label: 'R', key: 'r', x: rX, y: rStartY, r: 35 },
-            { label: 'F', key: 'f', x: rX, y: rStartY - rGap * 1, r: 35 },
-            { label: 'C', key: 'c', x: rX, y: rStartY - rGap * 2, r: 35 }
+            { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 45, color: [255, 50, 50] },
+            { label: 'FIX', key: 'r', x: rX, y: rStartY, r: 30 },
+            { label: 'DROP', key: 'f', x: rX, y: rStartY - rGap * 1, r: 30 },
+            { label: 'SWAP', key: 'c', x: rX, y: rStartY - rGap * 2, r: 30 }
         ];
     } else {
         rightButtons = [
             { label: 'FIRE', key: 'mouse', x: width - 80, y: startY - 40, r: 50, color: [255, 50, 50] },
-            { label: 'R', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 },
-            { label: 'F', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
-            { label: 'C', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
+            { label: 'FIX', key: 'r', x: width - 60, y: startY - spacing - 80, r: 35 },
+            { label: 'DROP', key: 'f', x: width - 140, y: startY - spacing - 80, r: 35 },
+            { label: 'SWAP', key: 'c', x: width - 220, y: startY - spacing - 80, r: 35 }
         ];
     }
 
     return [
-        { label: 'W', key: 'w', x: startX, y: startY - spacing, r: 40 },
-        { label: 'A', key: 'a', x: startX - spacing, y: startY, r: 40 },
-        { label: 'S', key: 's', x: startX, y: startY, r: 40 },
-        { label: 'D', key: 'd', x: startX + spacing, y: startY, r: 40 },
+        { label: 'THR+', key: 'w', x: startX, y: startY - spacing, r: 40 },
+        { label: 'LEFT', key: 'a', x: startX - spacing, y: startY, r: 40 },
+        { label: 'THR-', key: 's', x: startX, y: startY, r: 40 },
+        { label: 'RIGHT', key: 'd', x: startX + spacing, y: startY, r: 40 },
         ...rightButtons
     ];
 }
@@ -320,7 +320,7 @@ function drawMobilePauseButton() {
 
     push();
     textAlign(CENTER, CENTER);
-    textSize(16 * s);
+    textSize(10 * s);
     noStroke();
 
     const btn = getMobilePauseButton();
@@ -341,7 +341,7 @@ function drawMobileControls() {
 
     push();
     textAlign(CENTER, CENTER);
-    textSize(16);
+    textSize(10);
     noStroke();
 
     // Draw Pause Button (Always visible when signed in)
@@ -391,7 +391,7 @@ function drawMobileControls() {
         circle(bx, by, btn.r * 2);
 
         fill(0);
-        textSize(20);
+        textSize(10);
         text(btn.label, bx, by);
     }
     pop();

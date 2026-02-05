@@ -44,6 +44,6 @@ function drawHelpWindow() {
 	// Footer
 	textAlign(CENTER, CENTER);
 	textSize(12);
-	text('Press H key to close this window.', windowWidth/2, windowHeight/2 + windowHeight*0.33);
+    text('Tap to close', windowWidth/2, windowHeight/2 + windowHeight*0.33);
 	pop();
 }

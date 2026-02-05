@@ -665,7 +665,7 @@ function displayHelpPrompt() {
         let centerY = windowHeight / 2;
         let finalY = centerY + (targetY - centerY) * zoomScale;
         
-        text("Early Access / Press H key to show help window", windowWidth / 2, finalY);
+        text("Early Access", windowWidth / 2, finalY);
         pop();
     }
 }
