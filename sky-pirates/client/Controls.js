@@ -1,6 +1,39 @@
 function mousePressed() {
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
 
+    // Check Mobile HUD Buttons (Priority over Menu)
+    if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
+        // Pause Button
+        if (typeof getMobilePauseButton !== 'undefined') {
+            const pauseBtn = getMobilePauseButton();
+            if (Math.abs(mouseX - pauseBtn.x) < pauseBtn.w/2 + 30 &&
+                Math.abs(mouseY - pauseBtn.y) < pauseBtn.h/2 + 30) {
+                
+                if (typeof window.lastPauseToggleTime === 'undefined') window.lastPauseToggleTime = 0;
+                if (millis() - window.lastPauseToggleTime > 500) {
+                    window.lastPauseToggleTime = millis();
+                    if (menuVisible) {
+                        menuVisible = false;
+                    } else {
+                        menuVisible = true;
+                        if (menuManager) menuManager.show('login');
+                    }
+                }
+                return; // Handled
+            }
+        }
+
+        // Chat Button (Only if menu not visible)
+        if (!menuVisible && typeof getMobileChatButton !== 'undefined') {
+            const chatBtn = getMobileChatButton();
+            if (Math.abs(mouseX - chatBtn.x) < chatBtn.w/2 + 30 &&
+                Math.abs(mouseY - chatBtn.y) < chatBtn.h/2 + 30) {
+                toggleMobileChat();
+                return; // Handled
+            }
+        }
+    }
+
     // If menu is visible (either before sign-in or toggled during gameplay) route clicks to it
     if (menuVisible && menuManager) {
         let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
@@ -616,6 +649,9 @@ function touchStarted(event) {
             // fallthrough to menu handling
         } else {
              updateMobileControls();
+             // Manually trigger mousePressed logic as fallback for UI clicks 
+             // (handles cases where touches array coords might be slightly off relative to UI)
+             mousePressed();
              return false;
         }
     }
