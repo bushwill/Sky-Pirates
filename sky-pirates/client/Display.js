@@ -4,17 +4,32 @@ window.mobileActionButtons = []; // Array of click regions for action buttons
 
 // Debug overlay function
 function drawDebugOverlay() {
-    if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        push();
-        fill(255, 255, 0);
-        noStroke();
-        textSize(20);
-        textAlign(LEFT);
-        text('menuVisible: ' + menuVisible, 10, 40);
-        text('teleportRegion: ' + (teleportButtonRegion ? 'YES' : 'NO'), 10, 70);
-        text('shopRegion: ' + (shopButtonRegion ? 'YES' : 'NO'), 10, 100);
-        text('biome: ' + (player && player.biome ? player.biome : 'none'), 10, 130);
-        pop();
+    try {
+        if (typeof isMobile !== 'undefined' && isMobile && typeof signedIn !== 'undefined' && signedIn) {
+            push();
+            fill(255, 255, 0);
+            stroke(0);
+            strokeWeight(2);
+            textSize(18);
+            textAlign(LEFT);
+            
+            text('menuVisible: ' + (typeof menuVisible !== 'undefined' ? menuVisible : 'undef'), 10, 40);
+            text('tpRegion: ' + (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion ? 'YES' : 'NO'), 10, 65);
+            text('shopRegion: ' + (typeof shopButtonRegion !== 'undefined' && shopButtonRegion ? 'YES' : 'NO'), 10, 90);
+            
+            // Get biome safely
+            let biomeText = 'NONE';
+            if (typeof player !== 'undefined' && player && player.biome) {
+                biomeText = player.biome;
+            } else if (typeof players !== 'undefined' && typeof username !== 'undefined' && players[username] && players[username].biome) {
+                biomeText = players[username].biome;
+            }
+            text('biome: ' + biomeText, 10, 115);
+            
+            pop();
+        }
+    } catch(e) {
+        // Silently fail to avoid breaking the game
     }
 }
 
