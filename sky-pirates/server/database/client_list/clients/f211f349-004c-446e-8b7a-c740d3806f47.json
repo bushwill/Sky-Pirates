@@ -1,14 +1,14 @@
 {
-  "type": "account",
-  "accountName": "bushwill",
-  "gameSaveId": "caf65a24-c69f-4424-ba68-4bb37e982da0",
-  "created": 1769920571635,
-  "lastSeen": 1769920591719,
+  "type": "guest",
+  "accountName": null,
+  "gameSaveId": "e2bc0868-b4ae-4409-b7dd-b8727f11b5e9",
+  "created": 1769923591364,
+  "lastSeen": 1769995586092,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 196,
+      "progress": 155,
       "milestones": [
         {
           "unlocked": false,
@@ -29,6 +29,25 @@
           "unlocked": false,
           "unlockedAt": null,
           "target": 1000
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 7,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
         }
       ]
     }

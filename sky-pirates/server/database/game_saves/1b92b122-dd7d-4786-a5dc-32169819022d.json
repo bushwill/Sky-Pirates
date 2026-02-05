@@ -1,10 +1,10 @@
 {
-  "r": 0,
-  "g": 51,
+  "r": 184,
+  "g": 224,
   "b": 255,
-  "x": -50395.335299638355,
-  "y": 33.93501038611446,
-  "money": 74825,
+  "x": -49880.10769126388,
+  "y": -197.72914131522973,
+  "money": 107679,
   "biome": "recovery",
   "selectedGun": 1,
   "lastRecoveryZone": {
@@ -16,16 +16,16 @@
     "id": "west_50k",
     "twin": "east_50k"
   },
-  "pacifist": false,
+  "pacifist": true,
   "chassis": {
     "type": "chassis",
-    "name": "Nova Standard Chassis Lvl 6",
-    "weight": 3.521749404590694,
-    "value": 2716.7781121128214,
-    "topSpeed": 452.79635201880353,
-    "maxHull": 150.93211733960118,
-    "heatDispersion": 38.4876899215983,
-    "buoyancy": 2.0124282311946824
+    "name": "Kamen Standard Chassis Lvl 5",
+    "weight": 3.675151162424295,
+    "value": 1194.424127787896,
+    "topSpeed": 459.39389530303686,
+    "maxHull": 174.56968021515402,
+    "heatDispersion": 22.969694765151843,
+    "buoyancy": 0.9187877906060737
   },
   "engine": {
     "type": "engine",
@@ -54,33 +54,33 @@
   "gun1": {
     "type": "gun",
     "name": "Machine Gun Lvl 6",
-    "weight": 0.547146349034676,
-    "value": 1149.0073329728195,
-    "maxHeat": 207.91561263317686,
-    "heatEfficiency": 9.629775743010297,
-    "damage": 34.14193217976378,
-    "cooldownTime": 179.46400248337372,
-    "projectileSpeed": 1838.4117327565111,
-    "projectileSize": 1.4225805074901576,
-    "maxAngle": 0.28648515842763583,
-    "heatDispersion": 24.621585706560417,
+    "weight": 0.4724385731957635,
+    "value": 992.1210037111033,
+    "maxHeat": 179.52665781439012,
+    "heatEfficiency": 8.314918888245439,
+    "damage": 29.48016696741564,
+    "cooldownTime": 154.95985200821042,
+    "projectileSpeed": 1587.3936059377654,
+    "projectileSize": 1.228340290308985,
+    "maxAngle": 0.2473682584707091,
+    "heatDispersion": 21.25973579380936,
     "projectileRange": 1500
   },
   "gun2": {
     "type": "gun",
     "name": "Firework Launcher Lvl 5",
-    "weight": 1.0772090862887578,
-    "value": 775.5905421279056,
+    "weight": 1.0002881645497337,
+    "value": 720.2074784758082,
     "maxHeat": 100,
     "heatEfficiency": 100,
-    "damage": 70.01859060876926,
+    "damage": 65.01873069573269,
     "cooldownTime": 0,
-    "projectileSpeed": 377.0231802010652,
-    "projectileSize": 4.308836345155031,
-    "maxAngle": 0.09870443776272726,
-    "heatDispersion": 25.853018070930187,
-    "projectileRange": 565.5347703015977
+    "projectileSpeed": 350.1008575924068,
+    "projectileSize": 4.001152658198935,
+    "maxAngle": 0.09165619018564929,
+    "heatDispersion": 24.00691594919361,
+    "projectileRange": 525.1512863886102
   },
   "inventory": [],
-  "savedAt": 1770184486246
+  "savedAt": 1770268744210
 }
