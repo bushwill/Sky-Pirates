@@ -1778,7 +1778,7 @@ class LoginMenuScreen extends MenuScreen {
 class SettingsMenuScreen extends MenuScreen {
     constructor() {
         super("Settings");
-        
+
         // Force fixed camera on mobile
         if (typeof isMobile !== 'undefined' && isMobile) {
             settings.dynamicCamera = false;
@@ -1786,7 +1786,7 @@ class SettingsMenuScreen extends MenuScreen {
 
         // Camera toggle option
         this.cameraToggle = new MenuOption(
-            (typeof isMobile !== 'undefined' && isMobile) ? "Camera: Fixed (Locked)" : (settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed"),
+            settings.dynamicCamera ? "Camera: Dynamic" : "Camera: Fixed",
             () => this.toggleCamera()
         );
         

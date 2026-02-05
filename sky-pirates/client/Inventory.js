@@ -83,6 +83,22 @@ function handleInventoryClick(mx, my) {
     const inRecoveryZone = controlledPlayer && controlledPlayer.biome === 'recovery';
     const shiftHeld = keyIsDown(SHIFT);
     
+    // Transform input coordinates to match the zoomed drawing context
+    let activeZoom = 1.0;
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        activeZoom = 0.65;
+    } else {
+        if (typeof window.cameraZoom === 'number' && !isNaN(window.cameraZoom) && window.cameraZoom > 0.01) {
+            activeZoom = window.cameraZoom;
+        }
+    }
+
+    // Apply inverse transformation: World = (Screen - Center) / Zoom + Center
+    const cx = width / 2;
+    const cy = height / 2;
+    const worldMx = (mx - cx) / activeZoom + cx;
+    const worldMy = (my - cy) / activeZoom + cy;
+    
     // Iterate over each recorded inventory item region.
     for (let region of inventoryRegions) {
         // Since inventory items are drawn in CENTER mode, determine the bounding box.
@@ -94,7 +110,7 @@ function handleInventoryClick(mx, my) {
         const top = region.y - halfSize - padding;
         const bottom = region.y + halfSize + padding;
 
-        if (mx >= left && mx <= right && my >= top && my <= bottom) {
+        if (worldMx >= left && worldMx <= right && worldMy >= top && worldMy <= bottom) {
             if (typeof isMobile !== 'undefined' && isMobile) {
                 // Mobile Select
                 window.mobileSelection = {
