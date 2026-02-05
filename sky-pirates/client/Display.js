@@ -2232,8 +2232,8 @@ function displayTeleportButton(controlledPlayer) {
     
     // Calculate center position for button area
     const centerX = width / 2;
-    // Move buttons up on mobile to avoid home bar/safe area and increase touchability
-    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 140 * s : 100 * s;
+    // Move buttons down more on mobile for easier reach
+    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 200 * s : 100 * s;
     const buttonY = height - bottomOffset;
     
     // Calculate button positions based on count
@@ -2356,7 +2356,7 @@ function displaySellAllButton(controlledPlayer) {
     
     // Position at bottom center, below shop/teleport buttons
     const centerX = width / 2;
-    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 90 * s : 50 * s;
+    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 140 * s : 50 * s;
     const buttonY = height - bottomOffset;
     
     sellAllButtonRegion = {
