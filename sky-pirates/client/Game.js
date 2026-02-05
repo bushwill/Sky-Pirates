@@ -145,8 +145,9 @@ function setup() {
 
     // p5 provides keyPressed/keyTyped/ keyReleased hooks — use those instead of duplicating DOM key events
     // (window listeners for keydown/keyup were removed to avoid duplicate input handling)
-    window.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mouseup", handleMouseUp);
+    // Mouse events are also handled by p5.js mousePressed/mouseReleased
+    // window.addEventListener("mousedown", handleMouseDown);
+    // window.addEventListener("mouseup", handleMouseUp);
 
     // Load settings from cookies
     if (typeof loadSettings === 'function') {
