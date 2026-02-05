@@ -537,6 +537,11 @@ function touchStarted(event) {
             if (Math.abs(mx - chatBtn.x) < chatBtn.w / 2 + 30 &&
                 Math.abs(my - chatBtn.y) < chatBtn.h / 2 + 30) {
                 toggleMobileChat();
+                return false;
+            }
+
+            // Check teleport button first
+            if (teleportButtonRegion) {
                 window.lastButtonTap = 'TouchLoop:CallingTP';
                 const teleportClicked = handleTeleportButtonClick(mx, my);
                 if (teleportClicked) {
@@ -546,12 +551,7 @@ function touchStarted(event) {
 
             // Check shop toggle button
             if (shopButtonRegion) {
-                window.lastButtonTap = 'TouchLoop:CallingShop';/ Consume event
-                }
-            }
-
-            // Check shop toggle button
-            if (shopButtonRegion) {
+                window.lastButtonTap = 'TouchLoop:CallingShop';
                 const shopButtonClicked = handleShopButtonClick(mx, my);
                 if (shopButtonClicked) {
                     return false; // Consume event
