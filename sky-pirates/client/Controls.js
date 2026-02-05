@@ -462,54 +462,33 @@ function getScaledInputCoordinates(screenX, screenY) {
 }
 
 function touchStarted(event) {
-    // DEBUG: This should ALWAYS execute on any touch
-    window.lastButtonTap = 'touchStarted:CALLED';
-    window.lastTapCoords = { x: touches.length > 0 ? touches[0].x : -1, y: touches.length > 0 ? touches[0].y : -1 };
-    
     // Explicitly update window.lastInputTime for global visibility
     window.lastInputTime = millis();
     if (typeof lastInputTime !== 'undefined') lastInputTime = millis();
-
-    window.lastButtonTap = 'touchStarted:AfterTime';
 
     // Ensure audio context is started on first user interaction (mobile requirement)
     if (typeof getAudioContext === 'function' && getAudioContext().state !== 'running') {
         userStartAudio();
     }
 
-    window.lastButtonTap = 'touchStarted:AfterAudio';
-
-    // Force fullscreen on first touch if on mobile
-    // DISABLED: This was blocking touch events from propagating
-    // if (typeof isMobile !== 'undefined' && isMobile) {
-    //     let fs = fullscreen();
-    //     if (!fs) {
-    //         fullscreen(true);
-    //     }
-    // }
-
-    window.lastButtonTap = 'touchStarted:AfterFullscreen';
-
     // Allow default browser behavior for inputs (text fields, etc.)
     if (event && event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) {
-        window.lastButtonTap = 'touchStarted:InputElement';
         return true;
     }
-
-    window.lastButtonTap = 'touchStarted:BeforeMobileCheck';
 
     // CHECK MOBILE CONTROLS FIRST (HUD)
     // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
-        window.lastButtonTap = 'TouchLoop:Start';
         // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
         for (let i = 0; i < touches.length; i++) {
             const mx = touches[i].x;
             const my = touches[i].y;
-            window.lastTapCoords = { x: mx, y: my };
-            window.lastButtonTap = 'TouchLoop:InLoop';
 
-            // Pause Button - Check regardless of menu state for exit behavior
+            // If menu is open, let menu manager handle all touches (including tabs)
+            // Don't check pause button or other game controls when menu is visible
+            if (menuVisible) continue; // Skip to next touch or end
+
+            // Pause Button - Only check when menu is NOT visible (to open it)
             const pauseBtn = getMobilePauseButton();
             if (Math.abs(mx - pauseBtn.x) < pauseBtn.w / 2 + 30 &&
                 Math.abs(my - pauseBtn.y) < pauseBtn.h / 2 + 30) {
@@ -518,33 +497,16 @@ function touchStarted(event) {
                 if (typeof window.lastPauseToggleTime === 'undefined') window.lastPauseToggleTime = 0;
                 if (millis() - window.lastPauseToggleTime > 500) {
                     window.lastPauseToggleTime = millis();
-                    if (menuVisible) {
-                        if (typeof setMenuVisible === 'function') {
-                            setMenuVisible(false);
-                        } else {
-                            menuVisible = false;
-                            if (typeof window.menuVisible !== 'undefined') window.menuVisible = false;
-                        }
+                    menuVisible = true;
+                    if (typeof setMenuVisible === 'function') {
+                        setMenuVisible(true);
                     } else {
-                        if (typeof setMenuVisible === 'function') {
-                            setMenuVisible(true);
-                        } else {
-                            menuVisible = true;
-                            if (typeof window.menuVisible !== 'undefined') window.menuVisible = true;
-                        }
-                        if (menuManager) menuManager.show('login');
+                        if (typeof window.menuVisible !== 'undefined') window.menuVisible = true;
                     }
+                    if (menuManager) menuManager.show('login');
                 }
                 return false;
             }
-
-            // If menu is open, handle menu interactions via manager later, but SKIP game controls
-            if (menuVisible) {
-                window.lastButtonTap = 'TouchLoop:MenuSkip';
-                continue; // Skip to next touch or end
-            }
-
-            window.lastButtonTap = 'TouchLoop:CheckingButtons';
 
             // Chat Button
             const chatBtn = getMobileChatButton();
@@ -556,7 +518,6 @@ function touchStarted(event) {
 
             // Check teleport button first
             if (teleportButtonRegion) {
-                window.lastButtonTap = 'TouchLoop:CallingTP';
                 const teleportClicked = handleTeleportButtonClick(mx, my);
                 if (teleportClicked) {
                     return false; // Consume event
@@ -565,7 +526,6 @@ function touchStarted(event) {
 
             // Check shop toggle button
             if (shopButtonRegion) {
-                window.lastButtonTap = 'TouchLoop:CallingShop';
                 const shopButtonClicked = handleShopButtonClick(mx, my);
                 if (shopButtonClicked) {
                     return false; // Consume event

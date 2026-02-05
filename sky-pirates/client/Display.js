@@ -1,42 +1,6 @@
 // Global state for mobile selection
 window.mobileSelection = null; // { type: 'inventory'|'shop'|'equipped', item: ..., index: ... }
 window.mobileActionButtons = []; // Array of click regions for action buttons
-window.lastButtonTap = 'NONE'; // Debug: track last button tapped
-window.lastTapCoords = { x: 0, y: 0 }; // Debug: track last tap coordinates
-
-// Debug overlay function
-function drawDebugOverlay() {
-    try {
-        if (typeof isMobile !== 'undefined' && isMobile && typeof signedIn !== 'undefined' && signedIn) {
-            push();
-            fill(255, 255, 0);
-            stroke(0);
-            strokeWeight(2);
-            textSize(16);
-            textAlign(LEFT);
-            
-            text('menuVisible: ' + (typeof menuVisible !== 'undefined' ? menuVisible : 'undef'), 10, 30);
-            text('tpRegion: ' + (typeof teleportButtonRegion !== 'undefined' && teleportButtonRegion ? 'YES' : 'NO'), 10, 50);
-            text('shopRegion: ' + (typeof shopButtonRegion !== 'undefined' && shopButtonRegion ? 'YES' : 'NO'), 10, 70);
-            
-            // Get biome using same logic as Game.js (players.find)
-            let biomeText = 'NONE';
-            if (typeof players !== 'undefined' && typeof username !== 'undefined') {
-                const cp = players.find(p => p.username === username);
-                if (cp && cp.biome) {
-                    biomeText = cp.biome;
-                }
-            }
-            text('biome: ' + biomeText, 10, 90);
-            text('lastTap: ' + window.lastButtonTap, 10, 110);
-            text('tapXY: ' + window.lastTapCoords.x.toFixed(0) + ',' + window.lastTapCoords.y.toFixed(0), 10, 130);
-            
-            pop();
-        }
-    } catch(e) {
-        // Silently fail to avoid breaking the game
-    }
-}
 
 function getGameScale() {
     if (typeof isMobile !== 'undefined' && isMobile) return 0.65;
@@ -2232,8 +2196,8 @@ function displayTeleportButton(controlledPlayer) {
     
     // Calculate center position for button area
     const centerX = width / 2;
-    // Move buttons down more on mobile for easier reach
-    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 200 * s : 100 * s;
+    // Move buttons down more on mobile for easier reach (smaller offset = closer to bottom)
+    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 100 * s : 100 * s;
     const buttonY = height - bottomOffset;
     
     // Calculate button positions based on count
@@ -2356,7 +2320,7 @@ function displaySellAllButton(controlledPlayer) {
     
     // Position at bottom center, below shop/teleport buttons
     const centerX = width / 2;
-    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 140 * s : 50 * s;
+    const bottomOffset = (typeof isMobile !== 'undefined' && isMobile) ? 40 * s : 50 * s;
     const buttonY = height - bottomOffset;
     
     sellAllButtonRegion = {
