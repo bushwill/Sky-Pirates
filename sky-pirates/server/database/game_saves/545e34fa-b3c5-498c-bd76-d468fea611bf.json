@@ -2,8 +2,8 @@
   "r": 255,
   "g": 0,
   "b": 0,
-  "x": 570.7115800395422,
-  "y": 59.20661221974346,
+  "x": 0,
+  "y": -200,
   "money": 1252,
   "biome": "recovery",
   "selectedGun": 1,
@@ -82,5 +82,5 @@
     "projectileRange": 1000
   },
   "inventory": [],
-  "savedAt": 1769897396624
+  "savedAt": 1769982837857
 }
