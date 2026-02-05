@@ -127,11 +127,19 @@ class MenuManager {
     }
 
     touchStarted() {
-         // Forward to mousePressed with first touch
+         // Forward to mousePressed with first touch, BUT we must calculate menu bounds
          if (typeof touches !== 'undefined' && touches.length > 0) {
               const mx = touches[0].x;
               const my = touches[0].y;
-              return this.mousePressed(mx, my);
+              
+              // Calculate menu bounds (logic must match Controls.js / Game.js)
+              let mw = (typeof isMobile !== 'undefined' && isMobile) ? width * 0.95 : width * 0.45;
+              if (!isMobile) mw = Math.max(Math.min(500, width * 0.9), width * 0.45);
+              let mh = (typeof isMobile !== 'undefined' && isMobile) ? height * 0.9 : height * 0.8;
+              let x = (width - mw) / 2;
+              let y = (height - mh) / 2;
+              
+              return this.mousePressed(mx, my, x, y, mw, mh);
          }
     }
 

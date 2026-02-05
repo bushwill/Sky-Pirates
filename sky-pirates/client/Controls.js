@@ -296,7 +296,7 @@ function getMobilePauseButton() {
 function getMobileChatButton() {
     const s = typeof getUIScale === 'function' ? getUIScale() : 1.0;
     return {
-        x: 50 * s,
+        x: 180 * s, // Moved from 50*s to right of money display (approx 150px space)
         y: 50 * s,
         w: 80 * s,
         h: 40 * s,
