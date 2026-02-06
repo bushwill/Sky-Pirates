@@ -1232,7 +1232,7 @@ function getComponentStats(component, equippedComponent = null) {
 }
 
 // Helper function to draw component popup background and header
-function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, padding, anchorPos = null) {
+function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, padding, anchorPos = null, extraActionHeight = 0) {
     const popupHeight = padding * 2 + lineHeight * (stats.length + 1);
     
     // Position popup near mouse/anchor, but keep it on screen
@@ -1257,16 +1257,35 @@ function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, pa
     }
     
     // Check bottom edge
-    if (popupY + popupHeight > windowHeight) {
-        popupY = baseY - popupHeight - 20;
+    // Include extraActionHeight (mobile buttons) in the calculation so they don't get clipped
+    if (popupY + popupHeight + extraActionHeight > windowHeight) {
+        popupY = baseY - popupHeight - extraActionHeight - 20;
+    }
+    
+    // If flipping up also goes off-screen (top), we might have a problem.
+    // Try to clamp to top if flipping up made it negative
+    if (popupY < 10) {
+        // If it's too tall to fit above, we just align it to top
+        popupY = 10;
+        
+        // However, if we align it to top, and it's too tall, the bottom might still clip.
+        // We prioritize top visibility (headers/stats), but for mobile, buttons at bottom are crucial.
+        // If mobile, maybe we should push it UP from bottom if there's space?
     }
 
     // Creating a hard clamp to screen boundaries as a final fallback
     // This ensures popups never go off-screen even if the "flip" logic above fails (e.g. near corners)
     if (popupX < 10) popupX = 10;
+    // Don't effectively clamp Y here if we handled it above, but safe to keep min Y
     if (popupY < 10) popupY = 10;
     if (popupX + popupWidth > windowWidth - 10) popupX = windowWidth - popupWidth - 10;
-    if (popupY + popupHeight > windowHeight - 10) popupY = windowHeight - popupHeight - 10;
+    
+    // For bottom clamp, we MUST respect the extra height again
+    if (popupY + popupHeight + extraActionHeight > windowHeight - 10) {
+        popupY = windowHeight - popupHeight - extraActionHeight - 10;
+        // If this pushes Y negative (too tall for screen), we have to start at top
+        if (popupY < 10) popupY = 10;
+    }
     
     push();
     rectMode(CORNER);
@@ -2104,13 +2123,28 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
     
     // Stable anchoring for mobile to prevent buttons moving under finger
     let anchor = null;
-    if (typeof isMobile !== 'undefined' && isMobile && targetRegion) {
-        if (targetRegion.width !== undefined) {
-             // Shop Rect (Top-Left)
-             anchor = { x: targetRegion.x + targetRegion.width/2, y: targetRegion.y + targetRegion.height/2 };
+    let extraButtonHeight = 0;
+
+    if (typeof isMobile !== 'undefined' && isMobile) {
+        if (targetRegion) {
+            if (targetRegion.width !== undefined) {
+                // Shop Rect (Top-Left)
+                anchor = { x: targetRegion.x + targetRegion.width/2, y: targetRegion.y + targetRegion.height/2 };
+            } else {
+                // Inventory (Center)
+                anchor = { x: targetRegion.x, y: targetRegion.y };
+            }
+        }
+        
+        // Calculate extra height needed for action buttons
+        const btnHeight = 40;
+        const btnPadding = 10;
+        if (isShop) {
+            // 1 Button (Buy)
+            extraButtonHeight = btnHeight + btnPadding;
         } else {
-             // Inventory (Center)
-             anchor = { x: targetRegion.x, y: targetRegion.y };
+            // 2 Buttons (Equip, Sell) + Spacing
+            extraButtonHeight = (btnHeight * 2) + (btnPadding * 2);
         }
     }
 
@@ -2140,7 +2174,7 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         resetMatrix();
     }
 
-    const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding, anchor);
+    const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding, anchor, extraButtonHeight);
     
     textSize(14);
     text(component.name, popupX + padding, popupY + padding);
