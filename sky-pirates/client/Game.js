@@ -497,6 +497,8 @@ function handleGameDisplay(controlledPlayer) {
         
         // Final safety check for rendering
         if (isNaN(activeZoom) || activeZoom <= 0.01) activeZoom = 1.0;
+        
+        window.currentGameZoom = activeZoom;
 
         // Expose active zoom for other systems (e.g. input handling)
         window.currentGameZoom = activeZoom;
@@ -636,6 +638,12 @@ function handleGameDisplay(controlledPlayer) {
             shopButtonRegion = null;
             teleportButtonRegion = null;
             shopRegions = [];
+
+            // Force close shop and update controls
+            if (shopOpen) {
+                shopOpen = false;
+                if (typeof updateMobileControls === 'function') updateMobileControls();
+            }
         }
     }
 

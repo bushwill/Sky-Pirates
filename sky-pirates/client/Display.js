@@ -1952,8 +1952,11 @@ function drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, region
     // Reset regions
     window.mobileActionButtons = []; 
 
+    // We are now always drawing in screen space because drawComponentComparisonPopup resets the matrix
+    // So we use direct screen coordinates here.
+    
     push();
-    // Enforce drawing mode to ensure alignment matches calculation
+    // Enforce drawing mode
     rectMode(CORNER);
     textSize(16);
     textStyle(BOLD);
@@ -2111,6 +2114,32 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         }
     }
 
+    // MATRIX RESET LOGIC
+    // If we are in Zoom mode (!isShop), we need to compute Screen Coordinates for the anchor
+    // and then reset the matrix to draw the popup in crisp Screen Space.
+    
+    // If !isShop, region.x/y are in World Space (relative to Camera Center)
+    if (!isShop && anchor) {
+         // Convert World Anchor to Screen Space
+         // Note: p5.js screenX/screenY uses the CURRENT model view matrix
+         // We must capture this BEFORE resetMatrix
+         if (typeof screenX === 'function') {
+            const sx = screenX(anchor.x, anchor.y, 0);
+            const sy = screenY(anchor.x, anchor.y, 0);
+            anchor = { x: sx, y: sy };
+         }
+    } else if (!isShop && !anchor) {
+        // Mouse fallback for desktop
+        // mouseX/mouseY are already Screen Space
+        // anchor is null, drawComponentPopupBase uses mouseX/mouseY
+    }
+
+    // Switch to Screen Space for drawing popup overlay
+    push();
+    if (!isShop) {
+        resetMatrix();
+    }
+
     const { popupX, popupY, popupHeight } = drawComponentPopupBase(component.name, statsWithExtra, popupWidth, lineHeight, padding, anchor);
     
     textSize(14);
@@ -2168,12 +2197,12 @@ function drawComponentComparisonPopup(controlledPlayer, regions, isShop = false)
         text('shift+click to sell item', popupX + padding, hintY);
     }
     
-    pop();
-
     // IF MOBILE: Draw Action Buttons
     if (typeof isMobile !== 'undefined' && isMobile) {
         drawMobileActionButtons(popupX, popupY, popupHeight, popupWidth, targetRegion, isShop);
     }
+    
+    pop();
 }
 
 function displayTeleportButton(controlledPlayer) {
