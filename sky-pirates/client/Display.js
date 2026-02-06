@@ -1296,6 +1296,8 @@ function drawComponentPopupBase(componentName, stats, popupWidth, lineHeight, pa
     strokeWeight(2);
     rect(popupX, popupY, popupWidth, popupHeight, 8);
     
+    pop();
+
     // Header
     fill(255, 255, 255);
     noStroke();
@@ -1335,6 +1337,8 @@ function drawTopRightComponentStats(player) {
             anchor = { x: region.x, y: region.y };
         }
     }
+
+    push(); // Ensure separate drawing state
 
     const stats = getComponentStats(targetComponent);
     const popupWidth = 250;
