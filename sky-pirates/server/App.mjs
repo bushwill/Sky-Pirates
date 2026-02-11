@@ -206,7 +206,7 @@ function updateAnimal(animal, deltaTime, threatGrid, gridSize) {
 }
 
 function updateAnimals() {
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
   const despawnDistSq = ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS; // Precompute square
 
   manageAnimalSpawning();
@@ -383,7 +383,7 @@ function updateEnemy(enemy) {
 function updatePlayer(player) {
   updatePlane(player);
   checkSpawnEnemyPlane(player);
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
 
   // Map Boundary Check - 10 Second Death Logic
   const boundaryX = mapData.sizeX;
@@ -511,7 +511,7 @@ function updatePlayer(player) {
 
 function updatePlane(plane) {
   if (!validatePlaneCoordinates(plane)) return;
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
   const speed = getSpeed(plane);
 
   // Stats Tracking (only for Player instances)
@@ -566,7 +566,7 @@ function updatePlane(plane) {
 
 // Update a single enemy boat (AI controlled)
 function updateBoat(boat) {
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
 
   if (boat.target) {
     updateGuns(boat, deltaTime);
@@ -615,7 +615,7 @@ function handleProjectileExplosion(projectile) {
 function updateProjectile(projectile) {
   if (projectile.markedForDeletion) return;
 
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
   if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
     projectile.markedForDeletion = true;
     return;
@@ -1153,7 +1153,7 @@ function updateCrate(crate, entityMap) {
     return;
   }
 
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
   let carrier = null;
   let player = null;
 
@@ -1585,7 +1585,7 @@ function createBullet(player, gun) {
   const vx = Math.cos(angle) * gun.projectileSpeed + (player.vx || 0);
   const vy = Math.sin(angle) * gun.projectileSpeed + (player.vy || 0);
 
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
 
   if (gun.name.includes('Firework Launcher')) {
     return new FireworkRocket(
@@ -2071,7 +2071,7 @@ function applyPlayerDrag(player, deltaTime) {
 }
 
 function updateHull(entity) {
-  const deltaTime = 0.01 * timeSpeed;
+  const deltaTime = 0.033 * timeSpeed;
   // Support both direct hull (boats) and chassis.hull (planes/players)
   const hull = (typeof entity.hull === 'number') ? entity.hull : (entity.chassis && typeof entity.chassis.hull === 'number' ? entity.chassis.hull : null);
   const maxHull = (typeof entity.maxHull === 'number') ? entity.maxHull : (entity.chassis && typeof entity.chassis.maxHull === 'number' ? entity.chassis.maxHull : null);
@@ -4177,13 +4177,15 @@ setInterval(() => {
 }, 60000);
 
 // Consolidated Game Loop
+// Reduced from 10ms (100Hz) to 33ms (~30Hz) to drastically improve performance with multiple players.
+// Physics feel should remain similar due to client-side interpolation.
 setInterval(() => {
   if (players.length > 0) updatePlayers();
   if (enemies.length > 0) updateEnemies();
   if (players.length > 0 || animals.length > 0) updateAnimals();
   if (projectiles.length > 0 && players.length > 0) updateProjectiles();
   if (players.length > 0) updateCrates();
-}, 10);
+}, 33);
 
 setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
