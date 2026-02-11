@@ -122,8 +122,8 @@ export class NavySalvagePlane extends EnemyPlane {
     this.crates = [];
     this.searchDirection = Math.random() < 0.5 ? -1 : 1;
     this.targetCrate = null;
-    this.lastCrateSearchTime = 0;
-    this.lastHostileCheckTime = 0;
+    this.lastCrateSearchTime = Date.now() - Math.random() * 2000;
+    this.lastHostileCheckTime = Date.now() - Math.random() * 1000;
     this.crateTargetStartiTime = 0;
 
     // Preferred patrol altitude
@@ -277,7 +277,7 @@ export class NavySalvagePlane extends EnemyPlane {
     this.seekingFleet = true;
     this.searchDirection = Math.random() < 0.5 ? -1 : 1;
     this.seekTargetBoat = null;
-    this.lastSeekScanTime = 0;
+    this.lastSeekScanTime = Date.now() - Math.random() * 1000;
     this.t_x = this.x + this.searchDirection * 5000;
     this.t_y = this.y;
   }
@@ -416,12 +416,16 @@ export class NavySalvagePlane extends EnemyPlane {
 
   attackPlayer(players) {
     this.keys.f = this.crates && this.crates.length > 0;
-    const targetPlayer = this.target && players.find(p => p.username === this.target.username);
-    if (!targetPlayer || targetPlayer.biome === 'recovery') {
+    
+    // Optimization: Check inclusion directly to verify connection status
+    // Avoids creating closures/callbacks every frame
+    const targetIsValid = this.target && players.includes(this.target);
+    
+    if (!targetIsValid || this.target.biome === 'recovery') {
       this.enterSearchingState();
       return;
     }
-    this.target = targetPlayer;
+    
     const hasCrates = this.target.crates && this.target.crates.length > 0;
     if (!hasCrates && !this.target.navyTargeted) {
       this.enterSearchingState();
@@ -447,7 +451,14 @@ export class NavySalvagePlane extends EnemyPlane {
     this.engine.power = Math.abs(angleDiff) > 0.1 ? this.engine.minPower : this.engine.maxPower;
     this.t_x = aimX;
     this.t_y = aimY;
-    this.aimPoint = { x: aimX, y: aimY };
+
+    // Reuse object to reduce GC pressure
+    if (!this.aimPoint) this.aimPoint = { x: aimX, y: aimY };
+    else {
+        this.aimPoint.x = aimX;
+        this.aimPoint.y = aimY;
+    }
+
     const inRange = distToTarget < this.gun1.projectileRange && this.gun1;
     const gunAngleDiff = inRange ? Math.abs(this.angleDiffTo(aimAngle)) : Infinity;
     const canShoot = inRange && gunAngleDiff < (this.gun1.maxAngle ?? Math.PI / 4);
@@ -578,8 +589,19 @@ export class NavySalvagePlane extends EnemyPlane {
   }
 
   checkRecoveryZonesAndMaybeReverse(buffer) {
-    const recoveryZones = mapData?.biomes?.filter(b => b.type === 'recoveryzone') || [];
-    for (const zone of recoveryZones) {
+    // Lazy init cache to avoid mapData race conditions and repeated allocations
+    if (!NavySalvagePlane._cachedRecoveryZones) {
+       if (!mapData || !mapData.biomes) return;
+       NavySalvagePlane._cachedRecoveryZones = mapData.biomes
+           .filter(b => b.type === 'recovery')
+           .map(b => ({
+               center: (b.x1 + b.x2) / 2,
+               radius: (b.x2 - b.x1) / 2
+           }));
+    }
+
+    const zones = NavySalvagePlane._cachedRecoveryZones;
+    for (const zone of zones) {
       const distToZone = Math.abs(this.x - zone.center);
       if (distToZone < zone.radius + buffer) {
         const movingTowardZone = (this.x < zone.center && this.searchDirection > 0) || (this.x > zone.center && this.searchDirection < 0);
@@ -661,6 +683,7 @@ export class NavySalvagePlane extends EnemyPlane {
 export class NavySalvageBoat extends EnemyBoat {
   constructor(username, r, g, b, x, y, planeCount = 3, level = 1) {
     super(username, r, g, b, x, y, 'navy');
+    this.lastTopScanTime = Date.now() - Math.random() * 500;
     this.level = level || 1;
     this.angle = -Math.PI / 2; // Point boat upward so gun can cover upper hemisphere
     this.maxHull = 400 + (this.level - 1) * 200; // Scale hull with level: 400/600/800
@@ -693,7 +716,9 @@ export class NavySalvageBoat extends EnemyBoat {
     }
 
     // Look for any player with navyTargeted = true
-    if (!this.target) {
+    const now = Date.now();
+    if (!this.target && (now - this.lastTopScanTime > 500)) {
+      this.lastTopScanTime = now;
       this.findTarget(players);
     }
 
@@ -729,7 +754,10 @@ export class NavySalvageBoat extends EnemyBoat {
       this.aiState = "idle";
       this.resetToPassive();
       // While idle, allow the boat's gun to track the nearest nearby player (no firing)
-      this.trackNearestPlayerWhileIdle(players);
+      if (now - this.lastTopScanTime > 500) {
+        this.lastTopScanTime = now;
+        this.trackNearestPlayerWhileIdle(players);
+      }
     }
   }
 
