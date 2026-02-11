@@ -207,33 +207,9 @@ function updateAnimal(animal, deltaTime, threatGrid, gridSize) {
 
 function updateAnimals() {
   const deltaTime = 0.01 * timeSpeed;
-  const DESPAWN_DISTANCE = ANIMAL_SPAWN_RADIUS; // Use the constant
+  const despawnDistSq = ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS; // Precompute square
 
   manageAnimalSpawning();
-
-  // Filter out animals that are too far from all players
-  animals = animals.filter(animal => {
-    // 1. Check bounds for fish (INSTANT KILL)
-    if (animal.type === 'fish') {
-      if (animal.x < -mapData.sizeX || animal.x > mapData.sizeX ||
-        animal.y > mapData.oceanDepth || animal.y < -mapData.skyHeight) {
-        return false;
-      }
-    }
-
-    // 2. Check if animal is within range of ANY player
-    const isNearPlayer = players.some(player => {
-      const dx = animal.x - player.x;
-      const dy = animal.y - player.y;
-      return (dx * dx + dy * dy) <= (DESPAWN_DISTANCE * DESPAWN_DISTANCE);
-    });
-
-    if (!isNearPlayer) {
-      return false; // Despawn
-    }
-
-    return true; // Keep
-  });
 
   // Spatial Grid for efficient threat detection
   const GRID_CELL_SIZE = 500;
@@ -241,18 +217,54 @@ function updateAnimals() {
 
   function addToGrid(entity) {
     const key = `${Math.floor(entity.x / GRID_CELL_SIZE)},${Math.floor(entity.y / GRID_CELL_SIZE)}`;
-    if (!threatGrid.has(key)) {
-      threatGrid.set(key, []);
+    let cell = threatGrid.get(key);
+    if (!cell) {
+        cell = [];
+        threatGrid.set(key, cell);
     }
-    threatGrid.get(key).push(entity);
+    cell.push(entity);
   }
 
-  players.forEach(addToGrid);
-  projectiles.forEach(addToGrid);
+  // Only rebuild grid if we have animals to update
+  if (animals.length > 0) {
+      for (let i = 0; i < players.length; i++) addToGrid(players[i]);
+      for (let i = 0; i < projectiles.length; i++) addToGrid(projectiles[i]);
+  }
 
-  animals.forEach(animal => {
-    updateAnimal(animal, deltaTime, threatGrid, GRID_CELL_SIZE);
-  });
+  // Iterate backwards to allow safe removal (splice)
+  for (let i = animals.length - 1; i >= 0; i--) {
+    const animal = animals[i];
+    
+    // 1. Check bounds for fish (INSTANT KILL)
+    if (animal.type === 'fish') {
+      if (animal.x < -mapData.sizeX || animal.x > mapData.sizeX ||
+        animal.y > mapData.oceanDepth || animal.y < -mapData.skyHeight) {
+        animals.splice(i, 1);
+        continue;
+      }
+    }
+
+    // 2. Check if animal is within range of ANY player
+    // Optimization: Check squared distance, avoid Math.sqrt
+    let isNearPlayer = false;
+    for (let j = 0; j < players.length; j++) {
+        const player = players[j];
+        const dx = animal.x - player.x;
+        const dy = animal.y - player.y;
+        if ((dx * dx + dy * dy) <= despawnDistSq) {
+            isNearPlayer = true;
+            break;
+        }
+    }
+
+    if (!isNearPlayer) {
+      animals.splice(i, 1);
+      continue;
+    }
+
+    // Update logic
+    animal.update(deltaTime, threatGrid, GRID_CELL_SIZE);
+  }
 }
 
 function updateFleets() {
@@ -4144,12 +4156,16 @@ setInterval(() => {
   players = players.filter((player) => now - player.lastActivity < INACTIVITY_THRESHOLD);
 }, 60000);
 
-setInterval(() => { if (players.length > 0) updatePlayers() }, 10);
-setInterval(() => { if (enemies.length > 0) updateEnemies() }, 10);
-setInterval(() => { if (players.length > 0 || animals.length > 0) updateAnimals() }, 10);
+// Consolidated Game Loop
+setInterval(() => {
+  if (players.length > 0) updatePlayers();
+  if (enemies.length > 0) updateEnemies();
+  if (players.length > 0 || animals.length > 0) updateAnimals();
+  if (projectiles.length > 0 && players.length > 0) updateProjectiles();
+  if (players.length > 0) updateCrates();
+}, 10);
+
 setInterval(() => { updateFleets() }, 5000);
-setInterval(() => { if (projectiles.length > 0 && players.length > 0) updateProjectiles() }, 10);
-setInterval(() => { if (players.length > 0) updateCrates() }, 10);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
 
 // CheckParties (Offset: 20s)
@@ -4212,102 +4228,163 @@ setInterval(() => {
     // Pre-calculate Global State that doesn't change per-player
     // 1. Global Chat Messages
     const globalMessages = [];
-    players.forEach(p => {
+    // Only process messages if any exist to avoid iteration overhead
+    let hasMessages = false;
+    for (let i = 0; i < players.length; i++) {
+        const p = players[i];
         if (p.messages && p.messages.length > 0) {
-            p.messages.forEach(msg => {
+            hasMessages = true;
+            for (let j = 0; j < p.messages.length; j++) {
+                const msg = p.messages[j];
                 globalMessages.push({
                     id: msg[0], 
                     username: p.username, 
                     message: msg[1]
                 });
-            });
+            }
         }
+    }
+
+    // 2. Pre-serialize ALL entities once (Huge GC optimization)
+    // We create the "public" version of all players once.
+    const allPublicPlayers = players.map(p => p.toClientData(false));
+    
+    // Players map for fast private lookup
+    const playerMap = new Map();
+    players.forEach(p => playerMap.set(p.username, p));
+
+    const allEnemies = enemies.map(enemy => {
+        if (enemy.toClientData) return enemy.toClientData();
+        return {
+            type: enemy.type,
+            username: enemy.username,
+            faction: enemy.faction,
+            x: +enemy.x.toFixed(2),
+            y: +enemy.y.toFixed(2),
+            angle: +enemy.angle.toFixed(3),
+            vx: +enemy.vx.toFixed(2),
+            vy: +enemy.vy.toFixed(2),
+            r: enemy.r, g: enemy.g, b: enemy.b,
+            size: enemy.size,
+            hull: enemy.hull ?? enemy.chassis?.hull ?? 0,
+            maxHull: enemy.maxHull ?? enemy.chassis?.maxHull ?? 1
+        };
     });
 
-    // 2. Serialize Shops (Static, but maybe efficient enough to do once? Or just per player in recovery?)
-    // Actually shops are global. Serialize once.
-    // const globalShops = Array.from(shops.values()).map(shop => shop.toClientData()); 
-    // Wait, user said send shops 1/sec separately. Moving shops out.
-    
+    const allProjectiles = projectiles.map(p => p.toClientData());
+    const allCrates = crates.map(c => c.toClientData());
+    // Animals and Events are simple objects, we can filter them directly or map them if needed
+    // Assuming animals don't have a complex toClientData yet, or it's lightweight. 
+    // If they do, map here. For now, use raw animals array as they are simple.
+
     // Broadcast to each connected client
     playerSockets.forEach((ws, username) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         
         const requestingPlayer = getPlayerOrRespawningPlayer(username);
-        if (!requestingPlayer) return; // Can't cull without a reference point (or send full state?)
+        if (!requestingPlayer) return; 
 
         const cullingDistance = 4000;
-        const extendedCulling = 5000; // For events/crates
+        const cullingSq = cullingDistance * cullingDistance;
+        const extendedCulling = 5000;
+        const extendedSq = extendedCulling * extendedCulling;
+        const crateSq = 2000 * 2000;
 
-        // 1. Players
-        const serializedPlayers = players
-            .filter(p => {
-                if (p.username === username) return true;
-                if (requestingPlayer.party && p.party && requestingPlayer.party.name === p.party.name) return true;
-                const dist = Math.sqrt((p.x - requestingPlayer.x) ** 2 + (p.y - requestingPlayer.y) ** 2);
-                return dist <= cullingDistance;
-            })
-            .map(p => {
-                const includePrivate = (p.username === username);
-                return p.toClientData(includePrivate);
-            });
+        // 1. Players: Combine pre-serialized public data with private data for self
+        const serializedPlayers = [];
+        for (let i = 0; i < allPublicPlayers.length; i++) {
+            const pData = allPublicPlayers[i];
+            
+            // Check visibility matches
+            let isVisible = false;
+            // Always include self
+            if (pData.username === username) {
+                // For self, we need to regenerate to include private data? 
+                // Or just merge it? Merging is safer.
+                // Actually, calling toClientData(true) for just ONE player (self) is cheap.
+                const myRealPlayer = playerMap.get(username);
+                if (myRealPlayer) {
+                    serializedPlayers.push(myRealPlayer.toClientData(true));
+                }
+                continue; 
+            }
 
-        // 2. Enemies
-        const filteredEnemies = filterEntitiesInRange(enemies, requestingPlayer);
-        const serializedEnemies = filteredEnemies.map(enemy => {
-            if (enemy.toClientData) return enemy.toClientData();
-            return {
-                type: enemy.type,
-                username: enemy.username,
-                faction: enemy.faction,
-                x: +enemy.x.toFixed(2),
-                y: +enemy.y.toFixed(2),
-                angle: +enemy.angle.toFixed(3),
-                vx: +enemy.vx.toFixed(2),
-                vy: +enemy.vy.toFixed(2),
-                r: enemy.r, g: enemy.g, b: enemy.b,
-                size: enemy.size,
-                hull: enemy.hull ?? enemy.chassis?.hull ?? 0,
-                maxHull: enemy.maxHull ?? enemy.chassis?.maxHull ?? 1
-            };
-        });
+            // Check party
+            if (requestingPlayer.party && pData.party && requestingPlayer.party.name === pData.party.name) {
+                isVisible = true;
+            } else {
+                // Check distance
+                const dx = pData.x - requestingPlayer.x;
+                const dy = pData.y - requestingPlayer.y;
+                if (dx*dx + dy*dy <= cullingSq) isVisible = true;
+            }
 
-        // 3. Animals
-        // const filteredAnimals = filterEntitiesInRange(animals, requestingPlayer);
-        // Optimization: Filter manually to avoid extra function call overhead if needed
-        const filteredAnimals = animals.filter(e => {
-             const dx = e.x - requestingPlayer.x;
-             const dy = e.y - requestingPlayer.y;
-             return (dx * dx + dy * dy) <= (cullingDistance * cullingDistance);
-        });
+            if (isVisible) {
+                serializedPlayers.push(pData);
+            }
+        }
 
-        // 4. Projectiles
-        const filteredProjectiles = projectiles.filter(e => {
-             const dx = e.x - requestingPlayer.x;
-             const dy = e.y - requestingPlayer.y;
-             return (dx * dx + dy * dy) <= (cullingDistance * cullingDistance);
-        }).map(p => p.toClientData());
+        // 2. Enemies (Filter pre-serialized)
+        const filteredEnemies = [];
+        for (let i = 0; i < allEnemies.length; i++) {
+            const e = allEnemies[i];
+            const dx = e.x - requestingPlayer.x;
+            const dy = e.y - requestingPlayer.y;
+            if (dx*dx + dy*dy <= cullingSq) {
+                filteredEnemies.push(e);
+            }
+        }
 
-        // 5. Crates (Larger Range)
-        const filteredCrates = crates.filter(e => {
-             const dx = e.x - requestingPlayer.x;
-             const dy = e.y - requestingPlayer.y;
-             return (dx * dx + dy * dy) <= (2000 * 2000);
-        }).map(c => c.toClientData());
+        // 3. Animals (Filter raw)
+        const filteredAnimals = [];
+        for (let i = 0; i < animals.length; i++) {
+            const a = animals[i];
+            const dx = a.x - requestingPlayer.x;
+            const dy = a.y - requestingPlayer.y;
+            if (dx*dx + dy*dy <= cullingSq) {
+                filteredAnimals.push(a);
+            }
+        }
 
-        // 6. Events (Largest Range)
-        const filteredEvents = events.filter(e => {
-             const dx = e.x - requestingPlayer.x;
-             const dy = e.y - requestingPlayer.y;
-             return (dx * dx + dy * dy) <= (extendedCulling * extendedCulling);
-        });
+        // 4. Projectiles (Filter pre-serialized)
+        const filteredProjectiles = [];
+        for (let i = 0; i < allProjectiles.length; i++) {
+            const p = allProjectiles[i];
+            const dx = p.x - requestingPlayer.x;
+            const dy = p.y - requestingPlayer.y;
+            if (dx*dx + dy*dy <= cullingSq) {
+                filteredProjectiles.push(p);
+            }
+        }
+
+        // 5. Crates (Filter pre-serialized)
+        const filteredCrates = [];
+        for (let i = 0; i < allCrates.length; i++) {
+            const c = allCrates[i];
+            const dx = c.x - requestingPlayer.x;
+            const dy = c.y - requestingPlayer.y;
+            if (dx*dx + dy*dy <= crateSq) { // 2000m range
+                filteredCrates.push(c);
+            }
+        }
+
+        // 6. Events (Filter raw)
+        const filteredEvents = [];
+        for (let i = 0; i < events.length; i++) {
+            const e = events[i];
+            const dx = e.x - requestingPlayer.x;
+            const dy = e.y - requestingPlayer.y;
+            if (dx*dx + dy*dy <= extendedSq) {
+                filteredEvents.push(e);
+            }
+        }
 
         sendMessage(ws, {
             type: 'gamestate_update',
-            time: cycleTime, // Client uses this 0-3000000 range to calculate sun/moon pos
+            time: cycleTime, 
             players: serializedPlayers,
             messages: globalMessages,
-            enemies: serializedEnemies,
+            enemies: filteredEnemies,
             animals: filteredAnimals,
             projectiles: filteredProjectiles,
             crates: filteredCrates,
