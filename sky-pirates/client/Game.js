@@ -156,6 +156,11 @@ function setup() {
         settings = { ...settings, ...loadedSettings };
     }
 
+    // Force fixed camera on mobile regardless of saved setting
+    if (isMobile) {
+        settings.dynamicCamera = false;
+    }
+
     colorPicker = createColorPicker('#ff8800');
     // Set to initial position, will be updated each frame in draw()
     colorPicker.hide();

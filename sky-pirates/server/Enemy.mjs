@@ -754,18 +754,25 @@ export class NavySalvageBoat extends EnemyBoat {
       this.aiState = "idle";
       this.resetToPassive();
       // While idle, allow the boat's gun to track the nearest nearby player (no firing)
+      // Check for aim target every 500ms
       if (now - this.lastTopScanTime > 500) {
         this.lastTopScanTime = now;
-        this.trackNearestPlayerWhileIdle(players);
+        this.updateIdleTrackingTarget(players);
       }
+      
+      // Update aim every frame if there is an idle target
+      this.aimAtIdleTarget();
     }
   }
 
-  // While idle, track the nearest nearby player with the gun (but don't engage)
-  trackNearestPlayerWhileIdle(players) {
-    if (!players || players.length === 0) return;
+  // Find a player to track while idle (runs infrequently)
+  updateIdleTrackingTarget(players) {
+    if (!players || players.length === 0) {
+        this.idleTrackTarget = null;
+        return;
+    }
 
-    const TRACK_RANGE = 800; // meters to start passively tracking
+    const TRACK_RANGE = 1000; // Increased to 1000m as requested
     const trackRangeSq = TRACK_RANGE * TRACK_RANGE;
     let nearest = null;
     let minDistSq = Infinity;
@@ -781,8 +788,12 @@ export class NavySalvageBoat extends EnemyBoat {
         nearest = player;
       }
     }
+    this.idleTrackTarget = nearest;
+  }
 
-    if (!nearest) {
+  // Update aim to face the idle target (runs every frame)
+  aimAtIdleTarget() {
+    if (!this.idleTrackTarget) {
       // No one nearby to track; reset aim to boat
       this.t_x = this.x;
       this.t_y = this.y;
@@ -790,18 +801,32 @@ export class NavySalvageBoat extends EnemyBoat {
       return;
     }
 
+    const target = this.idleTrackTarget;
+    // Basic validation: ensure target is still close enough (soft limit 1200m to prevent snapping)
+    const distSq = (target.x - this.x)**2 + (target.y - this.y)**2;
+    if (distSq > 1200 * 1200) {
+        this.idleTrackTarget = null;
+        return;
+    }
+
     // Predict where the player will be shortly for smoother tracking.
-    // Use sqrt only once to compute a time-to-lead heuristic.
     const projectileSpeed = this.gun1?.projectileSpeed ?? 20;
-    const dist = Math.sqrt(minDistSq);
+    // Use fast approximation for time to lead if possible, or just standard dist
+    const dist = Math.sqrt(distSq); 
     const timeToLead = Math.min(2, Math.max(0.2, dist / (projectileSpeed + 1)));
-    const predictedX = nearest.x + (nearest.vx ?? 0) * timeToLead;
-    const predictedY = nearest.y + (nearest.vy ?? 0) * timeToLead;
+    const predictedX = target.x + (target.vx ?? 0) * timeToLead;
+    const predictedY = target.y + (target.vy ?? 0) * timeToLead;
 
     this.t_x = predictedX;
     this.t_y = predictedY;
     this.aimPoint = { x: predictedX, y: predictedY };
     // Passive only: don't set firing flags here
+  }
+
+  // Deprecated: Old monolithic method, replaced by updateIdleTrackingTarget + aimAtIdleTarget
+  trackNearestPlayerWhileIdle(players) {
+    this.updateIdleTrackingTarget(players);
+    this.aimAtIdleTarget();
   }
 
   resetToPassive() {

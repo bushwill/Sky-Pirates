@@ -936,12 +936,24 @@ function updateShops() {
   });
 }
 
+let lastCrateGenTime = 0;
+
 function updateCrates() {
-  generateMoneyCrates();
-  generateStandardComponentCrates();
-  generateWeaponCrates();
+  const now = Date.now();
+  if (now - lastCrateGenTime > 1000) {
+    lastCrateGenTime = now;
+    generateMoneyCrates();
+    generateStandardComponentCrates();
+    generateWeaponCrates();
+  }
+
+  // Optimize carrier lookup with a Map
+  const entityMap = new Map();
+  for (const p of players) entityMap.set(p.username, p);
+  for (const e of enemies) entityMap.set(e.username, e);
+
   crates.forEach((crate) => {
-    updateCrate(crate);
+    updateCrate(crate, entityMap);
   });
 }
 
@@ -1066,16 +1078,16 @@ function handleCarriedCratePhysics(crate, carrier, deltaTime) {
   applyCrateDrag(crate, 1.0, deltaTime);
   applyCrateBuoyancy(crate, null);
 
-  const distanceToTarget = Math.sqrt((targetX - crate.x) ** 2 + (targetY - crate.y) ** 2);
+  // Optimization: Reuse previously calculated distance (distanceToTarget is identical to distance)
   let dampingFactor = 0.8;
-  if (distanceToTarget > 1000) {
-    dampingFactor -= Math.min(0.3, distanceToTarget / 50000);
+  if (distance > 1000) {
+    dampingFactor -= Math.min(0.3, distance / 50000);
   }
 
   crate.vx *= dampingFactor;
   crate.vy *= dampingFactor;
 
-  const maxVelocity = Math.min(5000, 200 + (distanceToTarget * 0.3));
+  const maxVelocity = Math.min(5000, 200 + (distance * 0.3));
   const speed = Math.sqrt(crate.vx * crate.vx + crate.vy * crate.vy);
   if (speed > maxVelocity) {
     const scale = maxVelocity / speed;
@@ -1104,20 +1116,38 @@ function handleFreeCratePhysics(crate, deltaTime) {
   updateCratePosition(crate, deltaTime);
 }
 
-function applyCrateRepulsion(crate, allCrates, deltaTime) {
+function applyCrateRepulsion(crate, allCrates, deltaTime, entityMap) {
   const REPULSION_RADIUS = crate.size * 2;
   const REPULSION_STRENGTH = 12;
   const CHECK_RADIUS = REPULSION_RADIUS * 3; // Check slightly larger area
 
-  // Find crate index for comparison
-  const crateIndex = allCrates.indexOf(crate);
-  if (crateIndex === -1) return;
+  let cratesToCheck = [];
 
-  // If this crate is carried, only check against other crates carried by the same carrier
-  // Otherwise check all crates, but only those with higher index to avoid duplicate checks
-  const cratesToCheck = crate.carrier
-    ? allCrates.filter(c => c.carrier === crate.carrier && allCrates.indexOf(c) > crateIndex)
-    : allCrates.slice(crateIndex + 1); // Only check crates after this one in the array
+  if (crate.carrier) {
+    // Optimization: Look up carrier directly instead of searching allCrates
+    let carrier = null;
+    if (entityMap) {
+      carrier = entityMap.get(crate.carrier);
+    } else {
+       carrier = players.find(p => p.username === crate.carrier) || enemies.find(e => e.username === crate.carrier);
+    }
+
+    // Only check against other crates in the same carrier's inventory
+    // This reduces checks from O(TotalCrates) to O(CarriedCrates), effectively O(1)
+    if (carrier && carrier.crates) {
+        const myIndex = carrier.crates.indexOf(crate);
+        if (myIndex !== -1) {
+            // Only check crates after this one in the carrier's list to avoid double physics application
+            cratesToCheck = carrier.crates.slice(myIndex + 1);
+        }
+    }
+  } else {
+    // Legacy logic for free-floating crates (checks against all other free/carried crates)
+    const crateIndex = allCrates.indexOf(crate);
+    if (crateIndex !== -1) {
+        cratesToCheck = allCrates.slice(crateIndex + 1);
+    }
+  }
 
   cratesToCheck.forEach(otherCrate => {
     const dx = crate.x - otherCrate.x;
@@ -1161,7 +1191,7 @@ function handleCrateCollection(crate, player, batchMode = false) {
   }
 }
 
-function updateCrate(crate) {
+function updateCrate(crate, entityMap) {
   if (!crate.type) {
     crate.removedFromWorld = true;
     crates = crates.filter((c) => c !== crate);
@@ -1169,9 +1199,20 @@ function updateCrate(crate) {
   }
 
   const deltaTime = 0.01 * timeSpeed;
-  const player = players.find(p => p.username === crate.carrier);
-  const enemy = enemies.find(e => e.username === crate.carrier);
-  const carrier = player || enemy;
+  let carrier = null;
+  let player = null;
+
+  if (crate.carrier) {
+    if (entityMap) {
+      carrier = entityMap.get(crate.carrier);
+    } else {
+      carrier = players.find(p => p.username === crate.carrier) || enemies.find(e => e.username === crate.carrier);
+    }
+    // Check if carrier is a player (using type check or property)
+    if (carrier && players.includes(carrier)) {
+       player = carrier;
+    }
+  }
 
   if (crate.carrier) {
     if (!carrier) {
@@ -1189,19 +1230,28 @@ function updateCrate(crate) {
     handleFreeCratePhysics(crate, deltaTime);
   }
 
-  applyCrateRepulsion(crate, crates, deltaTime);
+  applyCrateRepulsion(crate, crates, deltaTime, entityMap);
 
   players.forEach((new_player) => {
     if (new_player.crates.length >= new_player.maxCrates) return;
     const dx = new_player.x - crate.x;
     const dy = new_player.y - crate.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const attach_radius = 2 * (new_player.size + crate.size + 5); // Double the pickup distance
-    if (distance <= attach_radius && new_player.username !== crate.carrier) {
+    // Optimization: Squared distance check to avoid Sqrt
+    const distSq = dx * dx + dy * dy;
+    const attach_radius = 2 * (new_player.size + crate.size + 5); 
+    const attach_radius_sq = attach_radius * attach_radius;
+    
+    if (distSq <= attach_radius_sq && new_player.username !== crate.carrier) {
       // If crate is currently carried by someone, detach it from them first
       if (crate.carrier) {
-        const previousCarrier = players.find(p => p.username === crate.carrier) ||
+        let previousCarrier = null;
+        if(entityMap) {
+            previousCarrier = entityMap.get(crate.carrier);
+        } else {
+             previousCarrier = players.find(p => p.username === crate.carrier) ||
           enemies.find(e => e.username === crate.carrier);
+        }
+
         if (previousCarrier && previousCarrier.detachCrate) {
           previousCarrier.detachCrate(crate);
         }
@@ -1210,9 +1260,14 @@ function updateCrate(crate) {
       new_player.attachCrate(crate);
     }
   });
+  
+  // Optimization: Skip enemy pickup loops if crate is already carried (enemies don't steal)
+  if (crate.carrier) return;
 
   // --- Enemy interactions: first handle plane attachments deterministically ---
   const DEFAULT_PLANE_PICKUP = 60;
+  const DEFAULT_PLANE_PICKUP_SQ = DEFAULT_PLANE_PICKUP * DEFAULT_PLANE_PICKUP;
+  
   let nearestPlane = null;
   let nearestPlaneDistSq = Infinity;
   for (const e of enemies) {
@@ -1221,7 +1276,7 @@ function updateCrate(crate) {
       const dx = e.x - crate.x;
       const dy = e.y - crate.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 <= DEFAULT_PLANE_PICKUP * DEFAULT_PLANE_PICKUP && d2 < nearestPlaneDistSq) {
+      if (d2 <= DEFAULT_PLANE_PICKUP_SQ && d2 < nearestPlaneDistSq) {
         nearestPlane = e;
         nearestPlaneDistSq = d2;
       }
@@ -1229,12 +1284,8 @@ function updateCrate(crate) {
   }
 
   if (nearestPlane) {
-    // Only attempt plane attachments for unattached crates. Planes must not steal crates
-    // that already have a carrier (players or other entities).
-    if (!crate.carrier) {
-      // Attempt attach (Enemy.attachCrate will also defensively refuse if crate.carrier is set)
-      nearestPlane.attachCrate(crate);
-    }
+    // Attempt attach (Enemy.attachCrate will also defensively refuse if crate.carrier is set)
+    nearestPlane.attachCrate(crate);
   }
 
   // --- Then handle boat pickups (boats only take unattached crates) ---
@@ -1243,10 +1294,13 @@ function updateCrate(crate) {
     if (enemy.isFleetBoat && typeof enemy.storeCrate === 'function') {
       const dxB = enemy.x - crate.x;
       const dyB = enemy.y - crate.y;
-      const distanceB = Math.sqrt(dxB * dxB + dyB * dyB);
+      // Optimization: Squared distance check
+      const distSq = dxB * dxB + dyB * dyB;
       const DEFAULT_PICKUP_RADIUS = 100;
       const pickupRadius = Math.max(DEFAULT_PICKUP_RADIUS, 2 * (enemy.size + crate.size + 10));
-      if (distanceB <= pickupRadius && crate.carrier !== enemy.username) {
+      const pickupRadiusSq = pickupRadius * pickupRadius;
+      
+      if (distSq <= pickupRadiusSq && crate.carrier !== enemy.username) {
         if (!crate.carrier) {
           // Prevent immediate pickup of crates that were just detached (race condition)
           const PICKUP_COOLDOWN_MS = 500; // ignore crates detached within this many ms

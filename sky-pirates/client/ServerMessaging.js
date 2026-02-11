@@ -994,7 +994,7 @@ function loadSettings() {
     
     // Return default settings if none found
     return {
-        dynamicCamera: false
+        dynamicCamera: true
     };
 }
 
