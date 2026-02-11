@@ -507,55 +507,6 @@ function updatePlayer(player) {
     }
   }
 
-const ACHIEVEMENT_DIST_CHECK_INTERVAL = 1000;
-setInterval(() => {
-    players.forEach(player => {
-        // Achievement Check: Max Altitude (Above the Clouds!)
-        if (player.y < -7000) {
-            if (player.achievements && player.achievements['mile_high_club']) {
-                player.achievements['mile_high_club'].complete(player);
-            }
-        }
-
-        // Achievement Check: Pacifist Run (Reach 100km zone)
-        // 100km = 100,000 units.
-        if (Math.abs(player.x) > 100000) {
-            if (player.pacifist && player.achievements && player.achievements['pacifist_run']) {
-                player.achievements['pacifist_run'].complete(player);
-            }
-            // Achievement Check: Purist (Reach 100km with base gear)
-            if (player.baseGearRun && player.achievements && player.achievements['purist']) {
-                player.achievements['purist'].complete(player);
-            }
-        }
-
-        // Achievement Check: Brand Loyalty (Split by manufacturer)
-        // Equip 3 Level 10 components from a single manufacturer
-        if (player.achievements && player.brandLoyalty && !player.failedBrandLoyalty) {
-             const brand = player.brandLoyalty;
-             // Map brand name to achievement ID key
-             const achKey = `${brand.toLowerCase()}_loyalist`;
-
-             if (player.achievements[achKey] && !player.achievements[achKey].completed) {
-                // Parse component stats to verify
-                const checkComponent = (comp, requiredBrand) => {
-                    if (!comp || !comp.name) return false;
-                    // Expected: "{Brand} Standard {Type} Lvl 10"
-                    return comp.name.startsWith(requiredBrand) && comp.name.endsWith("Lvl 10");
-                };
-
-                const validChassis = checkComponent(player.chassis, brand);
-                const validEngine = checkComponent(player.engine, brand);
-                const validWings = checkComponent(player.wings, brand);
-
-                if (validChassis && validEngine && validWings) {
-                    player.achievements[achKey].complete(player);
-                }
-             }
-        }
-    });
-}, ACHIEVEMENT_DIST_CHECK_INTERVAL);
-
 }
 
 function updatePlane(plane) {
@@ -642,6 +593,10 @@ function updateProjectiles() {
   projectiles.forEach((projectile) => {
     updateProjectile(projectile);
   });
+  // Batch removal at end of frame
+  if (projectiles.some(p => p.markedForDeletion)) {
+      projectiles = projectiles.filter(p => !p.markedForDeletion);
+  }
 }
 
 function handleProjectileExplosion(projectile) {
@@ -654,7 +609,7 @@ function handleProjectileExplosion(projectile) {
       projectiles.push(...newProjectiles);
     }
   }
-  projectiles = projectiles.filter((p) => p !== projectile);
+  // checking next frame cleanup
 }
 
 function updateProjectile(projectile) {
@@ -662,7 +617,7 @@ function updateProjectile(projectile) {
 
   const deltaTime = 0.01 * timeSpeed;
   if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
-    projectiles = projectiles.filter((p) => p !== projectile);
+    projectile.markedForDeletion = true;
     return;
   }
   
@@ -689,7 +644,7 @@ function updateProjectile(projectile) {
   projectile.biome = mapData.getBiomeAtPosition(projectile.x, projectile.y);
 
   if (projectile.biome === 'water' && (projectile.type === 'fire' || projectile.type === 'fireworks_fire')) {
-    projectiles = projectiles.filter((p) => p !== projectile);
+    projectile.markedForDeletion = true;
     return;
   }
   
@@ -782,7 +737,7 @@ function updateProjectile(projectile) {
           projectile.hitEntities = projectile.hitEntities || [];
           projectile.hitEntities.push(player.id || player.username);
       } else {
-        projectiles = projectiles.filter((p) => p !== projectile);
+        projectile.markedForDeletion = true;
         return;
       }
     }
@@ -840,7 +795,7 @@ function updateProjectile(projectile) {
           // Avoid double hitting same entity in same frame? 
           // (Collision check usually prevents this if movement is handled right, but we removed from projectiles list to stop it previously)
       } else {
-          projectiles = projectiles.filter((p) => p !== projectile);
+          projectile.markedForDeletion = true;
           return;
       }
     }
@@ -900,7 +855,7 @@ function updateProjectile(projectile) {
        if (projectile.piercing > 0) {
           projectile.piercing--;
       } else {
-           projectiles = projectiles.filter((p) => p !== projectile);
+           projectile.markedForDeletion = true;
            return;
       }
     }
@@ -4243,6 +4198,53 @@ setInterval(() => {
 setInterval(() => { 
   updateShops(); 
 }, 1000); // Check shop refresh every second
+
+// Achievement Checks (Interval: 1s)
+setInterval(() => {
+    if (players.length > 0) {
+        players.forEach(player => {
+            // Achievement Check: Max Altitude (Above the Clouds!)
+            if (player.y < -7000) {
+                if (player.achievements && player.achievements['mile_high_club']) {
+                    player.achievements['mile_high_club'].complete(player);
+                }
+            }
+
+            // Achievement Check: Pacifist Run (Reach 100km zone)
+            // 100km = 100,000 units.
+            if (Math.abs(player.x) > 100000) {
+                if (player.pacifist && player.achievements && player.achievements['pacifist_run']) {
+                    player.achievements['pacifist_run'].complete(player);
+                }
+                // Achievement Check: Purist (Reach 100km with base gear)
+                if (player.baseGearRun && player.achievements && player.achievements['purist']) {
+                    player.achievements['purist'].complete(player);
+                }
+            }
+
+            // Achievement Check: Brand Loyalty
+            if (player.achievements && player.brandLoyalty && !player.failedBrandLoyalty) {
+                 const brand = player.brandLoyalty;
+                 const achKey = `${brand.toLowerCase()}_loyalist`;
+
+                 if (player.achievements[achKey] && !player.achievements[achKey].completed) {
+                    const checkComponent = (comp, requiredBrand) => {
+                        if (!comp || !comp.name) return false;
+                        return comp.name.startsWith(requiredBrand) && comp.name.endsWith("Lvl 10");
+                    };
+
+                    const validChassis = checkComponent(player.chassis, brand);
+                    const validEngine = checkComponent(player.engine, brand);
+                    const validWings = checkComponent(player.wings, brand);
+
+                    if (validChassis && validEngine && validWings) {
+                        player.achievements[achKey].complete(player);
+                    }
+                 }
+            }
+        });
+    }
+}, 1000);
 
 setInterval(() => { if (pendingRespawns.length > 0) processPendingRespawns() }, 100); // Check pending respawns frequently
 
