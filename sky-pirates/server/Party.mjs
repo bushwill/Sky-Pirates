@@ -8,14 +8,6 @@ export class Party {
     }
 
     addPlayer(player) {
-        // Remove from previous party if necessary
-        if (player.party && player.party.name !== this.name) {
-            // Find previous party by name and remove player
-            if (typeof parties !== 'undefined') {
-                const oldParty = parties.find(p => p.name === player.party.name);
-                if (oldParty) oldParty.removePlayer(player);
-            }
-        }
         // Prevent duplicates
         if (!this.players.includes(player)) {
             this.players.push(player);

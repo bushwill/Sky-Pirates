@@ -1678,7 +1678,14 @@ class LoginMenuScreen extends MenuScreen {
     keyPressed(k) {
         if (k === 'Enter') {
             if (signedIn) {
+                // If focusing on party field, process party change
+                if (this.partyField && this.partyField.focused) {
+                    if (this.partyField.input && this.partyField.input.elt) this.partyField.input.elt.blur();
+                    this.changeParty(); 
+                }
+
                 // Close pause menu
+                this.hide(); // Ensure inputs are hidden
                 if (typeof setMenuVisible === 'function') {
                     setMenuVisible(false);
                 } else if (typeof menuVisible !== 'undefined') {

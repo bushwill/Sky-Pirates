@@ -377,12 +377,13 @@ export class Player extends Plane {
       vy: +this.vy.toFixed(2),
       angle: +this.angle.toFixed(3),
       r: this.r, 
+      g: this.g,
+      b: this.b,
+      party: this.party,
       baseGearRun: this.baseGearRun, // Persist for achievements
       brandLoyalty: this.brandLoyalty,
       failedBrandLoyalty: this.failedBrandLoyalty,
 
-      g: this.g,
-      b: this.b,
       biome: this.biome,
       selectedGun: this.selectedGun,
       navyTargeted: this.navyTargeted,

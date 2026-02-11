@@ -3494,23 +3494,34 @@ function handleLogin(ws, { username, r, g, b, selectedGun1, selectedGun2, partyN
       // If partyName is missing or empty and clearParty is not set, leave the existingPlayer.party unchanged.
       if (typeof partyName !== 'undefined' && partyName && partyName.trim()) {
         const trimmed = partyName.trim();
+
+        // Check if player is already in a different party and remove them
+        if (existingPlayer.party && existingPlayer.party.name && existingPlayer.party.name !== trimmed) {
+            const oldParty = parties.find(p => p.name === existingPlayer.party.name);
+            if (oldParty) oldParty.removePlayer(existingPlayer);
+        }
+
         let party = parties.find(party => party.name === trimmed);
         if (!party) {
           parties.push(new Party(trimmed));
           party = parties.find(party => party.name === trimmed);
           sendNoticeMessage(username, `Created and joined party "${trimmed}"`, 'server');
         } else {
-          sendNoticeMessage(username, `Joined party "${trimmed}"`, 'server');
+          // If already in this party, adding again is harmless due to check in addPlayer, 
+          // but we only want to say "Joined" if they weren't already in it.
+          if (!existingPlayer.party || existingPlayer.party.name !== trimmed) {
+             sendNoticeMessage(username, `Joined party "${trimmed}"`, 'server');
+          }
         }
         party.addPlayer(existingPlayer);
       }
       else if (clearParty) {
         // Explicit request to leave party
         if (existingPlayer.party && existingPlayer.party.name) {
-          const old = parties.find(p => p.name === existingPlayer.party.name);
-          if (old && typeof old.removePlayer === 'function') {
-            old.removePlayer(existingPlayer);
-            sendNoticeMessage(username, `Left party "${old.name}"`, 'server');
+          const oldParty = parties.find(p => p.name === existingPlayer.party.name);
+          if (oldParty && typeof oldParty.removePlayer === 'function') {
+            oldParty.removePlayer(existingPlayer);
+            sendNoticeMessage(username, `Left party "${oldParty.name}"`, 'server');
           } else {
             // Fallback: just clear the player's party object
             existingPlayer.party = null;
