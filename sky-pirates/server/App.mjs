@@ -17,11 +17,13 @@ import { createEngine, createChassis, createWings } from './ComponentList.mjs';
 import { Party } from './Party.mjs';
 import { createEnemyGun, createGun, getRandomGunType } from './WeaponList.mjs';
 import { Shop } from './Shop.mjs';
-import { generatePlayerId, savePlayerState, loadPlayerState, deletePlayerState, playerStateExists } from './PlayerStateManager.mjs';
+import { generatePlayerId, savePlayerState, savePlayerStateSync, loadPlayerState, deletePlayerState, playerStateExists } from './PlayerStateManager.mjs';
 import { clientManager } from './ClientManager.mjs';
 import { syncPlayerAchievements, getAchievementDataForClient } from './Achievements.mjs';
 import { isMessageAppropriate } from './ChatFilter.mjs';
 
+const TICK_RATE_MS = 20; // 50 Hz
+const BASE_DT = TICK_RATE_MS / 1000; // 0.02
 const admin_name = 'Shluck'
 
 export const mapData = new MapObject();
@@ -247,7 +249,7 @@ function updateAnimal(animal, deltaTime, threatGrid, gridSize) {
 }
 
 function updateAnimals() {
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
   const despawnDistSq = ANIMAL_SPAWN_RADIUS * ANIMAL_SPAWN_RADIUS; // Precompute square
 
   manageAnimalSpawning();
@@ -424,7 +426,7 @@ function updateEnemy(enemy) {
 function updatePlayer(player) {
   updatePlane(player);
   checkSpawnEnemyPlane(player);
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
 
   // Map Boundary Check - 10 Second Death Logic
   const boundaryX = mapData.sizeX;
@@ -552,7 +554,7 @@ function updatePlayer(player) {
 
 function updatePlane(plane) {
   if (!validatePlaneCoordinates(plane)) return;
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
   const speed = getSpeed(plane);
 
   // Stats Tracking (only for Player instances)
@@ -600,14 +602,14 @@ function updatePlane(plane) {
   applyHeat(plane, speed, deltaTime);
   updateGuns(plane, deltaTime);
   applyLiftForce(plane, speed, deltaTime);
-  applyPlayerGravity(plane);
+  applyPlayerGravity(plane, deltaTime);
   applyPlayerDrag(plane, deltaTime);
   updatePosition(plane);
 }
 
 // Update a single enemy boat (AI controlled)
 function updateBoat(boat) {
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
 
   if (boat.target) {
     updateGuns(boat, deltaTime);
@@ -655,7 +657,7 @@ function handleProjectileExplosion(projectile) {
 function updateProjectile(projectile) {
   if (projectile.markedForDeletion) return;
 
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
   if (mapData.getBiomeAtPosition(projectile.x, projectile.y) === 'recovery') {
     projectile.markedForDeletion = true;
     return;
@@ -1122,7 +1124,7 @@ function updateCrate(crate, entityMap) {
     return;
   }
 
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
   let carrier = null;
   let player = null;
 
@@ -1554,7 +1556,7 @@ function createBullet(player, gun) {
   const vx = Math.cos(angle) * gun.projectileSpeed + (player.vx || 0);
   const vy = Math.sin(angle) * gun.projectileSpeed + (player.vy || 0);
 
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
 
   if (gun.name.includes('Firework Launcher')) {
     return new FireworkRocket(
@@ -1896,8 +1898,9 @@ function applyPropulsion(player, deltaTime) {
   player.vy += ay;
 }
 
-function applyPlayerGravity(player) {
-  const gravityForce = 0.5; // normal gravity
+function applyPlayerGravity(player, deltaTime) {
+  const GRAVITY_ACCEL = 40.0; // Gravity acceleration per second (Approx double the old implicit 25/s)
+  const gravityForce = GRAVITY_ACCEL * deltaTime; 
 
   if (player.biome === 'water') {
     // Find actual water surface level from biome data
@@ -1926,7 +1929,7 @@ function applyPlayerGravity(player) {
         // Force must exceed gravity (0.5) to push up
         // Spring-like force: stronger when deeper
         // Cap max force to avoid rocket-launching, but ensure it's > 0.5
-        const springForce = Math.min(depth * 0.05, 1.5); // Max 1.5 upward (net 1.0 up)
+        const springForce = Math.min(depth * 5.0 * deltaTime, 1.5 * GRAVITY_ACCEL * deltaTime); 
         
         player.vy += gravityForce - springForce;
         
@@ -1946,7 +1949,7 @@ function applyPlayerGravity(player) {
     } else {
       // Normal water physics (moving OR deep underwater)
       // Enhanced buoyancy for easier water lift-off when moving, or just floating up from deep
-      const buoyancyForce = player.chassis.buoyancy * 1.5; // 50% stronger buoyancy
+      const buoyancyForce = (player.chassis.buoyancy * 1.5) * (GRAVITY_ACCEL * 2.0 * deltaTime); // Scaled to deltaTime
       
       // Buoyancy opposes gravity
       player.vy += gravityForce - buoyancyForce;
@@ -2008,12 +2011,19 @@ function applyLiftForce(player, speed, deltaTime) {
 function applyPlayerDrag(player, deltaTime) {
   var fluidDensity = 1.0;
   const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-  const wingArea = 0.5;         // smaller area = less drag
+  let wingArea = 0.5;         // smaller area = less drag
+
+  // Crates act as drag chutes - significantly increasing surface area
+  if (player.crates && player.crates.length > 0) {
+     wingArea += player.crates.length * 0.15; 
+  }
 
   if (player.biome === 'water') {
     fluidDensity = 20.0;
   }
-  var dragCoefficient = 0.06;  // from 0.47 to 0.1 = less drag
+  
+  // Adjusted baseline coefficients to match new physics timestep (approx 3x previous values)
+  var dragCoefficient = 0.20;  // Increased from 0.06 to align with correct deltaTime
   if (player.wings.airBrake) {
     if (player.keys.s && player.engine.power == player.engine.minPower) {
       dragCoefficient *= player.wings.airBrakeStrength; // increase drag when air brake is active
@@ -2040,7 +2050,7 @@ function applyPlayerDrag(player, deltaTime) {
 }
 
 function updateHull(entity) {
-  const deltaTime = 0.033 * timeSpeed;
+  const deltaTime = BASE_DT * timeSpeed;
   // Support both direct hull (boats) and chassis.hull (planes/players)
   const hull = (typeof entity.hull === 'number') ? entity.hull : (entity.chassis && typeof entity.chassis.hull === 'number' ? entity.chassis.hull : null);
   const maxHull = (typeof entity.maxHull === 'number') ? entity.maxHull : (entity.chassis && typeof entity.chassis.maxHull === 'number' ? entity.chassis.maxHull : null);
@@ -4156,7 +4166,7 @@ setInterval(() => {
   if (players.length > 0 || animals.length > 0) updateAnimals();
   if (projectiles.length > 0) updateProjectiles();
   if (players.length > 0) updateCrates();
-}, 20);
+}, TICK_RATE_MS);
 
 setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second
@@ -4468,3 +4478,36 @@ function broadcastCommunityUpdate() {
          }
     });
 }
+
+// Graceful Shutdown
+function handleShutdown(signal) {
+    console.log(`\nReceived ${signal}. Saving all players before shutdown...`);
+    
+    // Check if we have players to save
+    if (players.length > 0) {
+        players.forEach(player => {
+            console.log(`Saving player: ${player.username}`);
+            try {
+                // Force save state
+                savePlayerStateSync(player);
+            } catch (err) {
+                console.error(`Failed to save player ${player.username}:`, err);
+            }
+        });
+        console.log(`All ${players.length} players saved successfully.`);
+    } else {
+        console.log('No active players to save.');
+    }
+
+    // Save Client Manager data (Clients & Accounts linkings)
+    try {
+        clientManager.saveAllSync();
+    } catch (err) {
+        console.error("Failed to save client manager data:", err);
+    }
+
+    process.exit(0);
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));

@@ -86,6 +86,50 @@ export function savePlayerState(playerId, player) {
 }
 
 /**
+ * Save player state to disk synchronously (blocking)
+ * Use ONLY for server shutdown
+ * @param {string} playerId 
+ * @param {Object} player 
+ */
+export function savePlayerStateSync(playerId, player) {
+  try {
+    const state = {
+      // Game State Only
+      r: player.r,
+      g: player.g,
+      b: player.b,
+      x: player.x,
+      y: player.y,
+      money: player.money,
+      biome: player.biome,
+      selectedGun: player.selectedGun,
+      lastRecoveryZone: player.lastRecoveryZone,
+      pacifist: player.pacifist, 
+      baseGearRun: player.baseGearRun,
+      brandLoyalty: player.brandLoyalty, 
+      failedBrandLoyalty: player.failedBrandLoyalty,
+      // Serialize components
+      chassis: serializeComponent(player.chassis),
+      engine: serializeComponent(player.engine),
+      wings: serializeComponent(player.wings),
+      gun1: serializeComponent(player.gun1),
+      gun2: serializeComponent(player.gun2),
+      // Serialize inventory
+      inventory: player.inventory.map(item => serializeComponent(item)),
+      // Timestamp
+      savedAt: Date.now()
+    };
+
+    const filePath = path.join(SAVE_DIR, `${playerId}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
+    return true;
+  } catch (error) {
+    console.error(`Error saving (sync) player state for ID ${playerId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Load player state from disk
  * @param {string} playerId - Unique player ID
  * @returns {Object|null} Player state or null if not found

@@ -128,6 +128,46 @@ class ClientManager {
         });
     }
 
+    saveClientSync(clientId) {
+        if (!this.clients[clientId]) return;
+        try {
+            const filePath = path.join(CLIENTS_DIR, `${clientId}.json`);
+            fs.writeFileSync(filePath, JSON.stringify(this.clients[clientId], null, 2), 'utf8');
+        } catch (err) {
+            console.error(`Error saving client sync ${clientId}:`, err);
+        }
+    }
+    
+    saveAccountSync(key) {
+        const account = this.accounts[key];
+        if (!account) return;
+        
+        // Key is already normalized if coming from internal loop
+        const safeName = key.replace(/[^a-z0-9]/g, '_'); 
+        try {
+            const filePath = path.join(ACCOUNTS_DIR, `${safeName}.json`);
+            fs.writeFileSync(filePath, JSON.stringify(account, null, 2), 'utf8');
+        } catch (err) {
+            console.error(`Error saving account sync ${account.username}:`, err);
+        }
+    }
+
+    saveAllSync() {
+        console.log('Saving all client/account data synchronously...');
+        let cCount = 0;
+        let aCount = 0;
+        
+        for (const id in this.clients) {
+            this.saveClientSync(id);
+            cCount++;
+        }
+        for (const key in this.accounts) {
+            this.saveAccountSync(key);
+            aCount++;
+        }
+        console.log(`Saved ${cCount} clients and ${aCount} accounts.`);
+    }
+
     /**
      * Gets or creates a client entry for a given device ID.
      * @param {string} clientId - The unique ID from the client's cookie.
