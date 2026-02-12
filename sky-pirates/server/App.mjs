@@ -1899,7 +1899,11 @@ function applyPropulsion(player, deltaTime) {
 }
 
 function applyPlayerGravity(player, deltaTime) {
-  const GRAVITY_ACCEL = 40.0; // Gravity acceleration per second (Approx double the old implicit 25/s)
+  // Gravity Normalized:
+  // Previous: 0.5 added per tick. (Effective 50Hz = 25/sec).
+  // New: Accel * dt.
+  // Target: Accel * 0.02 = 0.5 => Accel = 25.0
+  const GRAVITY_ACCEL = 25.0; 
   const gravityForce = GRAVITY_ACCEL * deltaTime; 
 
   if (player.biome === 'water') {
@@ -2011,19 +2015,18 @@ function applyLiftForce(player, speed, deltaTime) {
 function applyPlayerDrag(player, deltaTime) {
   var fluidDensity = 1.0;
   const speed = Math.sqrt(player.vx ** 2 + player.vy ** 2);
-  let wingArea = 0.5;         // smaller area = less drag
-
-  // Crates act as drag chutes - significantly increasing surface area
-  if (player.crates && player.crates.length > 0) {
-     wingArea += player.crates.length * 0.15; 
-  }
+  const wingArea = 0.5;         // smaller area = less drag
 
   if (player.biome === 'water') {
     fluidDensity = 20.0;
   }
   
-  // Adjusted baseline coefficients to match new physics timestep (approx 3x previous values)
-  var dragCoefficient = 0.20;  // Increased from 0.06 to align with correct deltaTime
+  // Normalized Drag Coefficient:
+  // Previous: 0.06 applied per tick (implicitly ~33ms logic on 20ms loop) -> Effective ~0.1 per sec?
+  // We want to match the "feel". 
+  // Old math: drag * 0.033. New math: drag * 0.02.
+  // To keep (drag * dt) consistent: NewDrag = OldDrag * (0.033 / 0.02) = 0.06 * 1.65 = 0.099 (~0.1)
+  var dragCoefficient = 0.10;  
   if (player.wings.airBrake) {
     if (player.keys.s && player.engine.power == player.engine.minPower) {
       dragCoefficient *= player.wings.airBrakeStrength; // increase drag when air brake is active
