@@ -1,14 +1,14 @@
 {
   "type": "guest",
   "accountName": null,
-  "gameSaveId": "e9cd0012-328a-4d5f-85e6-f3748099a5b8",
-  "created": 1769983390568,
-  "lastSeen": 1770732952070,
+  "gameSaveId": "fce0e336-6fb7-40d4-b055-ee15736dbab4",
+  "created": 1770853112547,
+  "lastSeen": 1770854667981,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 173,
+      "progress": 230,
       "milestones": [
         {
           "unlocked": false,
@@ -35,23 +35,17 @@
     "fish_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 5,
+      "progress": 1,
       "milestones": [
         {
           "target": 50
         }
       ]
     },
-    "sky_angler": {
-      "completed": true,
-      "unlockedAt": 1769983441840,
-      "progress": 1,
-      "milestones": []
-    },
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 21,
+      "progress": 4,
       "milestones": [
         {
           "target": 50

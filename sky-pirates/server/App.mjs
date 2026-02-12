@@ -4177,15 +4177,13 @@ setInterval(() => {
 }, 60000);
 
 // Consolidated Game Loop
-// Reduced from 10ms (100Hz) to 33ms (~30Hz) to drastically improve performance with multiple players.
-// Physics feel should remain similar due to client-side interpolation.
 setInterval(() => {
   if (players.length > 0) updatePlayers();
   if (enemies.length > 0) updateEnemies();
   if (players.length > 0 || animals.length > 0) updateAnimals();
   if (projectiles.length > 0 && players.length > 0) updateProjectiles();
   if (players.length > 0) updateCrates();
-}, 33);
+}, 10);
 
 setInterval(() => { updateFleets() }, 5000);
 setInterval(() => { if (events.length > 0) updateEvents() }, 1000); // Clean up old events every second

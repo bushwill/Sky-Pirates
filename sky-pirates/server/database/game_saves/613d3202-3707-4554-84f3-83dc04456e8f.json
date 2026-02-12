@@ -1,0 +1,100 @@
+{
+  "r": 255,
+  "g": 136,
+  "b": 0,
+  "x": 142.10215969612472,
+  "y": 206.0987065968866,
+  "money": 0,
+  "biome": "air",
+  "selectedGun": 2,
+  "lastRecoveryZone": {
+    "type": "recovery",
+    "x1": -800,
+    "x2": 800,
+    "y1": -600,
+    "y2": 200,
+    "id": "spawn",
+    "twin": null
+  },
+  "pacifist": true,
+  "baseGearRun": true,
+  "brandLoyalty": null,
+  "failedBrandLoyalty": false,
+  "chassis": {
+    "type": "chassis",
+    "name": "Pirate Standard Chassis Lvl 1",
+    "weight": 1.5940714321983813,
+    "value": 21.254285762645083,
+    "topSpeed": 191.28857186380577,
+    "maxHull": 95.64428593190289,
+    "heatDispersion": 13.283928601653178,
+    "buoyancy": 3.1881428643967626
+  },
+  "engine": {
+    "type": "engine",
+    "name": "Pirate Standard Engine Lvl 1",
+    "weight": 0.9575840620810002,
+    "value": 19.151681241620004,
+    "maxPower": 335.1544217283501,
+    "minPower": 0,
+    "heatEfficiency": 0.05745504372486001,
+    "maxHeat": 76.60672496648002
+  },
+  "wings": {
+    "type": "wings",
+    "name": "Pirate Standard Wings Lvl 1",
+    "weight": 0.5398848473985146,
+    "value": 21.595393895940585,
+    "baseTurnSpeed": 1.9435854506346526,
+    "minTurnSpeed": 0.16196545421955438,
+    "maxSpeed": 161.96545421955437,
+    "liftEfficiency": 0.5398848473985146,
+    "minLiftSpeed": 53.98848473985146,
+    "liftAngle": 0.424024567592905,
+    "airBrake": true,
+    "airBrakeStrength": 2.1595393895940584
+  },
+  "gun1": {
+    "type": "gun",
+    "name": "Scorpion Lvl 1",
+    "weight": 1.5210121480175196,
+    "value": 81.1206478942677,
+    "maxHeat": 116.61093134800984,
+    "heatEfficiency": 3.9546315848455507,
+    "damage": 10.647085036122638,
+    "cooldownTime": 66.92453451277086,
+    "projectileSpeed": 1064.7085036122637,
+    "projectileSize": 0.5070040493391732,
+    "maxAngle": 0.16591668716085664,
+    "heatDispersion": 17.74514172687106,
+    "projectileRange": 1000
+  },
+  "gun2": {
+    "type": "gun",
+    "name": "Scorpion Lvl 1",
+    "weight": 1.6285945988691704,
+    "value": 86.85837860635574,
+    "maxHeat": 124.85891924663639,
+    "heatEfficiency": 4.234345957059842,
+    "damage": 11.400162192084192,
+    "cooldownTime": 71.65816235024349,
+    "projectileSpeed": 1140.0162192084192,
+    "projectileSize": 0.5428648662897234,
+    "maxAngle": 0.17765211206539588,
+    "heatDispersion": 19.00027032014032,
+    "projectileRange": 1000
+  },
+  "inventory": [
+    {
+      "type": "chassis",
+      "name": "Kamen Standard Chassis Lvl 1",
+      "weight": 4.216288098204576,
+      "value": 105.40720245511439,
+      "topSpeed": 316.2216073653432,
+      "maxHull": 158.1108036826716,
+      "heatDispersion": 15.81108036826716,
+      "buoyancy": 1.054072024551144
+    }
+  ],
+  "savedAt": 1770594724128
+}
