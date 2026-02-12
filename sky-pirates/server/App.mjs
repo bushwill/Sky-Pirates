@@ -2021,12 +2021,7 @@ function applyPlayerDrag(player, deltaTime) {
     fluidDensity = 20.0;
   }
   
-  // Normalized Drag Coefficient:
-  // Previous: 0.06 applied per tick (implicitly ~33ms logic on 20ms loop) -> Effective ~0.1 per sec?
-  // We want to match the "feel". 
-  // Old math: drag * 0.033. New math: drag * 0.02.
-  // To keep (drag * dt) consistent: NewDrag = OldDrag * (0.033 / 0.02) = 0.06 * 1.65 = 0.099 (~0.1)
-  var dragCoefficient = 0.10;  
+  var dragCoefficient = 0.06;  // Reverted to original value matching 0.02s timestep
   if (player.wings.airBrake) {
     if (player.keys.s && player.engine.power == player.engine.minPower) {
       dragCoefficient *= player.wings.airBrakeStrength; // increase drag when air brake is active
