@@ -88,7 +88,7 @@ export function createPirateStandardEngine(level = 1, random = true) {
   const weight = randomFactor * 1.0;
   const maxPower = randomFactor * (350.0 + adjustedLevel * 200.0);
   const minPower = randomFactor * 0.0;
-  const heatEfficiency = randomFactor * (0.06 - adjustedLevel * 0.002);
+  const heatEfficiency = randomFactor * (0.02);
   const maxHeat = randomFactor * (80.0 + adjustedLevel * 10.0);
   const value = randomFactor * (20 + adjustedLevel * 60);
   return new Engine(name, weight, maxPower, minPower, heatEfficiency, maxHeat, value);

@@ -1,7 +1,7 @@
 {
   "username": "bushwill",
   "password": "Guest",
-  "gameSaveId": "c6e89c59-ec8a-45dd-bc06-6f34847f134f",
+  "gameSaveId": "fc77fa7c-af16-4e7b-8c2d-ff4f5721c765",
   "created": 1769201440865,
   "achievements": {
     "top_speed": {
@@ -34,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 16,
+      "progress": 19,
       "milestones": [
         {
           "target": 50

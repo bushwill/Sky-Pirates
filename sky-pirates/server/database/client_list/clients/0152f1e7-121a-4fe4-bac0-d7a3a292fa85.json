@@ -3,7 +3,7 @@
   "accountName": null,
   "gameSaveId": "b00d9962-3768-4314-9ace-0fec7821ad6e",
   "created": 1770853108789,
-  "lastSeen": 1770854950113,
+  "lastSeen": 1770855190904,
   "achievements": {
     "top_speed": {
       "completed": false,
@@ -62,7 +62,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 7,
+      "progress": 25,
       "milestones": [
         {
           "target": 50
