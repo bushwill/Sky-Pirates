@@ -3,12 +3,12 @@
   "accountName": null,
   "gameSaveId": "b00d9962-3768-4314-9ace-0fec7821ad6e",
   "created": 1770853108789,
-  "lastSeen": 1770854254541,
+  "lastSeen": 1770854950113,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 232,
+      "progress": 264,
       "milestones": [
         {
           "unlocked": false,
@@ -35,7 +35,7 @@
     "player_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 10,
+      "progress": 11,
       "milestones": [
         {
           "unlocked": true,
@@ -81,12 +81,18 @@
     "fish_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 3,
+      "progress": 6,
       "milestones": [
         {
           "target": 50
         }
       ]
+    },
+    "sky_angler": {
+      "completed": true,
+      "unlockedAt": 1770855007988,
+      "progress": 1,
+      "milestones": []
     }
   }
 }

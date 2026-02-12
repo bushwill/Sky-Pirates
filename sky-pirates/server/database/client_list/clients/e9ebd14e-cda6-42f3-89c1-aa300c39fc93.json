@@ -1,9 +1,9 @@
 {
   "type": "guest",
   "accountName": null,
-  "gameSaveId": "b41e470b-5438-4899-b0f0-fdf2732683bb",
+  "gameSaveId": "f1f6ec3e-a7e6-480f-826a-98dfe00cabdc",
   "created": 1770852988581,
-  "lastSeen": 1770854668937,
+  "lastSeen": 1770855085994,
   "achievements": {
     "top_speed": {
       "completed": false,
@@ -62,7 +62,7 @@
     "fish_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 15,
+      "progress": 16,
       "milestones": [
         {
           "target": 50
