@@ -51,11 +51,52 @@ let enemies = [];
 let animals = [];
 const playerSockets = new Map();
 let parties = [];
+let spatialGrid = new Map();
+const GRID_CELL_SIZE = 1000;
 let lastEnemySpawnTime = 0;
 let enemySpawnRate = 500;
 let projectiles = [];
 let crates = [];
 let events = [];
+
+// Spatial Partitioning for High Performance
+// Replaces naive O(N^2) loops with O(N) spatial queries
+function rebuildSpatialGrid() {
+    spatialGrid.clear();
+    
+    // Helper: Add entity to all grid cells it overlaps
+    const addRectToGrid = (entity, type, radius) => {
+        const minX = Math.floor((entity.x - radius) / GRID_CELL_SIZE);
+        const maxX = Math.floor((entity.x + radius) / GRID_CELL_SIZE);
+        const minY = Math.floor((entity.y - radius) / GRID_CELL_SIZE);
+        const maxY = Math.floor((entity.y + radius) / GRID_CELL_SIZE);
+
+        for (let x = minX; x <= maxX; x++) {
+             for (let y = minY; y <= maxY; y++) {
+                 const key = `${x},${y}`;
+                 let cell = spatialGrid.get(key);
+                 if (!cell) { cell = []; spatialGrid.set(key, cell); }
+                 cell.push({ entity, type });
+             }
+        }
+    };
+
+    // Populate grid with potential targets
+    for(const p of players) addRectToGrid(p, 'player', p.size || 20);
+    for(const e of enemies) addRectToGrid(e, 'enemy', e.size || 20);
+    for(const a of animals) {
+        // Skip dead animals waiting for cleanup
+        if (!a.dead) addRectToGrid(a, 'animal', a.size || 10);
+    }
+    
+    // Add solid projectiles (rockets) that can be detonated
+    for(const pr of projectiles) {
+        if (!pr.markedForDeletion && pr.type !== 'bullet') {
+             addRectToGrid(pr, 'projectile', pr.size || 5);
+        }
+    }
+}
+
 let crateScale = 10;
 let max_money_crates = crateScale * 40;
 let max_component_crates = crateScale * 10;
@@ -609,7 +650,6 @@ function handleProjectileExplosion(projectile) {
       projectiles.push(...newProjectiles);
     }
   }
-  // checking next frame cleanup
 }
 
 function updateProjectile(projectile) {
@@ -648,218 +688,147 @@ function updateProjectile(projectile) {
     return;
   }
   
-  // Projectile-vs-Projectile Collision Logic
-  // Check collisions with other projectiles (activate rockets, destroy fire)
-  // Optimization: Only check from "solid" / impacting projectiles to avoid N^2 in particle clouds
-  const isSolid = ['bullet', 'rocket', 'firework_rocket'].includes(projectile.type);
-  if (isSolid) {
-      for (const other of projectiles) {
-          if (other === projectile) continue;
-          if (other.markedForDeletion) continue;
-          
-          // Allow friendly fire on rockets? Usually yes for manual detonation.
-          // But prevent bullet from destroying own fire particles immediately
-          if (other.owner === projectile.owner && (other.type === 'fire' || other.type === 'fireworks_fire')) continue; 
+  // ----------------------------------------------------------------
+  // SPATIAL GRID COLLISION DETECTION (Optimized O(N))
+  // ----------------------------------------------------------------
+  
+  // Skip collision checks if damageDelay active
+  if (age < (projectile.damageDelay || 0)) return;
 
-          // Use swept collision to prevent tunneling (fast bullets passing through rockets)
-          if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, other.x, other.y, other.size)) {
-               // Case 1: Hitting a Firework Rocket -> Activate it
-               if (other.type === 'firework_rocket') {
-                   // Achievement: Pyrotechnician (Detonate a firework rocket)
-                   if (projectile.owner) {
-                        const shooter = players.find(p => p.username === projectile.owner);
-                        if (shooter && shooter.achievements && shooter.achievements['fireworks']) {
-                            shooter.achievements['fireworks'].complete(shooter);
-                        }
-                   }
+  const cx = Math.floor(projectile.x / GRID_CELL_SIZE);
+  const cy = Math.floor(projectile.y / GRID_CELL_SIZE);
+  // Check previous cell too to catch high-speed crossings
+  const prevCx = Math.floor(prevX / GRID_CELL_SIZE);
+  const prevCy = Math.floor(prevY / GRID_CELL_SIZE);
 
-                   handleProjectileExplosion(other);
-                   // Hitting projectile usually absorbs the impactor too
-                   handleProjectileExplosion(projectile);
-                   return;
-               }
-               // Case 2: Hitting Fire -> Destroy Fire
-               if (other.type === 'fire' || other.type === 'fireworks_fire') {
-                   handleProjectileExplosion(other); // Destroy fire (no explosion on fire usually)
-                   
-                   // If Impactor is Rocket -> Explode
-                   if (projectile.type === 'rocket' || projectile.type === 'firework_rocket') {
-                       handleProjectileExplosion(projectile);
-                       return;
-                   }
-                   // If Bullet -> Consume bullet?
-                   handleProjectileExplosion(projectile);
-                   return;
-               }
+  const potentialColliders = new Set();
+  
+  const collectFromCell = (key) => {
+      const cell = spatialGrid.get(key);
+      if (cell) {
+          for (let i = 0; i < cell.length; i++) potentialColliders.add(cell[i]);
+      }
+  };
+  
+  collectFromCell(`${cx},${cy}`);
+  if (cx !== prevCx || cy !== prevCy) collectFromCell(`${prevCx},${prevCy}`);
+
+  for (const entry of potentialColliders) {
+      if (projectile.markedForDeletion) break;
+      const { entity, type } = entry;
+      
+      if (entity === projectile) continue;
+      if (entity.markedForDeletion || (type === 'animal' && entity.dead)) continue;
+      
+      // Friendly Fire Check
+      if (entity.username === projectile.owner) continue;
+      if (type === 'projectile' && entity.owner === projectile.owner && (entity.type === 'fire' || entity.type === 'fireworks_fire')) continue;
+      if (type === 'enemy' && enemies.some(e => e.username === projectile.owner)) continue; // Enemy hits enemy
+
+      // Bounding Box Pre-Check (Cheap)
+      const contactDist = (entity.size || 20) + (projectile.size || 5) + 5;
+      if (Math.abs(entity.x - projectile.x) > contactDist || Math.abs(entity.y - projectile.y) > contactDist) continue;
+
+      // Type-Specific Handlers
+      if (type === 'player' || type === 'enemy') {
+          if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, entity.x, entity.y, entity.size)) {
+              handleEntityHit(projectile, entity, type);
+          }
+      } else if (type === 'animal') {
+          if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, entity.x, entity.y, entity.size)) {
+              handleAnimalHit(projectile, entity);
+          }
+      } else if (type === 'projectile') {
+          // Only solid projectiles collide with other projectiles
+          const isSolid = ['bullet', 'rocket', 'firework_rocket'].includes(projectile.type);
+          if (isSolid && checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, entity.x, entity.y, entity.size)) {
+               handleProjectileVsProjectile(projectile, entity);
           }
       }
   }
+}
 
-  // Skip all collision checks if this projectile is too young based on its own damageDelay property
-  if (age < (projectile.damageDelay || 0)) return;
-
-  for (const player of players) {
-    if (player.username === projectile.owner) continue;
-
-    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
-      player.x, player.y, player.size)) {
-      createHitEvent(player.x, player.y, projectile);
+function handleEntityHit(projectile, entity, type) {
+      createHitEvent(entity.x, entity.y, projectile);
       
-      // Pacifist Logic: Owner dealt damage
+      // Pacifist Logic
       if (projectile.owner) {
           const ownerPlayer = players.find(p => p.username === projectile.owner);
-          if (ownerPlayer) {
-              ownerPlayer.pacifist = false;
-          }
-      }
-      
-      // Sharpshooter Check
-      if (projectile.owner && projectile.distanceTraveled > 1250) { // 1250m
-          const ownerPlayer = players.find(p => p.username === projectile.owner);
-          if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
-              ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
+          if (ownerPlayer) ownerPlayer.pacifist = false;
+          
+          // Sharpshooter
+          if (ownerPlayer && projectile.distanceTraveled > 1250) {
+              if (ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
+                  ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
+              }
           }
       }
 
-      if (player.onDamaged) {
-        player.onDamaged(projectile);
+      if (entity.onDamaged) {
+          // entity is Player or Enemy
+          entity.onDamaged(projectile, players); 
       }
+
       if (typeof projectile.onExpire === 'function') {
         const newProjectiles = projectile.onExpire();
-        if (newProjectiles && newProjectiles.length > 0) {
-          projectiles.push(...newProjectiles);
-        }
+        if (newProjectiles && newProjectiles.length > 0) projectiles.push(...newProjectiles);
       }
 
-      // Handle piercing
       if (projectile.piercing > 0) {
           projectile.piercing--;
           projectile.hitEntities = projectile.hitEntities || [];
-          projectile.hitEntities.push(player.id || player.username);
+          projectile.hitEntities.push(entity.id || entity.username);
       } else {
         projectile.markedForDeletion = true;
-        return;
       }
-    }
-  }
+}
 
-  for (const enemy of enemies) {
-    if (enemy.username === projectile.owner) continue;
-    const ownerIsEnemy = enemies.some(e => e.username === projectile.owner);
-    if (ownerIsEnemy) continue;
-
-    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
-      enemy.x, enemy.y, enemy.size)) {
-      createHitEvent(enemy.x, enemy.y, projectile);
-
-      // Pacifist Logic: Owner dealt damage to enemy
-      if (projectile.owner) {
-          const ownerPlayer = players.find(p => p.username === projectile.owner);
-          if (ownerPlayer) {
-              ownerPlayer.pacifist = false;
-          }
-      }
-
-      // Sharpshooter Check
-      if (projectile.owner && projectile.distanceTraveled > 1250) { // 1250m
-          const ownerPlayer = players.find(p => p.username === projectile.owner);
-          if (ownerPlayer && ownerPlayer.achievements && ownerPlayer.achievements['sharpshooter']) {
-            ownerPlayer.achievements['sharpshooter'].complete(ownerPlayer);
-          }
-      }
-      
-      // Two Birds One Stone Check -- REMOVED for enemies as per user request (only fish)
-      /* 
-      if (projectile.owner) {
-         const ownerPlayer = players.find(p => p.username === projectile.owner);
-         if (ownerPlayer) {
-            projectile.midairHitCount = (projectile.midairHitCount || 0) + 1;
-            // logic...
-         }
-      } 
-      */
-
-      if (enemy.onDamaged) {
-        enemy.onDamaged(projectile, players);
-      }
-      if (typeof projectile.onExpire === 'function') {
-        const newProjectiles = projectile.onExpire();
-        if (newProjectiles && newProjectiles.length > 0) {
-          projectiles.push(...newProjectiles);
-        }
-      }
-      
-      // Handle piercing
-      if (projectile.piercing > 0) {
-          projectile.piercing--;
-          // Avoid double hitting same entity in same frame? 
-          // (Collision check usually prevents this if movement is handled right, but we removed from projectiles list to stop it previously)
-      } else {
-          projectile.markedForDeletion = true;
-          return;
-      }
-    }
-  }
-
-  for (const animal of animals) {
-    if (checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size,
-      animal.x, animal.y, animal.size)) {
-
+function handleAnimalHit(projectile, animal) {
       if (projectile.owner) {
           const killer = players.find(p => p.username === projectile.owner);
           if (killer && killer.achievements) {
-              if (killer.achievements['fish_killer']) {
-                  if (animal.type === 'fish') {
-                    killer.achievements['fish_killer'].increment(killer, 1);
-                  }
-              }
-              
               const animalInWater = mapData.getBiomeAtPosition(animal.x, animal.y) === 'water';
-
-              // Sky Angler: Shoot fish in air
-               if (animal.type === 'fish' && !animalInWater) {
-                  if (killer.achievements['sky_angler']) {
-                      killer.achievements['sky_angler'].complete(killer);
-                  }
-
-                  // Barbecue: Kill a fish midair with fire
-                  if (projectile.fireDamage > 0 || projectile.type === 'fire' || projectile.type === 'fireworks_fire') {
-                    if (killer.achievements['barbecue']) {
-                        killer.achievements['barbecue'].complete(killer);
-                    }
-                  }
-              }
-
-              // Two Birds One Stone (Midair Fish)
-              // Strict requirement: Two FISH, midair, same projectile
-              if (animal.type === 'fish' && !animalInWater) { 
-                 projectile.midairFishHitCount = (projectile.midairFishHitCount || 0) + 1;
-                 
-                  if (projectile.midairFishHitCount >= 2) {
-                    if (killer.achievements['two_birds']) {
-                        killer.achievements['two_birds'].complete(killer);
-                    }
-                  }
+              if (killer.achievements['fish_killer'] && animal.type === 'fish') killer.achievements['fish_killer'].increment(killer, 1);
+              
+              if (animal.type === 'fish' && !animalInWater) {
+                  if (killer.achievements['sky_angler']) killer.achievements['sky_angler'].complete(killer);
+                  if ((projectile.fireDamage > 0 || projectile.type === 'fire') && killer.achievements['barbecue']) killer.achievements['barbecue'].complete(killer);
+                  
+                  projectile.midairFishHitCount = (projectile.midairFishHitCount || 0) + 1;
+                  if (projectile.midairFishHitCount >= 2 && killer.achievements['two_birds']) killer.achievements['two_birds'].complete(killer);
               }
           }
       }
 
-      const velocity = Math.sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy);
-      const event = new GameEvent('animal_explosion', animal.x, animal.y, projectile.angle, velocity);
-      events.push(event);
+      const velocity = Math.sqrt(projectile.vx**2 + projectile.vy**2);
+      events.push(new GameEvent('animal_explosion', animal.x, animal.y, projectile.angle, velocity));
 
-      animals = animals.filter(a => a !== animal);
+      // Mark animal dead instead of filtering list (handled in rebuild next frame or updateAnimals)
+      animal.dead = true; 
+      animals = animals.filter(a => !a.dead); // Keep immediate cleanup for now to match old behavior
       
-      // Handle piercing - Animals get destroyed so no need to track hitEntities for them specifically 
-      // as they won't exist next frame.
-       if (projectile.piercing > 0) {
-          projectile.piercing--;
-      } else {
-           projectile.markedForDeletion = true;
-           return;
-      }
-    }
-  }
+      if (projectile.piercing > 0) projectile.piercing--;
+      else projectile.markedForDeletion = true;
+}
+
+function handleProjectileVsProjectile(projectile, other) {
+   // Hitting a Firework Rocket -> Activate it
+   if (other.type === 'firework_rocket') {
+       if (projectile.owner) {
+            const shooter = players.find(p => p.username === projectile.owner);
+            if (shooter && shooter.achievements && shooter.achievements['fireworks']) {
+                shooter.achievements['fireworks'].complete(shooter);
+            }
+       }
+       handleProjectileExplosion(other);
+       handleProjectileExplosion(projectile);
+       return;
+   }
+   // Hitting Fire -> Destroy Fire
+   if (other.type === 'fire' || other.type === 'fireworks_fire') {
+       handleProjectileExplosion(other);
+       handleProjectileExplosion(projectile);
+   }
 }
 
 function createHitEvent(x, y, projectile) {
@@ -4177,13 +4146,16 @@ setInterval(() => {
 }, 60000);
 
 // Consolidated Game Loop
+// Physics feel should remain similar due to client-side interpolation.
+// Consolidated Game Loop
 // Reduced from 10ms (100Hz) to 33ms (~30Hz) to drastically improve performance with multiple players.
 // Physics feel should remain similar due to client-side interpolation.
 setInterval(() => {
+  if (players.length > 0 || projectiles.length > 0) rebuildSpatialGrid(); // Build grid once per frame if active
   if (players.length > 0) updatePlayers();
   if (enemies.length > 0) updateEnemies();
   if (players.length > 0 || animals.length > 0) updateAnimals();
-  if (projectiles.length > 0 && players.length > 0) updateProjectiles();
+  if (projectiles.length > 0) updateProjectiles();
   if (players.length > 0) updateCrates();
 }, 33);
 
