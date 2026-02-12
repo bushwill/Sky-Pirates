@@ -1658,7 +1658,7 @@ function applyTurning(player, speed, deltaTime) {
 }
 
 function applyThrottle(player, deltaTime) {
-  const throttleRate = player.engine.maxPower * 3.5; 
+  const throttleRate = player.engine.maxPower; 
   const step = throttleRate * deltaTime;
 
   if (player.keys?.w) player.engine.power += step;
