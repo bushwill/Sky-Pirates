@@ -592,7 +592,7 @@ function updatePlane(plane) {
 
   if (!plane.keys['r']) {
     applyTurning(plane, speed, deltaTime);
-    applyThrottle(plane);
+    applyThrottle(plane, deltaTime);
     checkPlayerShooting(plane);
     checkDetach(plane);
   } else {
@@ -1657,10 +1657,12 @@ function applyTurning(player, speed, deltaTime) {
   if (player.keys?.d) player.angle += turnSpeed;
 }
 
-function applyThrottle(player) {
-  const throttleStep = player.engine.maxPower / 100;
-  if (player.keys?.w) player.engine.power += throttleStep;
-  if (player.keys?.s) player.engine.power -= throttleStep;
+function applyThrottle(player, deltaTime) {
+  const throttleRate = player.engine.maxPower * 2.0; 
+  const step = throttleRate * deltaTime;
+
+  if (player.keys?.w) player.engine.power += step;
+  if (player.keys?.s) player.engine.power -= step;
 
   player.engine.power = Math.max(player.engine.minPower, Math.min(player.engine.maxPower, player.engine.power)); // clamping of engine power
 }
