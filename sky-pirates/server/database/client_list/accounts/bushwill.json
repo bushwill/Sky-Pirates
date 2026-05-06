@@ -34,7 +34,7 @@
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 19,
+      "progress": 41,
       "milestones": [
         {
           "target": 50
@@ -80,7 +80,7 @@
     "fish_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 0,
+      "progress": 21,
       "milestones": [
         {
           "target": 50
@@ -115,15 +115,15 @@
       ]
     },
     "mile_high_club": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 0,
+      "completed": true,
+      "unlockedAt": 1771261176057,
+      "progress": 1,
       "milestones": []
     },
     "sky_angler": {
-      "completed": false,
-      "unlockedAt": null,
-      "progress": 0,
+      "completed": true,
+      "unlockedAt": 1771261746668,
+      "progress": 1,
       "milestones": []
     },
     "two_birds": {

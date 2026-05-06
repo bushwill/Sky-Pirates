@@ -1,18 +1,18 @@
 {
-  "type": "account",
-  "accountName": "guest2",
-  "gameSaveId": "8ffdc6d1-a459-41fa-b300-18162dbf68aa",
-  "created": 1770761288155,
-  "lastSeen": 1773101001073,
+  "type": "guest",
+  "accountName": null,
+  "gameSaveId": "ed6809f5-520d-4c7b-9d33-e00f77395b49",
+  "created": 1774248297287,
+  "lastSeen": 1776139851017,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 243,
+      "progress": 382,
       "milestones": [
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1776139822437,
           "target": 300
         },
         {
@@ -32,20 +32,37 @@
         }
       ]
     },
-    "fish_killer": {
+    "player_killer": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 3,
+      "progress": 1,
       "milestones": [
         {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
           "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
         }
       ]
     },
     "crate_hunter": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 9,
+      "progress": 13,
       "milestones": [
         {
           "target": 50
@@ -58,6 +75,16 @@
         },
         {
           "target": 7500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 2,
+      "milestones": [
+        {
+          "target": 50
         }
       ]
     }

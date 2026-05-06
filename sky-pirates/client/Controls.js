@@ -253,7 +253,13 @@ function getMobileButtons() {
     // Ensure spacing is at least diameter + padding (40*2 + 10 = 90)
     // Use a larger percentage of screen or a hard floor
     const spacing = Math.max(90, Math.min(width, height) * 0.18);
-    const startX = 140; // Moved right from 100
+
+    // Apply safe zone logic
+    // Leftmost button is at x = startX - spacing - radius (40)
+    // We want at least 20px padding from left edge
+    // So startX - spacing - 40 >= 20  =>  startX >= spacing + 60
+    const startX = Math.max(140, spacing + 60);
+    
     const startY = height - 80; // Moved down from height-100
 
     // Check for narrow screen overlap (stack right buttons if needed)

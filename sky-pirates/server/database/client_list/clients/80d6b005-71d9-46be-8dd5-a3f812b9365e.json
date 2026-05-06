@@ -1,0 +1,119 @@
+{
+  "type": "guest",
+  "accountName": null,
+  "gameSaveId": "3e66d862-f838-4b8f-ae8f-993efbd6f2b5",
+  "created": 1774248443984,
+  "lastSeen": 1775515916748,
+  "achievements": {
+    "top_speed": {
+      "completed": true,
+      "unlockedAt": 1775515894019,
+      "progress": 1444,
+      "milestones": [
+        {
+          "unlocked": true,
+          "unlockedAt": 1775515869497,
+          "target": 300
+        },
+        {
+          "unlocked": true,
+          "unlockedAt": 1775515870098,
+          "target": 500
+        },
+        {
+          "unlocked": true,
+          "unlockedAt": 1775515871369,
+          "target": 800
+        },
+        {
+          "unlocked": true,
+          "unlockedAt": 1775515894018,
+          "target": 1000
+        }
+      ]
+    },
+    "player_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 1,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 11,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
+        }
+      ]
+    },
+    "enemy_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 2,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 10
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 50
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 6,
+      "milestones": [
+        {
+          "target": 50
+        }
+      ]
+    }
+  }
+}

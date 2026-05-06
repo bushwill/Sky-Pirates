@@ -336,10 +336,28 @@ function handleDecodedMessage(decodedMessage) {
                 
                 // Messages
                  if (decodedMessage.messages && Array.isArray(decodedMessage.messages)) {
+                    // Group messages by username to restore player.messages behavior
+                    const messagesByPlayer = {};
+                    
                     decodedMessage.messages.forEach(msg => {
+                        // Update global chat log
                         if (!chat_messages.find(m => m.id === msg.id)) {
                             chat_messages.push(msg);
                         }
+                        
+                        // Group for player speech bubbles
+                        if (msg.username) {
+                            if (!messagesByPlayer[msg.username]) {
+                                messagesByPlayer[msg.username] = [];
+                            }
+                            // Format expected by Display.js: [id, text]
+                            messagesByPlayer[msg.username].push([msg.id, msg.message]);
+                        }
+                    });
+
+                    // Assign messages to players
+                    players.forEach(p => {
+                        p.messages = messagesByPlayer[p.username] || [];
                     });
                 }
             }
@@ -432,13 +450,31 @@ function handleDecodedMessage(decodedMessage) {
                     }
                 });
 
-                // Handle global chat messages
+                // Handle global chat messages and restore player messages
                 if (decodedMessage.messages && Array.isArray(decodedMessage.messages)) {
+                    // Group messages by username to restore player.messages behavior
+                    const messagesByPlayer = {};
+
                     decodedMessage.messages.forEach(msg => {
+                        // Update global chat log
                         if (!chat_messages.find(m => m.id === msg.id)) {
                              // msg format from server: { id, username, message }
                             chat_messages.push(msg);
                         }
+
+                        // Group for player speech bubbles
+                        if (msg.username) {
+                            if (!messagesByPlayer[msg.username]) {
+                                messagesByPlayer[msg.username] = [];
+                            }
+                            // Format expected by Display.js: [id, text]
+                            messagesByPlayer[msg.username].push([msg.id, msg.message]);
+                        }
+                    });
+
+                    // Assign messages to players
+                    players.forEach(p => {
+                        p.messages = messagesByPlayer[p.username] || [];
                     });
                 }
             }
@@ -510,8 +546,8 @@ function handleDecodedMessage(decodedMessage) {
         case 'pong': {
             const now = Date.now();
             const rtt = now - decodedMessage.clientTime;
-            pingTimes.push(rtt / 2);
-            if (pingTimes.length > 10) pingTimes.shift();
+            pingTimes.push(rtt);
+            if (pingTimes.length > 5) pingTimes.shift();
             avgPing = pingTimes.reduce((a, b) => a + b, 0) / pingTimes.length;
             
             // Calculate clock offset: serverTime = clientTime + offset

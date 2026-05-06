@@ -1,9 +1,8 @@
 {
-  "type": "account",
-  "accountName": "guest2",
+  "username": "guest1",
+  "password": "guest",
   "gameSaveId": "8ffdc6d1-a459-41fa-b300-18162dbf68aa",
-  "created": 1770761288155,
-  "lastSeen": 1773101001073,
+  "created": 1773100980394,
   "achievements": {
     "top_speed": {
       "completed": false,

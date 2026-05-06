@@ -54,6 +54,8 @@ let animals = [];
 const playerSockets = new Map();
 let parties = [];
 let spatialGrid = new Map();
+let staticGrid = new Map(); // Optimization: Store static entities (crates) here
+let lastStaticGridUpdate = 0;
 const GRID_CELL_SIZE = 1000;
 let lastEnemySpawnTime = 0;
 let enemySpawnRate = 500;
@@ -63,40 +65,91 @@ let events = [];
 
 // Spatial Partitioning for High Performance
 // Replaces naive O(N^2) loops with O(N) spatial queries
+// Optimization: Rebuild dynamic grid every frame, static grid rarely
 function rebuildSpatialGrid() {
     spatialGrid.clear();
     
     // Helper: Add entity to all grid cells it overlaps
-    const addRectToGrid = (entity, type, radius) => {
+    const addRectToGrid = (entity, type, radius, grid = spatialGrid) => {
         const minX = Math.floor((entity.x - radius) / GRID_CELL_SIZE);
         const maxX = Math.floor((entity.x + radius) / GRID_CELL_SIZE);
+        // Optimization for small entities (bullets): Check if they fit in 1 cell
+        if (minX === maxX) {
+            const minY = Math.floor((entity.y - radius) / GRID_CELL_SIZE);
+            const maxY = Math.floor((entity.y + radius) / GRID_CELL_SIZE);
+            for (let y = minY; y <= maxY; y++) {
+                const key = `${minX},${y}`;
+                let cell = grid.get(key);
+                if (!cell) { cell = []; grid.set(key, cell); }
+                cell.push({ entity, type });
+            }
+            return;
+        }
+
         const minY = Math.floor((entity.y - radius) / GRID_CELL_SIZE);
         const maxY = Math.floor((entity.y + radius) / GRID_CELL_SIZE);
 
         for (let x = minX; x <= maxX; x++) {
              for (let y = minY; y <= maxY; y++) {
                  const key = `${x},${y}`;
-                 let cell = spatialGrid.get(key);
-                 if (!cell) { cell = []; spatialGrid.set(key, cell); }
+                 let cell = grid.get(key);
+                 if (!cell) { cell = []; grid.set(key, cell); }
                  cell.push({ entity, type });
              }
         }
     };
+    
+    // ... rest of the function ...
 
-    // Populate grid with potential targets
     for(const p of players) addRectToGrid(p, 'player', p.size || 20);
     for(const e of enemies) addRectToGrid(e, 'enemy', e.size || 20);
-    for(const a of animals) {
-        // Skip dead animals waiting for cleanup
-        if (!a.dead) addRectToGrid(a, 'animal', a.size || 10);
-    }
+    for(const a of animals) { if (!a.dead) addRectToGrid(a, 'animal', a.size || 10); }
+    for(const pr of projectiles) { if (!pr.markedForDeletion) addRectToGrid(pr, 'projectile', pr.size || 5); }
     
-    // Add solid projectiles (rockets) that can be detonated
-    for(const pr of projectiles) {
-        if (!pr.markedForDeletion && pr.type !== 'bullet') {
-             addRectToGrid(pr, 'projectile', pr.size || 5);
+    // OPTIMIZATION: Rebuild static grid (crates) less frequently
+    const now = Date.now();
+    if (now - lastStaticGridUpdate > 500) {
+        staticGrid.clear();
+        for(const c of crates) {
+            if (!c.removedFromWorld) {
+                // Optimization: Static entities go into a separate grid updated 2Hz
+                addRectToGrid(c, 'crate', c.size || 5, staticGrid);
+            }
         }
+        lastStaticGridUpdate = now;
     }
+}
+
+// Helper to query the grid
+function getNearbyEntities(x, y, checkRadius) {
+    const minX = Math.floor((x - checkRadius) / GRID_CELL_SIZE);
+    const maxX = Math.floor((x + checkRadius) / GRID_CELL_SIZE);
+    const minY = Math.floor((y - checkRadius) / GRID_CELL_SIZE);
+    const maxY = Math.floor((y + checkRadius) / GRID_CELL_SIZE);
+    
+    const entities = [];
+    const visited = new Set(); // Avoid duplicates if entity spans multiple cells
+
+    const queryGrid = (grid) => {
+        for (let cx = minX; cx <= maxX; cx++) {
+            for (let cy = minY; cy <= maxY; cy++) {
+                const cell = grid.get(`${cx},${cy}`);
+                if (cell) {
+                    for(const item of cell) {
+                        if (!visited.has(item.entity)) {
+                            entities.push(item);
+                            visited.add(item.entity);
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    queryGrid(spatialGrid);
+    queryGrid(staticGrid);
+
+    return entities;
 }
 
 let crateScale = 10;
@@ -741,6 +794,9 @@ function updateProjectile(projectile) {
               handleAnimalHit(projectile, entity);
           }
       } else if (type === 'projectile') {
+          // Optimization: Bullets don't collide with other bullets
+          if (projectile.type === 'bullet' && entity.type === 'bullet') continue;
+
           // Only solid projectiles collide with other projectiles
           const isSolid = ['bullet', 'rocket', 'firework_rocket'].includes(projectile.type);
           if (isSolid && checkSweptCollision(prevX, prevY, projectile.x, projectile.y, projectile.size, entity.x, entity.y, entity.size)) {
@@ -1044,7 +1100,7 @@ function handleFreeCratePhysics(crate, deltaTime) {
 
 function applyCrateRepulsion(crate, allCrates, deltaTime, entityMap) {
   const REPULSION_RADIUS = crate.size * 2;
-  const REPULSION_STRENGTH = 12;
+  const REPULSION_STRENGTH = 12; // Force to push crates apart
   const CHECK_RADIUS = REPULSION_RADIUS * 3; // Check slightly larger area
 
   let cratesToCheck = [];
@@ -1059,20 +1115,17 @@ function applyCrateRepulsion(crate, allCrates, deltaTime, entityMap) {
     }
 
     // Only check against other crates in the same carrier's inventory
-    // This reduces checks from O(TotalCrates) to O(CarriedCrates), effectively O(1)
     if (carrier && carrier.crates) {
-        const myIndex = carrier.crates.indexOf(crate);
-        if (myIndex !== -1) {
-            // Only check crates after this one in the carrier's list to avoid double physics application
-            cratesToCheck = carrier.crates.slice(myIndex + 1);
-        }
+        // Check ALL other crates in inventory so each crate pushes ITSELF away from others
+        cratesToCheck = carrier.crates.filter(c => c !== crate);
     }
   } else {
-    // Legacy logic for free-floating crates (checks against all other free/carried crates)
-    const crateIndex = allCrates.indexOf(crate);
-    if (crateIndex !== -1) {
-        cratesToCheck = allCrates.slice(crateIndex + 1);
-    }
+    // Optimized: Use Spatial Grid instead of O(N) linear scan
+    const nearby = getNearbyEntities(crate.x, crate.y, CHECK_RADIUS);
+    // Filter for crates only
+    cratesToCheck = nearby
+        .filter(entry => entry.type === 'crate' && entry.entity !== crate)
+        .map(entry => entry.entity);
   }
 
   cratesToCheck.forEach(otherCrate => {
@@ -1092,10 +1145,10 @@ function applyCrateRepulsion(crate, allCrates, deltaTime, entityMap) {
       const nx = dx / distance;
       const ny = dy / distance;
       const force = REPULSION_STRENGTH * (REPULSION_RADIUS - distance) / REPULSION_RADIUS;
+      
+      // Apply force ONLY to self - symmetry comes from the other crate pushing itself away when it updates
       crate.x += nx * force * deltaTime;
       crate.y += ny * force * deltaTime;
-      otherCrate.x -= nx * force * deltaTime;
-      otherCrate.y -= ny * force * deltaTime;
     }
   });
 }
@@ -1193,10 +1246,15 @@ function updateCrate(crate, entityMap) {
   // --- Enemy interactions: first handle plane attachments deterministically ---
   const DEFAULT_PLANE_PICKUP = 60;
   const DEFAULT_PLANE_PICKUP_SQ = DEFAULT_PLANE_PICKUP * DEFAULT_PLANE_PICKUP;
+
+  // Optimization: Spatial Grid lookup instead of iterating all enemies
+  const nearbyItems = getNearbyEntities(crate.x, crate.y, 500); 
+  const localEnemies = [];
+  for(const item of nearbyItems) { if(item.type === 'enemy') localEnemies.push(item.entity); }
   
   let nearestPlane = null;
   let nearestPlaneDistSq = Infinity;
-  for (const e of enemies) {
+  for (const e of localEnemies) {
     if (!e) continue;
     if (e.type && e.type.includes('Plane') && e.faction === 'navy') {
       const dx = e.x - crate.x;
@@ -1215,7 +1273,7 @@ function updateCrate(crate, entityMap) {
   }
 
   // --- Then handle boat pickups (boats only take unattached crates) ---
-  for (const enemy of enemies) {
+  for (const enemy of localEnemies) {
     if (!enemy) continue;
     if (enemy.isFleetBoat && typeof enemy.storeCrate === 'function') {
       const dxB = enemy.x - crate.x;
@@ -3554,6 +3612,7 @@ function handlePing(ws, message) {
   const response = {
     type: 'pong',
     clientTime: clientTime, // Echo client's timestamp
+    timeSent: Date.now()
   };
 
   sendMessage(ws, response); // Encode and send the pong message
@@ -4160,12 +4219,22 @@ setInterval(() => {
 // Reduced from 10ms (100Hz) to 20ms (50Hz) to drastically improve performance with multiple players.
 // Physics feel should remain similar due to client-side interpolation.
 setInterval(() => {
+  const loopStart = Date.now(); // Start timing
+  
   if (players.length > 0 || projectiles.length > 0) rebuildSpatialGrid(); // Build grid once per frame if active
   if (players.length > 0) updatePlayers();
   if (enemies.length > 0) updateEnemies();
   if (players.length > 0 || animals.length > 0) updateAnimals();
   if (projectiles.length > 0) updateProjectiles();
   if (players.length > 0) updateCrates();
+
+  const loopEnd = Date.now();
+  const loopDuration = loopEnd - loopStart;
+  
+  // Performance Monitor: Warn if loop takes too long
+  if (loopDuration > TICK_RATE_MS) {
+      console.warn(`[Lag Warning] Game Loop took ${loopDuration}ms (Target: ${TICK_RATE_MS}ms) | Players: ${players.length} | Entities: ${crates.length + enemies.length}`);
+  }
 }, TICK_RATE_MS);
 
 setInterval(() => { updateFleets() }, 5000);
@@ -4295,37 +4364,15 @@ setInterval(() => {
         }
     }
 
-    // 2. Pre-serialize ALL entities once (Huge GC optimization)
-    // We create the "public" version of all players once.
+    // 2. Pre-serialize public players data (O(Players) - cheap)
     const allPublicPlayers = players.map(p => p.toClientData(false));
     
     // Players map for fast private lookup
     const playerMap = new Map();
     players.forEach(p => playerMap.set(p.username, p));
 
-    const allEnemies = enemies.map(enemy => {
-        if (enemy.toClientData) return enemy.toClientData();
-        return {
-            type: enemy.type,
-            username: enemy.username,
-            faction: enemy.faction,
-            x: +enemy.x.toFixed(2),
-            y: +enemy.y.toFixed(2),
-            angle: +enemy.angle.toFixed(3),
-            vx: +enemy.vx.toFixed(2),
-            vy: +enemy.vy.toFixed(2),
-            r: enemy.r, g: enemy.g, b: enemy.b,
-            size: enemy.size,
-            hull: enemy.hull ?? enemy.chassis?.hull ?? 0,
-            maxHull: enemy.maxHull ?? enemy.chassis?.maxHull ?? 1
-        };
-    });
-
-    const allProjectiles = projectiles.map(p => p.toClientData());
-    const allCrates = crates.map(c => c.toClientData());
-    // Animals and Events are simple objects, we can filter them directly or map them if needed
-    // Assuming animals don't have a complex toClientData yet, or it's lightweight. 
-    // If they do, map here. For now, use raw animals array as they are simple.
+    // Optimization: Removed O(N) pre-serialization of all entities.
+    // Instead, we use the Spatial Grid inside the loop to only process nearby entities.
 
     // Broadcast to each connected client
     playerSockets.forEach((ws, username) => {
@@ -4334,32 +4381,23 @@ setInterval(() => {
         const requestingPlayer = getPlayerOrRespawningPlayer(username);
         if (!requestingPlayer) return; 
 
+        // 1. Players: Logic preserves party visibility and private data
+        const serializedPlayers = [];
         const cullingDistance = 4000;
         const cullingSq = cullingDistance * cullingDistance;
-        const extendedCulling = 5000;
-        const extendedSq = extendedCulling * extendedCulling;
-        const crateSq = 2000 * 2000;
 
-        // 1. Players: Combine pre-serialized public data with private data for self
-        const serializedPlayers = [];
         for (let i = 0; i < allPublicPlayers.length; i++) {
             const pData = allPublicPlayers[i];
             
-            // Check visibility matches
-            let isVisible = false;
-            // Always include self
+            // Always include self with FULL data
             if (pData.username === username) {
-                // For self, we need to regenerate to include private data? 
-                // Or just merge it? Merging is safer.
-                // Actually, calling toClientData(true) for just ONE player (self) is cheap.
                 const myRealPlayer = playerMap.get(username);
-                if (myRealPlayer) {
-                    serializedPlayers.push(myRealPlayer.toClientData(true));
-                }
+                if (myRealPlayer) serializedPlayers.push(myRealPlayer.toClientData(true));
                 continue; 
             }
 
-            // Check party
+            // Check party visibility
+            let isVisible = false;
             if (requestingPlayer.party && pData.party && requestingPlayer.party.name === pData.party.name) {
                 isVisible = true;
             } else {
@@ -4369,56 +4407,56 @@ setInterval(() => {
                 if (dx*dx + dy*dy <= cullingSq) isVisible = true;
             }
 
-            if (isVisible) {
-                serializedPlayers.push(pData);
-            }
+            if (isVisible) serializedPlayers.push(pData);
         }
 
-        // 2. Enemies (Filter pre-serialized)
+        // Use Spatial Grid to find all other nearby entities (O(1) lookup per player)
+        // Range 2500 is enough for 1080p screen @ 0.5 zoom
+        const VIEW_RANGE = 3000; 
+        const nearbyEntities = getNearbyEntities(requestingPlayer.x, requestingPlayer.y, VIEW_RANGE);
+
         const filteredEnemies = [];
-        for (let i = 0; i < allEnemies.length; i++) {
-            const e = allEnemies[i];
-            const dx = e.x - requestingPlayer.x;
-            const dy = e.y - requestingPlayer.y;
-            if (dx*dx + dy*dy <= cullingSq) {
-                filteredEnemies.push(e);
-            }
-        }
-
-        // 3. Animals (Filter raw)
         const filteredAnimals = [];
-        for (let i = 0; i < animals.length; i++) {
-            const a = animals[i];
-            const dx = a.x - requestingPlayer.x;
-            const dy = a.y - requestingPlayer.y;
-            if (dx*dx + dy*dy <= cullingSq) {
-                filteredAnimals.push(a);
-            }
-        }
-
-        // 4. Projectiles (Filter pre-serialized)
         const filteredProjectiles = [];
-        for (let i = 0; i < allProjectiles.length; i++) {
-            const p = allProjectiles[i];
-            const dx = p.x - requestingPlayer.x;
-            const dy = p.y - requestingPlayer.y;
-            if (dx*dx + dy*dy <= cullingSq) {
-                filteredProjectiles.push(p);
-            }
-        }
-
-        // 5. Crates (Filter pre-serialized)
         const filteredCrates = [];
-        for (let i = 0; i < allCrates.length; i++) {
-            const c = allCrates[i];
-            const dx = c.x - requestingPlayer.x;
-            const dy = c.y - requestingPlayer.y;
-            if (dx*dx + dy*dy <= crateSq) { // 2000m range
-                filteredCrates.push(c);
+
+        for(const item of nearbyEntities) {
+            const { entity, type } = item;
+            
+            // Skip dead/removed entities
+            if (entity.markedForDeletion || entity.removedFromWorld) continue;
+
+            if (type === 'enemy') {
+                if (entity.toClientData) {
+                    filteredEnemies.push(entity.toClientData());
+                } else {
+                    // Fallback serialization
+                    filteredEnemies.push({
+                        type: entity.type,
+                        username: entity.username,
+                        faction: entity.faction,
+                        x: +entity.x.toFixed(2),
+                        y: +entity.y.toFixed(2),
+                        angle: +entity.angle.toFixed(3),
+                        vx: +entity.vx.toFixed(2),
+                        vy: +entity.vy.toFixed(2),
+                        r: entity.r, g: entity.g, b: entity.b,
+                        size: entity.size,
+                        hull: entity.hull ?? entity.chassis?.hull ?? 0,
+                        maxHull: entity.maxHull ?? entity.chassis?.maxHull ?? 1
+                    });
+                }
+            } else if (type === 'animal') {
+                if (!entity.dead) filteredAnimals.push(entity);
+            } else if (type === 'projectile') {
+                filteredProjectiles.push(entity.toClientData());
+            } else if (type === 'crate') {
+                filteredCrates.push(entity.toClientData());
             }
         }
 
-        // 6. Events (Filter raw)
+        // 6. Events (Filter raw - events are global/rare, so iterating array is fine)
+        const extendedSq = 5000 * 5000;
         const filteredEvents = [];
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
@@ -4437,7 +4475,7 @@ setInterval(() => {
             enemies: filteredEnemies,
             animals: filteredAnimals,
             projectiles: filteredProjectiles,
-            crates: filteredCrates,
+            crates: filteredCrates, // Now actually sent correctly!
             events: filteredEvents
         });
     });

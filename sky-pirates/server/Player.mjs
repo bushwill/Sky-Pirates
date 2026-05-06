@@ -403,9 +403,9 @@ export class Player extends Plane {
       gun2: this.gun2,
       
       // Arrays
-      crates: this.crates, 
-      achievements: this.achievements,
-      messages: this.messages
+      crates: this.crates.map(c => c.toClientData ? c.toClientData() : c), 
+      // achievements: this.achievements, // Removed from frequent updates to save bandwidth
+      // messages: this.messages // Removed from frequent updates (handled by globalMessages)
     };
 
     if (includePrivate) {
@@ -414,6 +414,8 @@ export class Player extends Plane {
       data.maxCrates = this.maxCrates;
       data.playerId = this.playerId; // Sometimes needed for verification
       data.lastRecoveryZone = this.lastRecoveryZone;
+      // Only include achievements for self, and only if requested (or maybe never in high-freq loop)
+      // client receives specific 'achievements_update' events. So we can omit here too.
     } else {
       // Don't send inventory or money to others to save bandwidth
     }
