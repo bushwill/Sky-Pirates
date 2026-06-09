@@ -238,6 +238,21 @@ function polygonWinding(verts) {
     return mapObj;
   }
   
+  function regenerateStaticStars() {
+    const stars = [];
+    const starCount = Math.max(150, Math.floor((windowWidth * windowHeight) / 9000));
+    for (let i = 0; i < starCount; i++) {
+      stars.push({
+        x: Math.random() * windowWidth,
+        y: Math.random() * (windowHeight * 0.7),
+        size: Math.random() * 2 + 1,
+        blinkOffset: Math.random() * 100
+      });
+    }
+    window.staticStars = stars;
+    window.staticStarsViewport = { width: windowWidth, height: windowHeight };
+  }
+
   // Draws the map background with the specified colors.
   // First draws sky with sun and clouds, then overlays the map background color
   function drawMapBackground(map, centerX = 0) {
@@ -337,20 +352,13 @@ function polygonWinding(verts) {
     const normalizedPos = Math.max(-1, Math.min(1, centerX / mapBounds));
     const parallaxOffsetX = normalizedPos * (windowWidth * parallaxFactor);
     
-    // Start Logic
-    // Generate static stars if not exists
-    if (!window.staticStars) {
-        window.staticStars = [];
-        // Generate more stars near the top
-        for (let i = 0; i < 150; i++) {
-            window.staticStars.push({
-                x: Math.random() * windowWidth,
-                y: Math.random() * (windowHeight * 0.7), // mostly sky
-                size: Math.random() * 2 + 1,
-                blinkOffset: Math.random() * 100
-            });
-        }
-    }
+    // Keep star positions synced to viewport size so stars cover the full screen after resize.
+    const starsNeedRefresh =
+      !window.staticStars ||
+      !window.staticStarsViewport ||
+      window.staticStarsViewport.width !== windowWidth ||
+      window.staticStarsViewport.height !== windowHeight;
+    if (starsNeedRefresh) regenerateStaticStars();
 
     if (isNight) {
         // Calculate Star Opacity

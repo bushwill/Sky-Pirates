@@ -478,7 +478,18 @@ function handleGameDisplay(controlledPlayer) {
     
     let activeZoom = 1.0;
     if (typeof isMobile !== 'undefined' && isMobile) {
-        activeZoom = 0.65;
+        if (typeof window.cameraZoom !== 'number' || isNaN(window.cameraZoom)) {
+            window.cameraZoom = 0.65;
+        }
+
+        let safeMaxView = (typeof window.MAX_ZOOM_VIEW_WIDTH === 'number') ? window.MAX_ZOOM_VIEW_WIDTH : 2500;
+        let minAllowedZoom = (width && safeMaxView) ? (width / safeMaxView) : 0.5;
+        const maxAllowedZoom = 2.0;
+        if (isNaN(minAllowedZoom)) minAllowedZoom = 0.5;
+
+        window.cameraZoom = constrain(window.cameraZoom, minAllowedZoom, maxAllowedZoom);
+        activeZoom = window.cameraZoom;
+
         // Expose active zoom for other systems (e.g. input handling)
         window.currentGameZoom = activeZoom;
         

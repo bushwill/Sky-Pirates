@@ -245,6 +245,44 @@ function mouseWheel(event) {
     }
 }
 
+function getZoomBounds() {
+    let safeMaxView = (typeof window.MAX_ZOOM_VIEW_WIDTH === 'number') ? window.MAX_ZOOM_VIEW_WIDTH : 2500;
+    const minZoom = (width && safeMaxView) ? (width / safeMaxView) : 0.5;
+    const maxZoom = 2.0;
+    return { minZoom, maxZoom };
+}
+
+function applyMobilePinchZoom(distanceDelta) {
+    const MOBILE_PINCH_ZOOM_SPEED = 0.0005; // intentionally low sensitivity
+
+    if (typeof window.cameraZoom !== 'number' || isNaN(window.cameraZoom)) {
+        window.cameraZoom = 0.65;
+    }
+
+    const { minZoom, maxZoom } = getZoomBounds();
+    window.cameraZoom += distanceDelta * MOBILE_PINCH_ZOOM_SPEED;
+    window.cameraZoom = constrain(window.cameraZoom, minZoom, maxZoom);
+}
+
+let mobilePinchActive = false;
+let mobileLastPinchDistance = 0;
+
+function beginMobilePinchIfNeeded() {
+    if (typeof touches === 'undefined' || touches.length < 2) return false;
+
+    const d = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
+    if (!mobilePinchActive) {
+        mobilePinchActive = true;
+        mobileLastPinchDistance = d;
+    }
+    return true;
+}
+
+function endMobilePinch() {
+    mobilePinchActive = false;
+    mobileLastPinchDistance = 0;
+}
+
 /* Mobile Controls Configuration */
 // Configurations are now functions to allow dynamic screen resizing
 let mobileButtonTimers = {};
@@ -463,7 +501,10 @@ function getScaledInputCoordinates(screenX, screenY) {
     if (typeof isMobile !== 'undefined' && isMobile) {
         const cx = width / 2;
         const cy = height / 2;
-        const s = 0.65;
+        let s = 0.65;
+        if (typeof window.currentGameZoom === 'number' && window.currentGameZoom > 0) {
+            s = window.currentGameZoom;
+        }
         // Inverse of: drawnX = (logicX - cx) * s + cx
         // logicX - cx = (drawnX - cx) / s
         // logicX = (drawnX - cx) / s + cx
@@ -493,6 +534,12 @@ function touchStarted(event) {
     // CHECK MOBILE CONTROLS FIRST (HUD)
     // This allows clicking Pause (Resume) even when menu is open, and ensures HUD buttons take priority
     if (typeof isMobile !== 'undefined' && isMobile && signedIn) {
+        // Two-finger touch starts pinch zoom, similar to mouse wheel zoom on desktop.
+        if (!menuVisible && beginMobilePinchIfNeeded()) {
+            keys.mouse = false;
+            return false;
+        }
+
         // Mobile Interactions - Check ALL active touches to handle multi-touch interactions (e.g. moving + pausing)
         for (let i = 0; i < touches.length; i++) {
             const mx = touches[i].x;
@@ -661,6 +708,10 @@ function touchStarted(event) {
 }
 
 function touchEnded() {
+    if (mobilePinchActive && (typeof touches === 'undefined' || touches.length < 2)) {
+        endMobilePinch();
+    }
+
     if (typeof isMobile !== 'undefined' && isMobile && signedIn && !menuVisible) {
         updateMobileControls();
         return false;
@@ -681,6 +732,18 @@ function touchMoved() {
     }
 
     if (typeof isMobile !== 'undefined' && isMobile && signedIn && !menuVisible) {
+        if (beginMobilePinchIfNeeded()) {
+            const pinchDistance = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
+            const delta = pinchDistance - mobileLastPinchDistance;
+            mobileLastPinchDistance = pinchDistance;
+            applyMobilePinchZoom(delta);
+            return false;
+        }
+
+        if (mobilePinchActive) {
+            endMobilePinch();
+        }
+
         updateMobileControls();
         return false;
     }

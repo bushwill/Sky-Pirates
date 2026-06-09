@@ -1,0 +1,77 @@
+{
+  "type": "guest",
+  "accountName": null,
+  "gameSaveId": "5225a634-ea05-40cc-9985-a71c543ca72e",
+  "created": 1780971309179,
+  "lastSeen": 1780971950632,
+  "achievements": {
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 248,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 43,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
+        }
+      ]
+    },
+    "fish_killer": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 7,
+      "milestones": [
+        {
+          "target": 50
+        }
+      ]
+    },
+    "sky_angler": {
+      "completed": true,
+      "unlockedAt": 1780971865755,
+      "progress": 1,
+      "milestones": []
+    },
+    "barbecue": {
+      "completed": true,
+      "unlockedAt": 1780971865756,
+      "progress": 1,
+      "milestones": []
+    }
+  }
+}
