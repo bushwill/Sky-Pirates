@@ -17,6 +17,8 @@ services:
     build:
       context: ./landingpage
     # No external ports - accessed via client proxy
+    volumes:
+      - ./landingpage:/usr/src/app:ro
     deploy:
       resources:
         limits:

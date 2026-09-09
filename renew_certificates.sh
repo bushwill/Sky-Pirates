@@ -20,17 +20,22 @@ if ! command -v certbot >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "openssl is required but not installed." >&2
+  exit 1
+fi
+
 if [[ ! -d "$CLIENT_CERT_DIR" ]]; then
   echo "Client certificate directory not found: $CLIENT_CERT_DIR" >&2
   exit 1
 fi
 
-if [[ ! -e "$SKYPIRATES_LIVE/fullchain.pem" || ! -e "$SKYPIRATES_LIVE/privkey.pem" ]]; then
+if ! sudo test -e "$SKYPIRATES_LIVE/fullchain.pem" || ! sudo test -e "$SKYPIRATES_LIVE/privkey.pem"; then
   echo "Missing skypirates Let's Encrypt files in $SKYPIRATES_LIVE" >&2
   exit 1
 fi
 
-if [[ ! -e "$BUSHWILL_LIVE/fullchain.pem" || ! -e "$BUSHWILL_LIVE/privkey.pem" ]]; then
+if ! sudo test -e "$BUSHWILL_LIVE/fullchain.pem" || ! sudo test -e "$BUSHWILL_LIVE/privkey.pem"; then
   echo "Missing bushwill Let's Encrypt files in $BUSHWILL_LIVE" >&2
   exit 1
 fi
@@ -59,7 +64,7 @@ if ss -ltn | awk 'NR > 1 {print $4}' | grep -Eq ':(80|443)$'; then
 fi
 
 echo "Renewing certificates..."
-sudo certbot renew --force-renewal --allow-subset-of-names --no-random-sleep-on-renew
+sudo certbot renew --allow-subset-of-names --no-random-sleep-on-renew
 
 echo "Copying renewed certificates into the client build context..."
 sudo cp "$SKYPIRATES_LIVE/fullchain.pem" "$CLIENT_CERT_DIR/fullchain.pem"
@@ -75,5 +80,11 @@ sudo chown "$repo_owner_group" \
 echo "Rebuilding and starting $CLIENT_SERVICE..."
 "$COMPOSE_CMD" up -d --build "$CLIENT_SERVICE"
 client_stopped=0
+
+echo "Certificate expiration dates:"
+echo -n "  skypirates.ca: "
+openssl x509 -in "$CLIENT_CERT_DIR/fullchain.pem" -noout -enddate | sed 's/notAfter=//'
+echo -n "  bushwill.ca:   "
+openssl x509 -in "$CLIENT_CERT_DIR/bushwill_fullchain.pem" -noout -enddate | sed 's/notAfter=//'
 
 echo "Certificate renewal complete."
