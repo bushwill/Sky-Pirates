@@ -4,10 +4,11 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="build-version" content="A.74" />
     <title>bushwill</title>
     <!-- p5.js for dynamic overlay graphics -->
-    <script src="p5.min.js"></script>
-    <script src="plant_overlay.js"></script>
+    <script src="p5.min.js?v=A.74"></script>
+    <script src="plant_overlay.js?v=A.74"></script>
     <style>
         body {
             min-height: 100vh;
@@ -98,12 +99,6 @@
             border: 2px solid #000;
             box-shadow: 0 0 8px #000;
         }
-
-        #pc-warning {
-            color: #ff0;
-            font-family: "Courier New", Courier, monospace;
-            text-shadow: 1px 1px 0 #000;
-        }
     </style>
 </head>
 
@@ -113,19 +108,22 @@
         style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0;"></div>
     <div class="retro-box" style="position:relative; z-index:1; max-width:700px;">
         <!-- Top Section: Title, Name, Welcome -->
-        <h1
-            style="font-family:'Courier New', Courier, monospace; color:#ffbf00; font-size:2.2em; margin-bottom:0.5em; text-shadow:2px 2px 0 #000, 0 0 8px #ffbf00;">
-            bushwill</h1>
-        <div style="font-size:1.3em; color:#fff; font-weight:bold; margin-bottom:0.5em;">William Bushell</div>
-        <div style="font-size:1.1em; color:#ffbf00; margin-bottom:1.5em;">Thanks for visiting my website!</div>
-        <span id="pc-warning" style="display:none; font-size:1rem; margin-bottom: 1em;">All web games only supported for
-            keyboard/mouse</span>
-
+        <h1 style="font-family:'Courier New', Courier, monospace; color:#ffbf00; text-shadow: 2px 2px 0 #000, 0 0 8px #ffbf00; margin-bottom:0.5em;">Welcome</h1>
+        <div style="font-size:1.3em; color:#efe7b3; font-weight:bold; margin-bottom:0.5em;">William Bushell</div>
+        <div style="font-size:1.1em; color:#fff; margin-bottom:1.5em;">Computer Scientist</div>
+        
         <!-- Projects Section -->
         <div style="margin-top:2em;">
             <h2
                 style="font-family:'Courier New', Courier, monospace; color:#fff; text-shadow:1px 1px 0 #000; margin-bottom:1.5em;">
-                Projects</h2>
+                Projects:</h2>
+            <!-- Papers Link -->
+            <div
+                style="background:#181818; border:2px solid #ffbf00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
+                <a href="/papers" class="button papers" style="margin-bottom:0.5em;">My Papers</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#ffbf00; margin-bottom:0.5em;">My Papers</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Read and download my written academic papers.</div>
+            </div>
             <!-- Project 1 -->
             <div
                 style="background:#181818; border:2px solid #ff9800; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
@@ -139,12 +137,11 @@
             <!-- Project 2 -->
             <div
                 style="background:#181818; border:2px solid #00ff00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
-                <a id="port81-btn" class="button green" style="margin-bottom:0.5em;">L-system Plant Examples</a>
-                <div style="font-size:1.1em; font-weight:bold; color:#00ff00; margin-bottom:0.5em;">L-system Plant
-                    Examples</div>
-                <div style="color:#ccc; margin-bottom:0.3em;">Procedural plant generator using textbook L-system
-                    examples and p5.js.</div>
-                <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: June, 2025</div>
+                <a id="port81-btn" class="button green" style="margin-bottom:0.5em;">L-System Playground</a>
+                <div style="font-size:1.1em; font-weight:bold; color:#00ff00; margin-bottom:0.5em;">L-System Playground</div>
+                <div style="color:#ccc; margin-bottom:0.3em;">Procedural plant generator using L-system
+                    examples.</div>
+                <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: September, 2026</div>
             </div>
             <!-- Project 3 -->
             <div
@@ -154,14 +151,7 @@
                 <div style="color:#ccc; margin-bottom:0.3em;">Silly little arcade style game. Game I made to help teach CMPT 140.</div>
                 <div style="color:#00eeff; font-size:0.95em; margin-bottom:0.3em;">Last updated: November, 2024</div>
             </div>
-            <!-- Papers Link -->
-            <div
-                style="background:#181818; border:2px solid #ffbf00; border-radius:8px; margin-bottom:2em; padding:1em 1.2em; text-align:left;">
-                <a href="/papers" class="button papers" style="margin-bottom:0.5em;">My Papers</a>
-                <div style="font-size:1.1em; font-weight:bold; color:#ffbf00; margin-bottom:0.5em;">My Papers</div>
-                <div style="color:#ccc; margin-bottom:0.3em;">Read and download my written academic papers.</div>
-            </div>
-            <!-- Add more projects here as needed -->
+            <!-- Add more projects here -->
         </div>
 
         <!-- Bio & Carousel Section Side by Side -->
@@ -188,8 +178,9 @@
     <script>
         // Rotating carousel images
         var carouselImg = document.getElementById('carousel-img');
+        var buildVersion = document.querySelector('meta[name="build-version"]').content;
 
-        fetch('/images/')
+        fetch('/images/?v=' + encodeURIComponent(buildVersion))
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('Unable to load carousel images');
@@ -216,10 +207,10 @@
                 }
 
                 var index = 0;
-                carouselImg.src = images[index];
+                carouselImg.src = images[index] + '?v=' + encodeURIComponent(buildVersion);
                 setInterval(function () {
                     index = (index + 1) % images.length;
-                    carouselImg.src = images[index];
+                    carouselImg.src = images[index] + '?v=' + encodeURIComponent(buildVersion);
                 }, 2500);
             })
             .catch(function (error) {
@@ -228,9 +219,6 @@
 
         // Show warning if not on a PC (Windows, Mac, Linux)
         var isPC = /Windows|Macintosh|Linux/i.test(navigator.userAgent);
-        if (!isPC) {
-            document.getElementById('pc-warning').style.display = 'inline';
-        }
         // Set maize model button to use /maizemodel path
         document.getElementById('port81-btn').href = '/maizemodel';
         // Set jet game button to use /jetgame path

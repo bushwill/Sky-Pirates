@@ -1,0 +1,36 @@
+{
+  "type": "guest",
+  "accountName": null,
+  "gameSaveId": "122b441f-4c27-4ac7-bff3-27539427018b",
+  "created": 1789762499611,
+  "lastSeen": 1789762499611,
+  "achievements": {
+    "top_speed": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 154,
+      "milestones": [
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 300
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 500
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 800
+        },
+        {
+          "unlocked": false,
+          "unlockedAt": null,
+          "target": 1000
+        }
+      ]
+    }
+  }
+}

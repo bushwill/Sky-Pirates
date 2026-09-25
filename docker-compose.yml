@@ -17,8 +17,9 @@ services:
     build:
       context: ./landingpage
     # No external ports - accessed via client proxy
+    command: ["sh", "/usr/src/source/start.sh"]
     volumes:
-      - ./landingpage:/usr/src/app:ro
+      - ./landingpage:/usr/src/source
     deploy:
       resources:
         limits:
@@ -51,6 +52,9 @@ services:
   maize-model:
     build:
       context: ./maize-model-online
+    command: ["sh", "/usr/src/source/start.sh"]
+    volumes:
+      - ./maize-model-online:/usr/src/source
     # No external ports - accessed via client proxy
     deploy:
       resources:
