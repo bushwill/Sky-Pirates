@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="Expires" content="Thu, 01 Jan 1970 00:00:00 GMT">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="build-version" content="A.65">
+  <meta name="build-version" content="A.68">
   <title>L-System Playground</title>
   <style>
     body {
@@ -26,14 +26,31 @@
       user-select: none;
       z-index: 10;
     }
-  </style>
-  <script src="/maizemodel/p5.min.js?v=A.65"></script>
 
-  <script src="/maizemodel/App.js?v=A.65"></script>
+    #instructions .mobile-instructions {
+      display: none;
+    }
+
+    @media (pointer: coarse) {
+      #instructions .desktop-instructions {
+        display: none;
+      }
+
+      #instructions .mobile-instructions {
+        display: inline;
+      }
+    }
+  </style>
+  <script src="/maizemodel/p5.min.js?v=A.68"></script>
+
+  <script src="/maizemodel/App.js?v=A.68"></script>
 </head>
 
 <body>
-  <div id="instructions">Drag to rotate/zoom</div>
+  <div id="instructions">
+    <span class="desktop-instructions">Click and drag to rotate, scroll to zoom</span>
+    <span class="mobile-instructions">Drag to rotate/zoom</span>
+  </div>
 </body>
 
 </html>

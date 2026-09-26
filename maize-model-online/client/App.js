@@ -4,6 +4,7 @@ let angleY = 0;
 let touchStartX = 0;
 let touchStartY = 0;
 let tapThreshold = 10;
+let touchGestureMode = null;
 
 let treeButtons = [];
 let treeDescriptionsElements = [];
@@ -21,7 +22,7 @@ const DEFAULT_TREE_SCALE = 5.0;
 let treeScale = DEFAULT_TREE_SCALE;
 
 const MIN_ITERATION = 0;
-const DEFAULT_ITERATION = 3;
+const DEFAULT_ITERATION = 5;
 const MAX_ITERATION = 40;
 const GENERATION_TIME_LIMIT_MS = 1000;
 const TARGET_RENDER_MS = 18;
@@ -32,10 +33,11 @@ const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 3.0;
 const MOBILE_MAX_ZOOM = 6.0;
 const MOBILE_ZOOM_DRAG_RATE = 0.994;
+const MOBILE_GESTURE_THRESHOLD = 8;
 const TRUNK_BASE_LENGTH = 0.18;
 const BRANCH_BASE_LENGTH = 0.12;
 const PLANT_ORIGIN_PANEL_GAP = 18;
-const DEFAULT_TREE_NAME = "Simplest Tree";
+const DEFAULT_TREE_NAME = "Simple Tree";
 const TWO_D_TREE_NAMES = ["Simplest Tree", "2D Ashok Samal Tree"];
 
 let sentenceBudget = getInitialSentenceBudget();
@@ -1125,13 +1127,44 @@ function touchMoved(event) {
 
   let dx = mouseX - pmouseX;
   let dy = mouseY - pmouseY;
+  let totalDx = mouseX - touchStartX;
+  let totalDy = mouseY - touchStartY;
 
-  if (!isCurrentTree2D()) {
-    angleY += dx * 0.005;
+  if (touchGestureMode === null) {
+    if (Math.hypot(totalDx, totalDy) < MOBILE_GESTURE_THRESHOLD) {
+      return false;
+    }
+
+    if (Math.abs(totalDx) >= Math.abs(totalDy)) {
+      touchGestureMode = isCurrentTree2D() ? 'none' : 'rotate';
+    } else {
+      touchGestureMode = 'zoom';
+    }
+
+    if (touchGestureMode === 'none') {
+      return false;
+    }
+
+    let gestureDistance = touchGestureMode === 'rotate' ? totalDx : totalDy;
+    let movementPastThreshold = Math.sign(gestureDistance) * Math.max(0, Math.abs(gestureDistance) - MOBILE_GESTURE_THRESHOLD);
+
+    if (touchGestureMode === 'rotate') {
+      angleY += movementPastThreshold * 0.005;
+    } else {
+      treeScale *= pow(MOBILE_ZOOM_DRAG_RATE, movementPastThreshold);
+      treeScale = constrain(treeScale, MIN_ZOOM, MOBILE_MAX_ZOOM);
+      updateZoomDisplay();
+    }
+    return false;
   }
-  treeScale *= pow(MOBILE_ZOOM_DRAG_RATE, dy);
-  treeScale = constrain(treeScale, MIN_ZOOM, MOBILE_MAX_ZOOM);
-  updateZoomDisplay();
+
+  if (touchGestureMode === 'rotate') {
+    angleY += dx * 0.005;
+  } else if (touchGestureMode === 'zoom') {
+    treeScale *= pow(MOBILE_ZOOM_DRAG_RATE, dy);
+    treeScale = constrain(treeScale, MIN_ZOOM, MOBILE_MAX_ZOOM);
+    updateZoomDisplay();
+  }
   return false;
 }
 
@@ -1140,11 +1173,13 @@ function touchStarted(event) {
 
   touchStartX = mouseX;
   touchStartY = mouseY;
+  touchGestureMode = null;
   return false;
 }
 
 function touchEnded(event) {
   if (event.target.tagName !== 'CANVAS') return;
+  touchGestureMode = null;
   return false;
 }
 
