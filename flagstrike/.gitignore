@@ -1,0 +1,17 @@
+node_modules/
+.npm/
+npm-cache/
+dist/
+coverage/
+.vite/
+
+.env
+.env.*
+!.env.example
+
+/server/data/match-reports/
+/server/data/competitive-maps.json
+
+*.log
+npm-debug.log*
+*.tmp

@@ -2,6 +2,11 @@ services:
   client:
     build:
       context: ./sky-pirates/client
+    depends_on:
+      flagstrike-client:
+        condition: service_healthy
+      flagstrike-server:
+        condition: service_healthy
     ports:
       - "80:8080"
       - "443:443"
@@ -38,6 +43,44 @@ services:
         limits:
           memory: 1500M
           cpus: '1.75'
+
+  flagstrike-client:
+    image: flagstrike-client:local
+    pull_policy: build
+    build:
+      context: ./flagstrike
+      dockerfile: client/Dockerfile
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 2s
+      timeout: 1s
+      retries: 15
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.1'
+
+  flagstrike-server:
+    image: flagstrike-server:local
+    pull_policy: build
+    build:
+      context: ./flagstrike
+      dockerfile: server/Dockerfile
+    volumes:
+      - ./flagstrike/server/data:/usr/src/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "const net = require('node:net'); const socket = net.connect(3000, '127.0.0.1'); socket.once('connect', () => { socket.destroy(); process.exit(0); }); socket.once('error', () => process.exit(1));"]
+      interval: 2s
+      timeout: 1s
+      retries: 15
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.3'
 
   jet-game:
     build:

@@ -9,3 +9,8 @@
 .viminfo
 .wget-hsts
 node_modules
+.npm/
+.copilot/ide/
+.copilot/logs/
+.copilot/session-state/
+.copilot/session-store.db*

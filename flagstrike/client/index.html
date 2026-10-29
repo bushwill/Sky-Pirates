@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flagstrike</title>
+  <meta name="theme-color" content="#0b1220">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="/flagstrike/" aria-label="Flagstrike home"><span class="brand-mark">≜</span> Flagstrike</a>
+      <div class="connection-indicator"><span class="status-dot"></span><span id="connection-state" data-state="connecting">Connecting…</span></div>
+    </header>
+
+    <aside id="game-warning" class="game-warning" role="status" hidden>
+      Game is not quite working; check back later.
+    </aside>
+
+    <div id="feedback" class="feedback" role="status" aria-live="polite" aria-hidden="true"></div>
+
+    <dialog id="series-mode-dialog" class="series-mode-dialog" aria-labelledby="series-mode-title">
+      <div class="series-mode-dialog-content">
+        <button id="series-mode-close" class="icon-button series-mode-close" type="button" aria-label="Close mode options">×</button>
+        <section id="series-mode-choices" class="series-mode-step">
+          <p class="eyebrow">MATCH TYPE</p>
+          <h2 id="series-mode-title">Choose how to play</h2>
+          <p id="series-mode-description" class="series-mode-description"></p>
+          <div class="series-mode-actions">
+            <button id="series-mode-public" class="button button-primary" type="button">Public Matchmaking</button>
+            <button id="series-mode-private" class="button button-secondary" type="button">Host a Private Match</button>
+          </div>
+        </section>
+        <form id="private-series-form" class="room-form series-mode-step" hidden>
+          <p class="series-mode-description">Choose a room name and password, then share both with the players you invite.</p>
+          <label for="private-series-room-name">Room name</label>
+          <input id="private-series-room-name" name="name" type="text" minlength="1" maxlength="32" placeholder="Room name" autocomplete="off" required>
+          <label for="private-series-password">Password</label>
+          <input id="private-series-password" name="password" type="password" maxlength="128" placeholder="Room password" autocomplete="new-password" required>
+          <button class="button button-primary" type="submit">Create Private Match</button>
+          <button id="private-series-back" class="button button-secondary" type="button">Back</button>
+        </form>
+      </div>
+    </dialog>
+
+    <section id="lobby-view" class="lobby-layout" aria-labelledby="lobby-title">
+      <div class="lobby-intro">
+        <p id="lobby-title" class="eyebrow">THIS GAME IS IN EARLY DEVELOPMENT.</p>
+        <p class="intro-copy">Scroll down for the gameplay guide. All servers are hosted locally.</p>
+      </div>
+      <section class="panel display-name-panel" aria-labelledby="display-name-title">
+        <div>
+          <p id="display-name-title" class="eyebrow">PLAYER IDENTITY</p>
+          <p class="display-name-help">Your name is shown to other players.</p>
+        </div>
+        <div class="identity-field">
+          <label for="display-name-input">Username</label>
+          <input id="display-name-input" type="text" maxlength="24" autocomplete="nickname"
+            placeholder="Player name" aria-describedby="display-name-help">
+        </div>
+        <span id="display-name-help" class="display-name-help">1–24 characters</span>
+      </section>
+
+      <div class="lobby-grid">
+        <div class="discovery-column">
+          <section class="panel quick-play-panel" aria-labelledby="quick-play-title">
+            <p id="quick-play-title" class="eyebrow">GAME MODES</p>
+            <div class="game-mode-options">
+              <div class="game-mode-option game-mode-option--practice">
+                <div><strong>Practice</strong><span>Endless rounds · no series limit</span></div>
+                <button id="quick-play-button" class="button button-primary" type="button">Practice</button>
+              </div>
+              <div class="game-mode-option game-mode-option--quick-play">
+                <div><strong>Quick Play</strong><span>Best of 7 · first to 4 · sides swap every 2 matches</span></div>
+                <button id="long-play-button" class="button button-primary" type="button">Quick Play</button>
+              </div>
+              <div class="game-mode-option game-mode-option--long-play">
+                <div><strong>Long Play</strong><span>Best of 19 · first to 10 · sides swap every 5 matches</span></div>
+                <button id="long-series-button" class="button button-primary" type="button">Long Play</button>
+              </div>
+            </div>
+          </section>
+          <section class="panel rooms-panel" aria-labelledby="rooms-title">
+            <div class="panel-heading">
+              <div>
+                <p id="rooms-title" class="eyebrow">Active Rooms</p>
+              </div>
+              <button id="refresh-rooms" class="icon-button" type="button" aria-label="Refresh room list" title="Refresh room list">↻</button>
+            </div>
+            <ul id="room-list" class="room-list" aria-live="polite"></ul>
+          </section>
+        </div>
+
+        <div class="action-panels">
+          <section class="panel" aria-labelledby="create-title">
+            <p id="create-title" class="eyebrow">HOST CUSTOM ROOM</p>
+            <form id="create-room-form" class="room-form">
+              <label for="create-room-name">Room name</label>
+              <input id="create-room-name" name="name" type="text" minlength="1" maxlength="32" placeholder="Room name" autocomplete="off" required>
+              <label for="create-room-password">Password <span class="optional-label">optional</span></label>
+              <input id="create-room-password" name="password" type="password" maxlength="128" placeholder="Room password" autocomplete="new-password">
+              <button class="button button-secondary" type="submit">Create and join</button>
+            </form>
+          </section>
+
+          <section class="panel" aria-labelledby="join-title">
+            <p id="join-title" class="eyebrow">JOIN ROOM</p>
+            <form id="join-room-form" class="room-form">
+              <label for="join-room-name">Room name</label>
+              <input id="join-room-name" name="name" type="text" minlength="1" maxlength="32" placeholder="Room name" autocomplete="off" required>
+              <label for="join-room-password">Password <span class="optional-label">optional</span></label>
+              <input id="join-room-password" name="password" type="password" maxlength="128" placeholder="Room password" autocomplete="off">
+              <button class="button button-secondary" type="submit">Join room</button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel gameplay-guide" aria-labelledby="gameplay-guide-title">
+        <div class="guide-heading">
+          <div>
+            <p class="eyebrow">FIELD MANUAL</p>
+            <h2 id="gameplay-guide-title">Gameplay guide</h2>
+          </div>
+        </div>
+
+        <section class="guide-overview" aria-labelledby="guide-overview-title">
+          <div class="guide-overview-mark" aria-hidden="true">5v5</div>
+          <div>
+            <h3 id="guide-overview-title">A tactical shooter that's more tactical than shooter</h3>
+            <p>Up to five players fight on each side: the <strong class="guide-strike">Strike Team</strong> attacks and the <strong class="guide-flag">Flag Team</strong> defends. Each three-minute round can be won either by eliminating the opposing team, or capturing/defending the <strong class="guide-objective">flag</strong>. Teamplay, positioning, utility, and timing is more important than mechanical skill.</p>
+          </div>
+        </section>
+
+        <div class="guide-grid">
+          <article class="guide-card guide-card--strike">
+            <span class="guide-kicker">WIN CONDITION 01</span>
+            <h3>Team elimination</h3>
+            <p>Eliminate every living opponent to win immediately. There are <strong>no respawns</strong>: when you are eliminated, you spectate until the next round.</p>
+            <p>Every player starts with <strong>100 health</strong>. Armor absorbs incoming damage before health, and regenerates over time. Your armor depends on the game mode and the gear you have acquired.</p>
+          </article>
+
+          <article class="guide-card guide-card--flag">
+            <span class="guide-kicker">WIN CONDITION 02</span>
+            <h3>Capture/Defend the <span class="guide-objective">flag</span></h3>
+            <p><strong class="guide-strike">Strike Team:</strong> find and pick up the <strong class="guide-objective">flag</strong> at the <strong class="guide-flag">Flag Site</strong>, then carry it into the <strong class="guide-strike">Strike Site</strong> to capture it. The <strong class="guide-objective">flag carrier</strong> moves more slowly; if eliminated, the <strong class="guide-objective">flag</strong> drops and another <strong class="guide-strike">Strike player</strong> can pick it up.</p>
+            <p><strong class="guide-flag">Flag Team:</strong> protect the <strong class="guide-objective">flag</strong> and deny the capture. Eliminate all <strong class="guide-strike">Strike players</strong> to win at once, or keep the <strong class="guide-objective">flag</strong> out of the <strong class="guide-strike">Strike Site</strong> until the <strong>three-minute timer</strong> expires.</p>
+          </article>
+
+          <article class="guide-card">
+            <span class="guide-kicker">COMBAT</span>
+            <h3>How to shoot and where to aim</h3>
+            <p>Hold <strong>left mouse</strong> to fire. Weapons differ in damage, firing cadence, and effective range; many lose damage as shots travel farther. A hit is strongest near the target’s <strong>center of mass</strong> and weaker toward the edge of their body.</p>
+            <p>Accuracy also changes during a fight: movement makes shots less precise, firing adds recoil, and accuracy recovers when you stop shooting.</p>
+            <h3>Choose a weapon for the role you play</h3>
+            <p>Some weapons are generally stronger than others, but each weapon is deadly in its circumstances.</p>
+            <p>Reload behavior varies too: some weapons replace a magazine, while weapons such as the Revolver load rounds one at a time. Press <strong>R</strong> to reload.</p>
+            <h3>Gadgets</h3>
+            <p>Choose one gadget for each match. Most gadgets have one use; unique gadgets can have special charge and recharge rules.</p>
+            <ul class="guide-list guide-list--examples">
+              <li><strong>Smoke grenade:</strong> A reliable vision-blocking gadget that can be used to create positive cover for your team, and negative intel for the enemy team.</li>
+              <li><strong>Molotov:</strong> A fire-based aggressive area denial gadget that creates a pool of damaging fire briefly.</li>
+              <li><strong>Cryo grenade:</strong> An ice-based grenade that creates a long lasting slowing field.</li>
+              <li><strong>Proximity mine:</strong> A small explosive mine with a detection radius that can cover flanks, and get kills on careless enemies.</li>
+              <li><strong>Flash grenade:</strong> A thrown flashbang that blinds and deafens all players within line of sight of the grenade, after a short delay. </li>
+            </ul>
+          </article>
+
+          <article class="guide-card">
+            <span class="guide-kicker">CONTROLS</span>
+            <h3>All the controls</h3>
+            <ul class="guide-list">
+              <li><strong>W/A/S/D</strong> to move; arrow keys work too.</li>
+              <li><strong>Q / E</strong> to lean left / right. Hold to lean; a quick tap toggles the lean on or off.</li>
+              <li><strong>R</strong> to reload your weapon.</li>
+              <li><strong>Shift</strong> to walk more slowly for controlled movement.</li>
+              <li><strong>F</strong> to drop the <strong class="guide-objective">flag</strong> when you are carrying it.</li>
+              <li><strong>Left mouse button</strong> to fire. Aim with your mouse. Hold for weapons that support continuous fire; semi-automatic weapons fire once per click.</li>
+              <li><strong>Right mouse button</strong> to switch between your weapon and gadget; switching takes 1 second. Right-click again to use the selected gadget. Left-click returns to your weapon.</li>
+              <li><strong>Middle mouse button</strong> to ping the aimed map location; teammates see the marker briefly.</li>
+            </ul>
+            <p>Lean to peek around obstacles without exposing your whole body. Use pings to quickly call out to your team.</p>
+          </article>
+
+          <article class="guide-card guide-card--practice">
+            <span class="guide-kicker">BUY PHASE · PRACTICE</span>
+            <h3>Pick a weapon before the round</h3>
+            <p>During the pre-round countdown, choose any available weapon and one gadget. These are free loadout choices, not a shop.</p>
+          </article>
+
+          <article class="guide-card guide-card--quick-play">
+            <span class="guide-kicker">BUY PHASE · QUICK PLAY/LONG PLAY</span>
+            <h3>Plan your picks across the series</h3>
+            <p>During each pre-round countdown, browse randomized offers. You get <strong>6 offers and 2 picks in the first round</strong>, then <strong>5 offers and 1 pick in every later round</strong>. You start with the Classic pistol and no gadget.</p>
+            <p>Buying a weapon replaces your current one, and buying a gadget replaces your current gadget. Purchased items persist between rounds.</p>
+          </article>
+
+          <article class="guide-card">
+            <span class="guide-kicker">GLOBAL INTEL SYSTEM</span>
+            <h3>Vision and sound are shared teamwide</h3>
+            <p>Your living teammates’ vision provide global intel to everyone on your team, and explored map intel stays known. Enemy positions are shown only while an enemy is currently visible to your team.</p>
+            <p>If an unseen opponent makes noise, your team may receive a short-lived sound cue. <strong class="guide-audio-gunfire">Orange</strong> marks gunfire and <strong class="guide-audio-footsteps">red</strong> marks footsteps from a nearby moving enemy. Each ring is an uncertain search area. Slow-walking (<strong>Shift</strong>) prevents <strong class="guide-audio-footsteps">audio cues</strong>.</p>
+          </article>
+
+          <article class="guide-card">
+            <span class="guide-kicker">THE BATTLEFIELD</span>
+            <h3>Maps are procedurally generated</h3>
+            <p>Each match map is procedurally assembled from a seed: connected rooms and corridors link the <strong class="guide-strike">Strike</strong> and <strong class="guide-flag">Flag</strong> sites, with destructible objects placed throughout.</p>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <section id="room-view" class="room-view" aria-labelledby="room-view-title" hidden>
+      <div class="room-view-heading">
+        <div>
+          <p class="eyebrow">SERVER ROOM</p>
+          <p id="connected-message" class="connected-message"></p>
+          <p id="host-status" class="host-status" aria-live="polite"></p>
+        </div>
+        <div class="room-actions">
+          <button id="start-match-button" class="button button-primary" type="button" hidden>Start match</button>
+          <button id="quick-play-ready-button" class="button button-primary" type="button" hidden>Ready up</button>
+          <div class="room-credentials-wrap">
+            <button id="room-credentials-toggle" class="button button-secondary room-credentials-toggle"
+              type="button" aria-controls="room-credentials" aria-expanded="false" hidden>Show room details</button>
+            <div id="room-credentials" class="room-credentials" role="region" aria-label="Room name and password" hidden>
+              <div class="room-credentials-row"><span>Room name</span><strong id="room-credential-name"></strong></div>
+              <div class="room-credentials-row"><span>Password</span><strong id="room-credential-password"></strong></div>
+            </div>
+          </div>
+          <button id="back-button" class="button button-secondary" type="button">← Back to rooms</button>
+        </div>
+      </div>
+      <div class="room-game-layout">
+        <div class="game-main-column">
+          <div id="room-game" class="room-game" aria-label="Horizontal rectangular game map" hidden>
+            <section id="game-hud" class="game-hud" aria-label="Match score and players alive" aria-live="polite" hidden>
+              <div class="game-hud-team-labels is-hidden" aria-hidden="true">
+                <strong id="game-hud-label-a">Team A</strong>
+                <span></span>
+                <strong id="game-hud-label-b">Team B</strong>
+              </div>
+              <div class="game-hud-score" aria-label="Match score">
+                <strong id="game-hud-score-a">0</strong>
+                <span aria-hidden="true">—</span>
+                <strong id="game-hud-score-b">0</strong>
+              </div>
+              <div class="game-hud-alive" aria-label="Players remaining">
+                <strong id="game-hud-team-a"></strong>
+                <span aria-hidden="true">—</span>
+                <strong id="game-hud-team-b"></strong>
+              </div>
+              <div id="game-hud-timer" class="game-hud-timer" hidden></div>
+            </section>
+            <div id="client-computation" class="client-computation" aria-label="Client computation time" aria-live="off" hidden></div>
+          </div>
+        </div>
+        <div class="game-sidebar">
+          <aside id="bot-takeover-panel" class="bot-takeover-panel" aria-live="polite" hidden>
+            <h2>Take over a teammate</h2>
+            <p id="bot-takeover-help"></p>
+            <div id="bot-takeover-options" class="bot-takeover-options"></div>
+          </aside>
+          <aside id="team-panel" class="team-panel" aria-labelledby="team-panel-title">
+            <div class="team-panel-heading">
+              <h2 id="team-panel-title">Teams</h2>
+              <span id="team-assignment-status" class="team-assignment-status" aria-live="polite"></span>
+            </div>
+            <div id="team-groups" class="team-groups" aria-live="polite"></div>
+            <section id="map-seed-controls" class="map-seed-controls" hidden aria-labelledby="map-seed-title">
+              <div class="map-seed-heading">
+                <h3 id="map-seed-title">Map seed</h3>
+                <span>Host debug</span>
+              </div>
+              <form id="map-seed-form" class="map-seed-form">
+                <label class="visually-hidden" for="map-seed-input">Deterministic map seed</label>
+                <input id="map-seed-input" name="seed" type="number" min="1" max="4294967295" step="1" required>
+                <label class="visually-hidden" for="map-room-count">Number of generated rooms</label>
+                <input id="map-room-count" name="roomCount" type="number" min="1" max="13" step="1" aria-label="Number of rooms" value="4" required>
+                <button class="button button-secondary" type="submit">Use seed</button>
+                <button id="map-seed-randomize" class="button button-secondary" type="button">Generate random map</button>
+                <button id="map-competitive-generate" class="button button-primary" type="button">Generate competitive map</button>
+              </form>
+              <div id="map-metrics" class="map-metrics" aria-live="polite"></div>
+            </section>
+            <div id="team-self-actions" class="team-self-actions" hidden></div>
+            <form id="team-control-form" class="team-control-form">
+              <div id="team-player-field">
+                <label for="team-player-select">Manage player</label>
+                <select id="team-player-select" name="playerId"></select>
+              </div>
+              <label for="team-destination-select">Join team</label>
+              <select id="team-destination-select" name="team">
+                <option value="red">Team A</option>
+                <option value="blue">Team B</option>
+              </select>
+              <div id="team-swap-field" hidden>
+                <label for="team-swap-select">Swap with</label>
+                <select id="team-swap-select" name="swapWithPlayerId"></select>
+              </div>
+              <button id="team-submit-button" class="button button-secondary" type="submit">Join group</button>
+            </form>
+            <p id="team-help" class="team-help"></p>
+            <section id="bot-settings-panel" class="bot-settings-panel" hidden aria-labelledby="bot-settings-title">
+              <div class="bot-settings-heading">
+                <h3 id="bot-settings-title">Custom match bots</h3>
+                <span>Host controls · 10 personalities</span>
+              </div>
+              <div id="bot-roster" class="bot-roster" aria-live="polite"></div>
+              <p class="bot-settings-help">Add or remove preconfigured bots here (five players per team, including bots). AI decisions run on the host.</p>
+            </section>
+          </aside>
+          <aside id="inventory-panel" class="inventory-panel" aria-labelledby="inventory-panel-title" hidden>
+            <div class="inventory-panel-heading">
+              <h2 id="inventory-panel-title">Inventory</h2>
+            </div>
+            <div id="weapon-list" class="weapon-list" aria-live="polite">
+              <article id="inventory-weapon-card" class="weapon-card">
+                <div class="weapon-card-heading">
+                  <span id="inventory-weapon-icon" class="weapon-icon weapon-item-icon" aria-hidden="true">⌁</span>
+                  <div>
+                    <h3 id="inventory-weapon-name">Assault Rifle</h3>
+                    <span id="inventory-weapon-type">Rifle</span>
+                  </div>
+                </div>
+                <div id="inventory-weapon-tags" class="inventory-weapon-tags" role="list" aria-label="Weapon descriptors"></div>
+                <div class="weapon-stat"><span>Magazine</span><strong id="weapon-ammo-count">30 / 30</strong></div>
+                <div id="weapon-ammo-icons" class="rifle-ammo-icons" role="img" aria-label="30 of 30 rounds loaded"></div>
+                <p id="weapon-reload-status" class="rifle-reload-status" aria-live="polite"></p>
+                <p id="inventory-weapon-equip" class="inventory-equip-hint">Equipped</p>
+              </article>
+              <article id="inventory-gadget-card" class="weapon-card gadget-card" aria-labelledby="inventory-gadget-name">
+                <div class="weapon-card-heading">
+                  <span class="weapon-icon gadget-icon" aria-hidden="true">●</span>
+                  <div>
+                    <h3 id="inventory-gadget-name">No gadget equipped</h3>
+                    <span id="inventory-gadget-description">Choose one during the buy phase</span>
+                  </div>
+                </div>
+                <div class="weapon-stat"><span>Quantity</span><strong id="inventory-gadget-count">0</strong></div>
+                <p id="inventory-gadget-status" class="gadget-inventory-status" aria-live="polite">Choose a gadget during the buy phase</p>
+              </article>
+              <article id="inventory-armor-card" class="weapon-card armor-card" aria-labelledby="inventory-armor-name">
+                <div class="weapon-card-heading">
+                  <span class="weapon-icon armor-icon" aria-hidden="true">⬡</span>
+                  <div>
+                    <h3 id="inventory-armor-name">No armor equipped</h3>
+                    <span id="inventory-armor-level">Armor</span>
+                  </div>
+                </div>
+                <div class="weapon-stat"><span>Health</span><strong id="inventory-health-points">100 / 100</strong></div>
+                <div id="inventory-armor-points-row" class="weapon-stat" hidden><span>Armor</span><strong id="inventory-armor-points">0 / 0</strong></div>
+                <p id="inventory-armor-regen" class="inventory-armor-regen" aria-live="polite"></p>
+              </article>
+              <article class="weapon-card inventory-items-card" aria-labelledby="inventory-items-title">
+                <div class="weapon-card-heading">
+                  <span class="weapon-icon items-icon" aria-hidden="true">✣</span>
+                  <div><h3 id="inventory-items-title">Perks</h3><span>Collected perks</span></div>
+                </div>
+                <div id="inventory-item-grid" class="inventory-item-grid" role="list" aria-label="Perks"></div>
+                <p id="inventory-items-empty" class="inventory-items-empty">No items equipped.</p>
+              </article>
+            </div>
+          </aside>
+          <aside id="weapon-select-panel" class="weapon-select-panel" aria-labelledby="weapon-select-title" hidden>
+            <div class="weapon-select-heading">
+              <h2 id="weapon-select-title">Weapon shop</h2>
+              <span>Choose your loadout before the round</span>
+            </div>
+            <div id="quick-shop-categories" class="quick-shop-categories" role="tablist" aria-label="Loadout categories">
+              <button id="quick-shop-rifles-tab" class="quick-shop-category-tab is-active" type="button" role="tab"
+                aria-selected="true" aria-controls="quick-shop-rifles-panel" tabindex="0">Rifles</button>
+              <button id="quick-shop-pistols-tab" class="quick-shop-category-tab" type="button" role="tab"
+                aria-selected="false" aria-controls="quick-shop-pistols-panel" tabindex="-1">Pistols</button>
+              <button id="quick-shop-gadgets-tab" class="quick-shop-category-tab" type="button" role="tab"
+                aria-selected="false" aria-controls="quick-shop-gadgets-panel" tabindex="-1">Gadgets</button>
+              <button id="quick-shop-unique-tab" class="quick-shop-category-tab" type="button" role="tab"
+                aria-selected="false" aria-controls="quick-shop-unique-panel" tabindex="-1">Unique</button>
+            </div>
+            <div id="quick-shop-rifles-panel" class="quick-shop-category-panel" role="tabpanel"
+              aria-labelledby="quick-shop-rifles-tab" tabindex="0">
+              <div id="rifle-shop-options" class="weapon-shop-options" role="group" aria-label="Available rifles"></div>
+            </div>
+            <div id="quick-shop-pistols-panel" class="quick-shop-category-panel" role="tabpanel"
+              aria-labelledby="quick-shop-pistols-tab" tabindex="0" hidden>
+              <div id="pistol-shop-options" class="weapon-shop-options" role="group" aria-label="Available pistols"></div>
+            </div>
+            <div id="quick-shop-gadgets-panel" class="quick-shop-category-panel" role="tabpanel"
+              aria-labelledby="quick-shop-gadgets-tab" tabindex="0" hidden>
+              <div id="gadget-shop-options" class="weapon-shop-options gadget-shop-options" role="group" aria-label="Available gadgets"></div>
+            </div>
+            <div id="quick-shop-unique-panel" class="quick-shop-category-panel" role="tabpanel"
+              aria-labelledby="quick-shop-unique-tab" tabindex="0" hidden>
+              <div id="unique-gadget-shop-options" class="weapon-shop-options gadget-shop-options" role="group" aria-label="Available unique gadgets">
+                <p id="unique-gadget-shop-empty" class="inventory-items-empty">No other unique gadgets offered this round.</p>
+              </div>
+            </div>
+            <div id="item-shop-options" class="weapon-shop-options item-shop-options" role="group" aria-label="Armor and perk offers"></div>
+            <button id="weapon-shop-skip" class="weapon-shop-skip" type="button" hidden>Skip this shop</button>
+          </aside>
+          <aside id="scoreboard-panel" class="scoreboard-panel" aria-labelledby="scoreboard-title" hidden>
+            <div class="scoreboard-heading">
+              <h2 id="scoreboard-title">Scoreboard</h2>
+            </div>
+            <div id="scoreboard-teams" class="scoreboard-teams" aria-live="polite"></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site-footer"><span>Flagstrike</span><span>This game is in early development.</span></footer>
+  </main>
+  <script>
+    const SHOW_GAME_WARNING = false;
+    document.getElementById('game-warning').hidden = !SHOW_GAME_WARNING;
+  </script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

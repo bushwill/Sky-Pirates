@@ -1,0 +1,6 @@
+Pixel Guns Demo Pack by datDev
+Source: https://datdev.itch.io/pixel-guns-2d-weapon-pack
+
+The creator permits use in personal and commercial projects. Credit is appreciated but not required. Redistribution, resale, and repackaging of the asset pack are not allowed.
+
+The original demo archive is retained as PixelGuns_DemoPack.zip. Only the weapon sprites used by the game are referenced by the client.

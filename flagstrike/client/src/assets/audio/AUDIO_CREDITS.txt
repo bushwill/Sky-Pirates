@@ -1,0 +1,97 @@
+Gunshots
+---------
+The Free Firearm Sound Library, released under CC0 / No Rights Reserved:
+https://opengameart.org/content/the-free-firearm-sound-library
+The library was created by Ben Jaszczak, Brian Nelson, Kevin Heras, and Matthew Nanney.
+
+Included excerpts:
+- gunshot-pistol.wav: 1911, A_42P.wav
+- gunshot-shotgun.wav: Charles Daly, H_21P.wav
+- gunshot-rifle.wav: AR-15, D_32P.wav
+- gunshot-sniper.wav: Tikka, W_24P.wav
+- gunshot-heavy-sniper.wav: Springfield 1917, B_24P.wav
+
+The additional per-weapon shots are CC0 excerpts from the USC / Sunset Editorial Sound Effects Library:
+https://archive.org/details/SSE_Library_GUNS
+
+- gunshot-revolver.wav: "Big revolver shots"
+- gunshot-pocket-shotgun.wav: "Classic western shotgun blast with reverb"
+- gunshot-battle-rifle.wav: "30 30 rifle shots"
+- gunshot-smg.wav: "Tommy gun busts; machine gun"
+- gunshot-marksman-rifle.wav: "Very sharp small rifle fire"
+
+The excerpts were converted to mono 24 kHz PCM and trimmed to short gameplay shots.
+The battle pistol uses the classic pistol recording at a lower volume; the assault and
+battle rifles share the 30 30 rifle recording; the SMG and machine pistol use the classic
+pistol recording; and the machine gun uses the former SMG recording.
+
+Gadget effects
+--------------
+The following excerpts are from the Sunset Editorial / USC Sound Effects Library.
+The library items are released under CC0 1.0 Universal:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+- molotov-ignite.wav: short glass-break excerpt from "Small glass breaks" (GLASS),
+  layered with a brief excerpt of "Igniting gas jets; trike and gas flame" (FIRE)
+- orbital-strike-fire.wav: 1.2-second fire-only excerpt from "Igniting gas jets; trike and
+  gas flame" (FIRE), with no glass-break layer
+- smoke-deploy.wav: short excerpt of "Carbon dioxide fire extinguisher; long blast" (AIR)
+- flashbang.wav: short excerpt of "Grenade explodes" (EXPLOSIONS), layered with
+  a generated, fading high-frequency ring
+- Jammer static burst: procedurally synthesized white noise generated with the Web Audio API;
+  no external sample
+- mine-explosion.mp3: "Single heavy explosions 1" from SSE Library: EXPLOSIONS
+  https://archive.org/details/SSE_Library_EXPLOSIONS
+
+The original gas-ignition recording is from the USC / Sunset Editorial FIRE collection,
+released under CC0 1.0 Universal:
+https://archive.org/details/SSE_Library_FIRE
+
+The cold, crystalline cryo sound is:
+
+- cryo-freeze.wav: "Cryo Freeze Creep" by BudgetPixel AI, used under CC BY 4.0
+  https://budgetpixel.com/sfx/cryo-freeze-creep-663edaff
+  Required attribution: "Cryo Freeze Creep" by BudgetPixel AI
+  (https://budgetpixel.com/sfx/cryo-freeze-creep-663edaff) — CC BY 4.0.
+  Modified by trimming, mono conversion, and audio normalization.
+
+The USC / Sunset Editorial collection pages:
+- GUNS: https://archive.org/details/SSE_Library_GUNS
+- GLASS: https://archive.org/details/SSE_Library_GLASS
+- FIRE: https://archive.org/details/SSE_Library_FIRE
+- AIR: https://archive.org/details/SSE_Library_AIR
+
+Urgent timer, outcomes, and flag sounds
+---------------------------------------
+The following ticking clock samples are from bart's "Ticking Clock" and are released under CC0:
+https://opengameart.org/content/ticking-clock
+
+- urgent-tick-1.wav through urgent-tick-4.wav: tick1.wav through tick4.wav
+
+The following sounds are from Kenney's Interface Sounds pack and are released under CC0:
+https://kenney.nl/assets/interface-sounds
+
+- match-win.ogg: confirmation_001.ogg
+- match-loss.ogg: error_001.ogg
+- game-win.ogg: confirmation_004.ogg
+- game-loss.ogg: error_008.ogg
+- flag-pickup.ogg: confirmation_002.ogg
+- flag-drop.ogg: drop_001.ogg
+
+Tactical equipment and weapon handling
+---------------------------------------
+The following sounds are CC0 excerpts from the USC / Sunset Editorial Sound Effects Library:
+https://archive.org/details/SSE_Library_GUNS
+
+- equip-tactical.wav: "Loading a clip into a rifle" (excerpt starts at 4.38 s)
+- reload-shotgun-shell.wav: "Loading shotgun; indoors" (excerpt starts at 6.08 s)
+- action-revolver-hammer.wav: "38 colt; pistol pulling back hammer; open" (excerpt starts at 30.21 s)
+- action-bolt.wav: "Cocking bolt action rifle; indoors" (excerpt starts at 2.35 s)
+- action-lever.wav: "Winchester rifle cocking lever; cocking" (excerpt starts at 23.60 s)
+
+The following sounds are from SFXMint's CC0 gun reload collection:
+https://sfxmint.com/sounds/mechanical-reload
+
+- reload-magazine.ogg: "Quick Gun Reload Click 14"
+- reload-round.ogg: "Revolver Cylinder Spin Gun Reload Click 15"
+- action-shotgun-pump.ogg: "Shotgun Pump Gun Reload Click 16"

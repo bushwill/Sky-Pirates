@@ -4,11 +4,11 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="build-version" content="A.77" />
+    <meta name="build-version" content="A.561" />
     <title>bushwill</title>
     <!-- p5.js for dynamic overlay graphics -->
-    <script src="p5.min.js?v=A.77"></script>
-    <script src="plant_overlay.js?v=A.77"></script>
+    <script src="p5.min.js?v=A.561"></script>
+    <script src="plant_overlay.js?v=A.561"></script>
     <style>
         body {
             min-height: 100vh;
@@ -83,10 +83,22 @@
             border: 2px outset #fff;
         }
 
+        .button.flagstrike {
+            background: #ff6b4a;
+            color: #200d08;
+            border-color: #fff;
+        }
+
         .button:hover {
             background: #000000;
             color: #0077ff;
             border-color: #0077ff;
+        }
+
+        .button.flagstrike:hover {
+            background: #ff856a;
+            color: #200d08;
+            border-color: #fff;
         }
 
         #carousel {
@@ -173,6 +185,13 @@
                 style="flex:0 0 300px; width:300px; height:300px; display:flex; justify-content:center; align-items:center; overflow:hidden;">
                 <img id="carousel-img" alt="carousel" style="width:300px; height:300px; object-fit:cover;">
             </div>
+        </div>
+
+        <div
+            style="background:#181818; border:2px solid #ff6b4a; border-radius:8px; margin-top:2em; padding:1.2em; text-align:center;">
+            <div style="font-size:1.2em; font-weight:bold; color:#ff856a; margin-bottom:0.5em;">Flagstrike</div>
+            <div style="color:#ccc; margin-bottom:0.5em;">Multiplayer capture-the-flag game. Currently in early development.</div>
+            <a href="/flagstrike/" class="button flagstrike">Join Flagstrike</a>
         </div>
     </div>
     <script>

@@ -1,18 +1,18 @@
 {
   "type": "guest",
   "accountName": null,
-  "gameSaveId": "122b441f-4c27-4ac7-bff3-27539427018b",
+  "gameSaveId": "1a9c2132-65e1-4967-9c84-17e9c192da86",
   "created": 1789762499611,
-  "lastSeen": 1789762499611,
+  "lastSeen": 1791526639674,
   "achievements": {
     "top_speed": {
       "completed": false,
       "unlockedAt": null,
-      "progress": 154,
+      "progress": 355,
       "milestones": [
         {
-          "unlocked": false,
-          "unlockedAt": null,
+          "unlocked": true,
+          "unlockedAt": 1791526727247,
           "target": 300
         },
         {
@@ -29,6 +29,25 @@
           "unlocked": false,
           "unlockedAt": null,
           "target": 1000
+        }
+      ]
+    },
+    "crate_hunter": {
+      "completed": false,
+      "unlockedAt": null,
+      "progress": 3,
+      "milestones": [
+        {
+          "target": 50
+        },
+        {
+          "target": 250
+        },
+        {
+          "target": 2500
+        },
+        {
+          "target": 7500
         }
       ]
     }

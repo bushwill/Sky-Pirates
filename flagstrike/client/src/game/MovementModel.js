@@ -1,0 +1,18 @@
+export {
+  ASSAULT_RIFLE_MOVEMENT_SCALE,
+  constrainPositionToRadius,
+  FLAG_CARRIER_MOVEMENT_SCALE,
+  getDesiredVelocity,
+  getPlayerMovementScale,
+  interpolatePosition,
+  MAX_PLAYER_SPEED,
+  movePosition,
+  movePositionWithCatchUp,
+  PLAYER_ACCELERATION,
+  PLAYER_BRAKING,
+  PLAYER_RADIUS,
+  SLOW_WALK_SPEED_SCALE,
+  PLAYER_TURN_ACCELERATION,
+  selectSnapshotPosition,
+  shouldHostSimulateActor,
+} from '../../../shared/MovementModel.js';
