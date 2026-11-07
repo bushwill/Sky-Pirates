@@ -103,4 +103,76 @@ describe('audio cue display intel', () => {
     assert.equal(cues[0].heardById, listener.id);
     assert.equal(cues[0].audiencePlayerId, listener.id);
   });
+
+  it('lets teammates hear an unseen jammed runner without revealing the source', () => {
+    const source = {
+      id: 'jammed-runner', team: 'red', x: 300, y: 300, vx: 60, vy: 0,
+      jammedUntil: 2_000, health: 100, alive: true,
+      selectedWeaponId: 'assault-rifle', visionAngle: 0,
+    };
+    const listener = {
+      id: 'red-listener', team: 'red', x: 350, y: 300, health: 100, alive: true,
+      selectedWeaponId: 'assault-rifle', visionAngle: 0,
+    };
+    const cues = collectFootstepAudioCues({
+      startedAt: 3,
+      map: { objects: [] },
+      flag: { heldBy: null },
+      players: [source, listener],
+      smokes: [],
+    }, 1_000, { lastCueAt: new Map(), random: () => 0 });
+
+    assert.equal(cues.length, 1);
+    assert.equal(cues[0].kind, 'footstep');
+    assert.equal(cues[0].team, listener.team);
+    assert.equal(cues[0].heardById, listener.id);
+    assert.equal(cues[0].audiencePlayerId, undefined);
+    assert.equal(cues[0].sourceId, undefined);
+    assert.ok(Math.hypot(cues[0].x - source.x, cues[0].y - source.y) <= cues[0].radius);
+  });
+
+  it('keeps a jammed listener’s cue for an unseen jammed teammate personal', () => {
+    const source = {
+      id: 'jammed-runner', team: 'red', x: 300, y: 300, vx: 60, vy: 0,
+      jammedUntil: 2_000, health: 100, alive: true,
+      selectedWeaponId: 'assault-rifle', visionAngle: 0,
+    };
+    const listener = {
+      id: 'jammed-listener', team: 'red', x: 350, y: 300, jammedUntil: 2_000,
+      health: 100, alive: true, selectedWeaponId: 'assault-rifle', visionAngle: 0,
+    };
+    const cues = collectFootstepAudioCues({
+      startedAt: 4,
+      map: { objects: [] },
+      flag: { heldBy: null },
+      players: [source, listener],
+      smokes: [],
+    }, 1_000, { lastCueAt: new Map(), random: () => 0 });
+
+    assert.equal(cues.length, 1);
+    assert.equal(cues[0].team, listener.team);
+    assert.equal(cues[0].heardById, listener.id);
+    assert.equal(cues[0].audiencePlayerId, listener.id);
+  });
+
+  it('does not emit redundant teammate footsteps when an unjammed teammate can see the source', () => {
+    const source = {
+      id: 'jammed-runner', team: 'red', x: 300, y: 300, vx: 60, vy: 0,
+      jammedUntil: 2_000, health: 100, alive: true,
+      selectedWeaponId: 'assault-rifle', visionAngle: 0,
+    };
+    const listener = {
+      id: 'red-listener', team: 'red', x: 390, y: 300, health: 100, alive: true,
+      selectedWeaponId: 'assault-rifle', visionAngle: Math.PI,
+    };
+    const cues = collectFootstepAudioCues({
+      startedAt: 5,
+      map: { objects: [] },
+      flag: { heldBy: null },
+      players: [source, listener],
+      smokes: [],
+    }, 1_000, { lastCueAt: new Map(), random: () => 0 });
+
+    assert.deepEqual(cues, []);
+  });
 });

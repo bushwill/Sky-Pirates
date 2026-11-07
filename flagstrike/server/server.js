@@ -205,6 +205,10 @@ function routeGameplayMessage(client, message) {
       publishRooms();
       return;
     }
+    if (type === 'game:map-progress') {
+      if (roomManager.updateHostMapGenerationProgress(client, payload)) sendRoomUpdate(room);
+      return;
+    }
     const host = [...room.clients].find((member) => member.id === room.hostId && member.connected !== false);
     if (!host || payload.matchId !== room.match?.startedAt) return;
     const interval = type === 'game:input' || type === 'game:bots' ? 20 : 30;
@@ -361,6 +365,11 @@ async function handleRequest(client, message) {
         publishRooms();
         sendRoomUpdate(client.room);
         break;
+      case 'room:details':
+        data = { state: await roomManager.setRoomDetails(client, payload) };
+        sendRoomUpdate(client.room);
+        publishRooms();
+        break;
       case 'quickplay:join':
         data = roomManager.quickPlay(client, payload);
         processDeparture(data.departure);
@@ -395,6 +404,18 @@ async function handleRequest(client, message) {
         data = { state: roomManager.setBotTeam(client, payload) };
         sendRoomUpdate(client.room);
         publishRooms();
+        break;
+      case 'room:custom-rules':
+        data = { state: roomManager.setCustomGameRules(client, payload.rules) };
+        sendRoomUpdate(client.room);
+        break;
+      case 'custom-series:approve-teams':
+        data = { state: roomManager.approveCustomTeamShuffle(client) };
+        sendRoomUpdate(client.room);
+        break;
+      case 'custom-series:end':
+        data = { state: roomManager.endCustomSeries(client) };
+        sendRoomUpdate(client.room);
         break;
       case 'bot:takeover':
         data = { state: roomManager.setBotController(client, payload) };

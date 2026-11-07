@@ -39,7 +39,7 @@ describe('InventoryModel', () => {
   it('derives level-specific armor and perk effects', () => {
     assert.deepEqual(getInventoryEffects({ armor: { id: 'armor', level: 1 } }), {
       armor: 25,
-      armorRegeneration: 10,
+      armorRegeneration: 5,
       regenerationDelayMs: 5_000,
       magazineBonus: 0,
       reloadSpeedBonus: 0,
@@ -78,8 +78,9 @@ describe('InventoryModel', () => {
 
       assert.equal(regeneratePlayerArmor(player, 0.05, 5_999), false);
       assert.equal(player.armor, 0);
-      assert.equal(regeneratePlayerArmor(player, 0.05, 6_000), true);
-      assert.equal(player.armor, 0.5);
+      assert.equal(regeneratePlayerArmor(player, 1, 6_000), true);
+      assert.equal(player.armor, maximumArmor * 0.2);
+      assert.equal(getInventoryEffects(player.inventory).armorRegeneration, maximumArmor * 0.2);
 
       player.armor = maximumArmor - 0.1;
       assert.equal(regeneratePlayerArmor(player, 0.05, 6_050), true);

@@ -57,6 +57,34 @@ export function getQuickPlayScoreboardPlayers(match, seriesStats, accumulatedMat
   return players;
 }
 
+export function getCustomSeriesScoreboardPlayers(match, series) {
+  const roles = series?.rolesBySquad ?? {};
+  const completedPlayers = (series?.seriesScoreboard ?? series?.lastMatchScoreboard ?? [])
+    .map((player) => ({
+      ...player,
+      team: roles[player.squadId] ?? player.team,
+    }));
+  if (!match) return completedPlayers;
+
+  const completedById = new Map(completedPlayers.map((player) => [player.id, player]));
+  const currentMatchAlreadyCounted = Boolean(match.victory &&
+    series?.lastResult?.at === match.victory.at);
+  return (match.players ?? []).map((player) => {
+    const completed = completedById.get(player.id);
+    const currentStats = currentMatchAlreadyCounted ? {} : player.stats ?? {};
+    return {
+      ...completed,
+      ...player,
+      team: roles[player.squadId] ?? player.team,
+      stats: {
+        kills: (completed?.stats?.kills ?? 0) + (currentStats.kills ?? 0),
+        assists: (completed?.stats?.assists ?? 0) + (currentStats.assists ?? 0),
+        deaths: (completed?.stats?.deaths ?? 0) + (currentStats.deaths ?? 0),
+      },
+    };
+  });
+}
+
 export function applyQuickPlayRoundResultToSquadScore(squadScore, match, isNewVictory) {
   const winnerSquadId = match?.quickPlayState?.lastResult?.winnerSquadId;
   if (!isNewVictory || !winnerSquadId) return squadScore ?? {};

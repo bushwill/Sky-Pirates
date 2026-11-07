@@ -6,9 +6,9 @@ export const LONG_PLAY_ITEM_CATALOG = Object.freeze({
     kind: 'armor',
     name: 'Armor',
     levels: Object.freeze([
-      Object.freeze({ armor: 25, armorRegeneration: 10, regenerationDelayMs: 5_000,
+      Object.freeze({ armor: 25, armorRegeneration: 5, regenerationDelayMs: 5_000,
         description: 'Adds 25 armor.' }),
-      Object.freeze({ armor: 40, armorRegeneration: 10, regenerationDelayMs: 5_000,
+      Object.freeze({ armor: 40, armorRegeneration: 8, regenerationDelayMs: 5_000,
         description: 'Adds 40 armor.' }),
       Object.freeze({ armor: 50, armorRegeneration: 10, regenerationDelayMs: 5_000,
         description: 'Adds 50 armor.' }),

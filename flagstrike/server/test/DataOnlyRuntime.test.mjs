@@ -19,6 +19,76 @@ const fixtureMap = {
 };
 
 describe('data-only runtime authority', () => {
+  for (const mode of ['custom', 'custom-no-carryover', 'longplay', 'longseries']) {
+    it(`carries unused picks through ${mode} host-authoritative shop rounds according to its setting`, async () => {
+      let now = 10_000;
+      const manager = new RoomManager({
+        simulationMode: 'host-authoritative', now: () => now, random: () => 0,
+      });
+      const host = { id: `carryover-${mode}`, room: null };
+      const custom = mode.startsWith('custom');
+      const carryover = mode !== 'custom-no-carryover';
+      if (custom) {
+        await manager.createAndJoin(host, { name: `Carryover ${mode}` });
+        manager.setCustomGameRules(host, {
+          buyPhase: 'progression', mapMode: 'same', winsToWin: null,
+          carryOverShopPicks: carryover,
+        });
+      } else {
+        manager.joinCompetitiveSeries(host, mode);
+      }
+      const room = host.room;
+      manager.acceptHostMap(host, {
+        map: fixtureMap, quickPlay: !custom, generationRevision: room.mapGenerationRevision,
+      });
+      if (custom) manager.startMatch(host);
+      else manager.setQuickPlayReady(host, { ready: true });
+      assert.equal(host.shopPicksRemaining, 2);
+
+      const item = host.itemShopOfferIds[0];
+      manager.selectShopItem(host, { itemId: item.id, kind: item.kind, level: item.level });
+      assert.equal(host.shopPicksRemaining, 1);
+      manager.skipWeaponShop(host);
+      assert.equal(host.shopPicksRemaining, carryover ? 1 : 0);
+      assert.equal(manager.toRoomState(room).match.players.find((player) => player.id === host.id)
+        .shopPicksRemaining, carryover ? 1 : 0);
+
+      for (let round = 2; round <= 9; round += 1) {
+        now += 200_000;
+        if (!custom) room.quickPlayState.round = round - 1;
+        room.preparedMap = structuredClone(fixtureMap);
+        manager.startMatchForRoom(room, now);
+        assert.equal(host.shopPicksRemaining, carryover ? round : 1,
+          'unspent picks accumulate even beyond the number of offers');
+        assert.equal(host.weaponShopResolved, false);
+        if (round % 2 === 0) manager.skipWeaponShop(host);
+        // Odd rounds expire without an explicit skip.
+      }
+
+      if (carryover) {
+        const startingBalance = host.shopPicksRemaining;
+        const offers = [
+          ...host.weaponShopOfferIds.map((id) => ({ kind: 'weapon', id })),
+          ...host.gadgetShopOfferIds.map((id) => ({ kind: 'gadget', id })),
+          ...host.itemShopOfferIds,
+        ];
+        for (const offer of offers) {
+          if (offer.kind === 'weapon') manager.selectWeapon(host, { weaponId: offer.id });
+          else if (offer.kind === 'gadget') manager.selectGadget(host, { gadgetId: offer.id });
+          else manager.selectShopItem(host, { itemId: offer.id, kind: offer.kind, level: offer.level });
+        }
+        assert.equal(host.shopPicksRemaining, startingBalance - offers.length);
+        assert.equal(host.weaponShopResolved, true, 'spending every offer closes the shop without losing excess picks');
+      }
+      if (custom) room.customSeriesState.matchNumber = 0;
+      else room.quickPlayState.round = 0;
+      now += 200_000;
+      room.preparedMap = structuredClone(fixtureMap);
+      manager.startMatchForRoom(room, now);
+      assert.equal(host.shopPicksRemaining, 2, 'a new series resets banked picks');
+    });
+  }
+
   it('stores host-authored gameplay frames as the live match source without resolving them', async () => {
     let now = 10_000;
     const manager = new RoomManager({ simulationMode: 'host-authoritative', now: () => now, randomTeam: () => 0 });

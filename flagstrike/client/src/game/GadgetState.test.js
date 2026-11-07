@@ -126,6 +126,42 @@ describe('GadgetState', () => {
     assert.equal(player.vineTrapRechargeAt, null);
   });
 
+  it('refills gadget charges without cooldowns when infinite use is enabled', () => {
+    const player = {
+      equippedSlot: 'gadget',
+      selectedGadgetId: 'bio-field',
+      gadgetCount: 1,
+      gadgetCounts: { 'bio-field': 1 },
+      gadgetChargeRechargeRemainingMs: { 'bio-field': [30_000] },
+    };
+
+    assert.equal(consumeSelectedGadget(player, { infiniteUse: true }), 2);
+    assert.equal(player.gadgetCounts['bio-field'], 2);
+    assert.equal(player.gadgetCount, 2);
+    assert.deepEqual(player.gadgetChargeRechargeRemainingMs['bio-field'], []);
+    assert.equal(player.equippedSlot, 'gadget');
+
+    const spyCamera = {
+      equippedSlot: 'gadget',
+      selectedGadgetId: 'spy-camera',
+      gadgetCount: 0,
+      gadgetCounts: { 'spy-camera': 0 },
+    };
+    assert.equal(consumeSelectedGadget(spyCamera, { infiniteUse: true }), 1);
+    assert.equal(consumeSelectedGadget(spyCamera, { infiniteUse: true }), 1);
+    assert.equal(spyCamera.gadgetCounts['spy-camera'], 1);
+
+    const trophy = {
+      equippedSlot: 'gadget',
+      selectedGadgetId: 'trophy-system',
+      gadgetCount: 0,
+      gadgetCounts: { 'trophy-system': 0 },
+      trophyCommandReadyAt: 50_000,
+    };
+    assert.equal(consumeSelectedGadget(trophy, { infiniteUse: true }), 1);
+    assert.equal(trophy.trophyCommandReadyAt, 0);
+  });
+
   it('preserves an unacknowledged local switch against stale host snapshots', () => {
     const previous = {
       equippedSlot: 'weapon',

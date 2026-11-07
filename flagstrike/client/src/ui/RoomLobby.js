@@ -8,8 +8,15 @@ import { getAdaptiveUpdateProfile, smoothComputationTime } from '../../../shared
 import { getGadgetCardStatus } from '../game/GadgetCardStatus.js';
 import { BOT_PERSONALITIES } from '../../../shared/BotAI.js';
 import { BotController } from '../game/BotController.js';
-import { accumulateQuickPlayRound, applyQuickPlayRoundResultToSquadScore, getQuickPlayScoreboardPlayers } from '../game/QuickPlayScore.js';
+import {
+  accumulateQuickPlayRound,
+  applyQuickPlayRoundResultToSquadScore,
+  getCustomSeriesScoreboardPlayers,
+  getQuickPlayScoreboardPlayers,
+} from '../game/QuickPlayScore.js';
 import { playGameSound } from '../game/SoundEffects.js';
+import { getPostGameCountdownLabel } from '../game/MatchStatus.js';
+import { DEFAULT_CUSTOM_GAME_RULES } from '../../../shared/CustomGameRules.js';
 
 const DISPLAY_NAME_STORAGE_KEY = 'flagstrike.display-name';
 const ROOM_PASSWORD_STORAGE_KEY = 'flagstrike.room-password';
@@ -17,6 +24,7 @@ const WEAPON_ICON_SOURCES = Object.freeze({
   'assault-rifle': new URL('../assets/weapons/AK-47.png', import.meta.url).href,
   'battle-rifle': new URL('../assets/weapons/M4A1.png', import.meta.url).href,
   smg: new URL('../assets/weapons/MP5.png', import.meta.url).href,
+  'suppressed-smg': new URL('../assets/weapons/TDI Vector Suppressed.png', import.meta.url).href,
   'machine-gun': new URL('../assets/weapons/M249.png', import.meta.url).href,
   shotgun: new URL('../assets/weapons/Benelli M3.png', import.meta.url).href,
   sniper: new URL('../assets/weapons/Dragunov SVD.png', import.meta.url).href,
@@ -42,6 +50,19 @@ const SERIES_MODE_COPY = Object.freeze({
     joinType: 'longseries:join', readyType: 'longseries:ready', buttonElement: 'longSeriesButton',
   },
 });
+
+function getCustomIntermissionStatus(state, now = Date.now()) {
+  const series = state?.customSeriesState;
+  if (series?.phase === 'complete') return 'Series complete';
+  if (series?.teamShufflePending) return 'Approve team shuffle';
+  if (state?.mapGenerationPending) return 'Generating next map';
+  if (state?.mapGenerationMode === 'host-choice' && state.mapReady !== true) return 'Choose next map';
+  const nextMatchAt = series?.nextMatchAt ?? state?.postGame?.endsAt;
+  if (Number.isFinite(nextMatchAt) && nextMatchAt > now) {
+    return `Next match in ${Math.ceil((nextMatchAt - now) / 1000)}s`;
+  }
+  return 'Preparing next match';
+}
 const LONG_PLAY_SHOP_MODES = new Set(['longplay', 'longseries']);
 
 export function isUniqueGadgetAvailableInLoadoutShop(gadget, quickPlay) {
@@ -166,8 +187,24 @@ export class RoomLobby {
       roomCredentials: document.querySelector('#room-credentials'),
       roomCredentialName: document.querySelector('#room-credential-name'),
       roomCredentialPassword: document.querySelector('#room-credential-password'),
+      roomDetailsForm: document.querySelector('#room-details-form'),
+      roomDetailsName: document.querySelector('#room-details-name'),
+      roomDetailsPassword: document.querySelector('#room-details-password'),
       hostStatus: document.querySelector('#host-status'),
       startMatchButton: document.querySelector('#start-match-button'),
+      customRulesButton: document.querySelector('#custom-rules-button'),
+      customRulesDialog: document.querySelector('#custom-rules-dialog'),
+      customRulesForm: document.querySelector('#custom-rules-form'),
+      customRulesClose: document.querySelector('#custom-rules-close'),
+      customRulesCancel: document.querySelector('#custom-rules-cancel'),
+      customRulesRulesTab: document.querySelector('#custom-rules-rules-tab'),
+      customRulesBotsTab: document.querySelector('#custom-rules-bots-tab'),
+      customRulesRulesPanel: document.querySelector('#custom-rules-rules-panel'),
+      customRulesBotsPanel: document.querySelector('#custom-rules-bots-panel'),
+      customAutoFillBots: document.querySelector('#custom-auto-fill-bots'),
+      customMapCriteria: document.querySelector('.custom-map-criteria'),
+      customTeamApproveButton: document.querySelector('#custom-team-approve-button'),
+      customSeriesEndButton: document.querySelector('#custom-series-end-button'),
       quickPlayReadyButton: document.querySelector('#quick-play-ready-button'),
       backButton: document.querySelector('#back-button'),
       refreshButton: document.querySelector('#refresh-rooms'),
@@ -216,6 +253,7 @@ export class RoomLobby {
       inventoryWeaponTags: document.querySelector('#inventory-weapon-tags'),
       inventoryWeaponEquip: document.querySelector('#inventory-weapon-equip'),
       scoreboardPanel: document.querySelector('#scoreboard-panel'),
+      scoreboardSeriesScore: document.querySelector('#scoreboard-series-score'),
       scoreboardTeams: document.querySelector('#scoreboard-teams'),
       inventoryWeaponName: document.querySelector('#inventory-weapon-name'),
       inventoryGadgetStatus: document.querySelector('#inventory-gadget-status'),
@@ -248,7 +286,6 @@ export class RoomLobby {
       mapSeedRandomize: document.querySelector('#map-seed-randomize'),
       mapCompetitiveGenerate: document.querySelector('#map-competitive-generate'),
       mapMetrics: document.querySelector('#map-metrics'),
-      botSettingsPanel: document.querySelector('#bot-settings-panel'),
       botRoster: document.querySelector('#bot-roster'),
       botTakeoverPanel: document.querySelector('#bot-takeover-panel'),
       botTakeoverHelp: document.querySelector('#bot-takeover-help'),
@@ -380,7 +417,19 @@ export class RoomLobby {
     this.elements.joinForm.addEventListener('submit', (event) => this.handleJoin(event));
     this.elements.backButton.addEventListener('click', () => this.leaveRoom());
     this.elements.roomCredentialsToggle.addEventListener('click', () => this.toggleRoomCredentials());
+    this.elements.roomDetailsForm.addEventListener('submit', (event) => this.saveRoomDetails(event));
     this.elements.startMatchButton.addEventListener('click', () => this.startMatch());
+    this.elements.customRulesButton.addEventListener('click', () => this.openCustomRules());
+    this.elements.customRulesClose.addEventListener('click', () => this.elements.customRulesDialog.close());
+    this.elements.customRulesCancel.addEventListener('click', () => this.elements.customRulesDialog.close());
+    this.elements.customRulesForm.addEventListener('submit', (event) => this.saveCustomRules(event));
+    this.elements.customRulesRulesTab.addEventListener('click', () => this.setCustomRulesTab('rules'));
+    this.elements.customRulesBotsTab.addEventListener('click', () => this.setCustomRulesTab('bots'));
+    this.elements.customRulesForm.elements.namedItem('shopProgression')
+      .addEventListener('change', () => this.enableCustomProgressionShop());
+    this.elements.customRulesForm.elements.mapMode.addEventListener('change', () => this.updateCustomRulesDependencies());
+    this.elements.customTeamApproveButton.addEventListener('click', () => this.approveCustomTeams());
+    this.elements.customSeriesEndButton.addEventListener('click', () => this.endCustomSeries());
     this.elements.quickPlayReadyButton.addEventListener('click', () => this.toggleQuickPlayReady());
     this.elements.weaponShopSkip.addEventListener('click', () => this.skipWeaponShop());
     this.elements.quickShopRiflesTab.addEventListener('click', () => this.setQuickShopCategory('rifles'));
@@ -468,7 +517,10 @@ export class RoomLobby {
       this.gameView.applyDamageCue(cue);
       this.botController.acceptDamageCue(cue);
     });
-    this.roomClient.on('gamePing', (ping) => this.gameView.applyPing(ping));
+    this.roomClient.on('gamePing', (ping) => {
+      this.gameView.applyPing(ping);
+      this.botController.acceptPing(ping);
+    });
     this.roomClient.on('gameIntel', (intel) => this.gameView.applyTeamIntel(intel));
     this.roomClient.on('teamMines', (intel) => this.gameView.applyTeamMineIntel(intel));
     this.roomClient.on('teamWalls', (intel) => this.gameView.applyTeamWalls(intel));
@@ -559,12 +611,21 @@ export class RoomLobby {
   updateLocalHostMatch(match) {
     if (!match || !this.currentRoomState) return;
     this.recordHostFrameActivity('TX', match.startedAt);
+    const previousMatch = this.currentRoomState.match;
+    const previousHuman = previousMatch?.players?.find((player) => player.id === this.currentPlayerId);
+    const currentHuman = match.players?.find((player) => player.id === this.currentPlayerId);
+    const wasEliminated = Boolean(previousHuman &&
+      (previousHuman.isSpectator === true || previousHuman.alive === false || previousHuman.health <= 0));
+    const isEliminated = Boolean(currentHuman &&
+      (currentHuman.isSpectator === true || currentHuman.alive === false || currentHuman.health <= 0));
+    const takeoverStateChanged = !previousMatch || wasEliminated !== isEliminated;
     this.currentRoomState.match = match;
     this.syncQuickPlayStateFromMatch(match);
     if (match.quickPlayState && match.victory) this.accumulateQuickPlayRound(match);
     if (this.shouldRenderAdaptiveInventory()) this.renderWeaponAmmo(match.players);
-    if (this.shouldRenderAdaptiveMatchUi()) {
+    if (this.shouldRenderAdaptiveMatchUi() || takeoverStateChanged) {
       this.renderMatchTeamHud(this.currentRoomState);
+      this.renderBotTakeover(this.currentRoomState);
     }
     this.renderScoreboard(this.currentRoomState);
   }
@@ -833,6 +894,14 @@ export class RoomLobby {
     }
     this.elements.roomCredentialName.textContent = this.currentRoomName;
     this.elements.roomCredentialPassword.textContent = this.currentRoomPassword || 'No password (public room)';
+    if (this.elements.roomDetailsName &&
+        globalThis.document?.activeElement !== this.elements.roomDetailsName) {
+      this.elements.roomDetailsName.value = this.currentRoomName;
+    }
+    if (this.elements.roomDetailsPassword &&
+        globalThis.document?.activeElement !== this.elements.roomDetailsPassword) {
+      this.elements.roomDetailsPassword.value = this.currentRoomPassword;
+    }
     this.elements.roomCredentialsToggle.hidden = !this.currentRoomName;
     this.setRoomCredentialsVisibility(false);
   }
@@ -848,8 +917,29 @@ export class RoomLobby {
     this.setRoomCredentialsVisibility(this.elements.roomCredentials.hidden);
   }
 
+  async saveRoomDetails(event) {
+    event.preventDefault();
+    const name = this.elements.roomDetailsName.value.trim();
+    const password = this.elements.roomDetailsPassword.value;
+    const detailsVisible = !this.elements.roomCredentials.hidden;
+    this.elements.roomDetailsForm.querySelectorAll('input, button').forEach((field) => { field.disabled = true; });
+    try {
+      const { state } = await this.roomClient.request('room:details', { name, password });
+      this.setRoomCredentials(state.name, password);
+      this.setRoomCredentialsVisibility(detailsVisible);
+      this.updateRoomState(state);
+      this.showFeedback('Room details updated.');
+    } catch (error) {
+      this.showFeedback(error.message, true);
+    } finally {
+      this.elements.roomDetailsForm.querySelectorAll('input, button').forEach((field) => { field.disabled = false; });
+      this.renderRoomControls(this.currentRoomState);
+    }
+  }
+
   async leaveRoom() {
     this.elements.backButton.disabled = true;
+    if (this.elements.customRulesDialog.open) this.elements.customRulesDialog.close();
     this.gameView.suspendNetworkActivity();
     try {
       await this.roomClient.request('room:leave');
@@ -876,6 +966,130 @@ export class RoomLobby {
       const { state } = await this.roomClient.request('match:start');
       this.updateRoomState(state);
       this.showFeedback('');
+    } catch (error) {
+      this.showFeedback(error.message, true);
+    } finally {
+      this.renderRoomControls(this.currentRoomState);
+    }
+  }
+
+  openCustomRules() {
+    const state = this.currentRoomState;
+    if (!state || state.quickPlay || state.match || state.hostId !== this.currentPlayerId) return;
+    const rules = state.customGameRules ?? DEFAULT_CUSTOM_GAME_RULES;
+    const values = {
+      ...rules,
+      winsToWin: rules.winsToWin ?? 0,
+      ...rules.mapCriteria,
+    };
+    for (const [name, value] of Object.entries(values)) {
+      const field = this.elements.customRulesForm.elements.namedItem(name);
+      if (field?.type === 'checkbox') field.checked = value === true;
+      else if (field) field.value = String(value);
+    }
+    this.setCustomRulesTab('rules');
+    this.elements.customRulesDialog.showModal();
+  }
+
+  setCustomRulesTab(tab) {
+    const showBots = tab === 'bots';
+    this.elements.customRulesRulesTab.classList.toggle('is-active', !showBots);
+    this.elements.customRulesRulesTab.setAttribute('aria-selected', String(!showBots));
+    this.elements.customRulesBotsTab.classList.toggle('is-active', showBots);
+    this.elements.customRulesBotsTab.setAttribute('aria-selected', String(showBots));
+    this.elements.customRulesRulesPanel.hidden = showBots;
+    this.elements.customRulesBotsPanel.hidden = !showBots;
+    for (const [panel, inactive] of [
+      [this.elements.customRulesRulesPanel, showBots],
+      [this.elements.customRulesBotsPanel, !showBots],
+    ]) {
+      for (const field of panel.querySelectorAll('input, select, textarea')) {
+        field.disabled = inactive;
+      }
+    }
+    this.updateCustomRulesDependencies();
+  }
+
+  enableCustomProgressionShop() {
+    this.elements.customRulesForm.elements.namedItem('buyPhase').value = 'progression';
+  }
+
+  updateCustomRulesDependencies() {
+    const isVaried = this.elements.customRulesForm.elements.mapMode.value === 'varied';
+    this.elements.customMapCriteria.hidden = !isVaried;
+    for (const field of this.elements.customMapCriteria.querySelectorAll('input')) {
+      field.disabled = !isVaried || this.elements.customRulesRulesPanel.hidden;
+    }
+  }
+
+  async saveCustomRules(event) {
+    event.preventDefault();
+    const form = this.elements.customRulesForm.elements;
+    const number = (name) => Number(form.namedItem(name).value);
+    const criteria = this.currentRoomState?.customGameRules?.mapCriteria ??
+      DEFAULT_CUSTOM_GAME_RULES.mapCriteria;
+    const rules = {
+      buyPhase: form.namedItem('buyPhase').value,
+      infiniteGadgetUse: form.namedItem('infiniteGadgetUse').checked,
+      prePhaseSeconds: number('prePhaseSeconds'),
+      gamePhaseSeconds: number('gamePhaseSeconds'),
+      postPhaseSeconds: number('postPhaseSeconds'),
+      winsToWin: number('winsToWin') === 0 ? null : number('winsToWin'),
+      roleSwapEveryMatches: number('roleSwapEveryMatches'),
+      teamShuffleEveryMatches: number('teamShuffleEveryMatches'),
+      teamShuffleMode: form.namedItem('teamShuffleMode').value,
+      autoFillBots: this.elements.customAutoFillBots.checked,
+      mapMode: form.namedItem('mapMode').value,
+      mapCriteria: {
+        minRooms: number('minRooms') || criteria.minRooms,
+        maxRooms: number('maxRooms') || criteria.maxRooms,
+        minDoorwaysPerSite: number('minDoorwaysPerSite') || criteria.minDoorwaysPerSite,
+        minSymmetryPercent: number('minSymmetryPercent'),
+        minRoomUtilizationPercent: number('minRoomUtilizationPercent'),
+        maxSiteApproachSightline: number('maxSiteApproachSightline') || criteria.maxSiteApproachSightline,
+      },
+      shopProgression: form.namedItem('shopProgression').value,
+      firstShopOffers: number('firstShopOffers'),
+      firstShopPicks: number('firstShopPicks'),
+      laterShopOffers: number('laterShopOffers'),
+      laterShopPicks: number('laterShopPicks'),
+      carryOverShopPicks: form.namedItem('carryOverShopPicks').checked,
+      uniqueGadgetInitialChancePercent: number('uniqueGadgetInitialChancePercent'),
+      uniqueGadgetChanceIncrementPercent: number('uniqueGadgetChanceIncrementPercent'),
+      uniqueGadgetMaxChancePercent: number('uniqueGadgetMaxChancePercent'),
+    };
+    this.elements.customRulesForm.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+    try {
+      const { state } = await this.roomClient.request('room:custom-rules', { rules });
+      this.updateRoomState(state);
+      this.elements.customRulesDialog.close();
+      this.showFeedback('Custom match rules saved.');
+    } catch (error) {
+      this.showFeedback(error.message, true);
+    } finally {
+      this.elements.customRulesForm.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+    }
+  }
+
+  async approveCustomTeams() {
+    this.elements.customTeamApproveButton.disabled = true;
+    try {
+      const { state } = await this.roomClient.request('custom-series:approve-teams');
+      this.updateRoomState(state);
+      this.showFeedback('Team assignments approved.');
+    } catch (error) {
+      this.showFeedback(error.message, true);
+    } finally {
+      this.renderRoomControls(this.currentRoomState);
+    }
+  }
+
+  async endCustomSeries() {
+    this.elements.customSeriesEndButton.disabled = true;
+    try {
+      const { state } = await this.roomClient.request('custom-series:end');
+      this.updateRoomState(state);
+      this.showFeedback('Custom series ended by the host.');
     } catch (error) {
       this.showFeedback(error.message, true);
     } finally {
@@ -1010,7 +1224,10 @@ export class RoomLobby {
   }
 
   renderMatchTeamHud(state = this.currentRoomState) {
-    const match = state?.match;
+    const customSeries = state?.quickPlay ? null : state?.customSeriesState;
+    const match = state?.match ?? (!state?.quickPlay && customSeries?.lastResult
+      ? { players: customSeries.seriesScoreboard ?? customSeries.lastMatchScoreboard ?? [] }
+      : null);
     if (!match) {
       this.elements.gameHudTeamA.textContent = '';
       this.elements.gameHudTeamB.textContent = '';
@@ -1028,7 +1245,7 @@ export class RoomLobby {
       this.elements.gameHud.hidden = true;
       return;
     }
-    const squadRoles = state.quickPlaySquadRoles;
+    const squadRoles = state.quickPlay ? state.quickPlaySquadRoles : customSeries?.rolesBySquad;
     const leftSpawn = Object.entries(match.map?.spawnZones ?? {})
       .sort((left, right) => left[1].x - right[1].x)[0]?.[0] ?? 'red';
     const teamA = squadRoles?.A ?? leftSpawn;
@@ -1038,10 +1255,15 @@ export class RoomLobby {
     const groupA = getTeamGroup(teamA);
     const groupB = getTeamGroup(teamB);
     const quickPlayState = state.quickPlayState ?? match.quickPlayState;
-    const showWinner = Boolean(match.victory && (!state.quickPlay || quickPlayState?.phase === 'series-report'));
-    const winnerTeam = quickPlayState?.phase === 'series-report'
+    const seriesComplete = state.quickPlay
+      ? quickPlayState?.phase === 'series-report'
+      : customSeries?.phase === 'complete';
+    const showWinner = state.quickPlay
+      ? Boolean(state.match?.victory && seriesComplete)
+      : Boolean(seriesComplete && customSeries?.lastResult);
+    const winnerTeam = state.quickPlay && quickPlayState?.phase === 'series-report'
       ? quickPlayState.winner ?? quickPlayState.lastResult?.winner
-      : match.victory?.winner;
+      : state.match?.victory?.winner ?? customSeries?.lastResult?.winner;
     const winnerGroup = getTeamGroup(winnerTeam);
     const isWinnerRow = showWinner && Boolean(winnerGroup);
     this.elements.gameHudAlive.classList.toggle('is-winner', isWinnerRow);
@@ -1060,17 +1282,23 @@ export class RoomLobby {
     this.elements.gameHudAlive.children[1].hidden = isWinnerRow;
     this.elements.gameHudLabelA.style.color = groupA?.accent ?? '#dce6f3';
     this.elements.gameHudLabelB.style.color = groupB?.accent ?? '#dce6f3';
-    const hasSeriesScore = Boolean(state.quickPlay && state.quickPlaySquadScore);
-    this.elements.gameHudScoreA.textContent = `${state.quickPlaySquadScore?.A ?? 0}`;
-    this.elements.gameHudScoreB.textContent = `${state.quickPlaySquadScore?.B ?? 0}`;
+    const seriesScore = state.quickPlay ? state.quickPlaySquadScore : customSeries?.score;
+    const hasSeriesScore = Boolean(seriesScore);
+    this.elements.gameHudScoreA.textContent = `${seriesScore?.A ?? 0}`;
+    this.elements.gameHudScoreB.textContent = `${seriesScore?.B ?? 0}`;
     this.elements.gameHudScoreA.style.color = groupA?.accent ?? '#dce6f3';
     this.elements.gameHudScoreB.style.color = groupB?.accent ?? '#dce6f3';
+    const scoreLabel = state.quickPlay && state.gameMode === 'quickplay' ? 'Practice score' : 'Series score';
     this.elements.gameHudScoreA.parentElement.setAttribute(
-      'aria-label', state.gameMode === 'quickplay' ? 'Practice score' : 'Series score',
+      'aria-label', scoreLabel,
     );
     this.elements.gameHudTeamLabels.classList.toggle('is-hidden', !hasSeriesScore);
     this.elements.gameHudScoreA.parentElement.classList.toggle('is-hidden', !hasSeriesScore);
     this.elements.gameHud.hidden = false;
+    if (!state.match && customSeries?.lastResult) {
+      this.elements.gameHudTimer.textContent = getCustomIntermissionStatus(state);
+      this.elements.gameHudTimer.hidden = false;
+    }
   }
 
   applyGameState(state) {
@@ -1213,11 +1441,13 @@ export class RoomLobby {
     const definition = Object.values(DEFAULT_PROJECTILE_DEFINITIONS).find((weapon) => weapon.id === weaponId) ??
       DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle;
     const match = state.match;
+    const buyPhaseDisabled = !state.quickPlay && state.customGameRules?.buyPhase === 'none';
     const prePhase = Boolean(match && !match.victory && Number.isFinite(match.gameplayStartsAt) &&
       Date.now() < match.gameplayStartsAt);
-    this.elements.weaponSelectPanel.hidden = !prePhase;
+    this.elements.weaponSelectPanel.hidden = !prePhase || buyPhaseDisabled;
     this.renderInfoPanelOrdering(state);
-    const isLongPlay = LONG_PLAY_SHOP_MODES.has(state.gameMode);
+    const isLongPlay = LONG_PLAY_SHOP_MODES.has(state.gameMode) ||
+      (!state.quickPlay && state.customGameRules?.buyPhase === 'progression');
     const activeCategory = ['rifles', 'pistols', 'gadgets', 'unique'].includes(this.quickShopCategory)
       ? this.quickShopCategory : 'rifles';
     this.elements.weaponSelectTitle.textContent = isLongPlay ? 'Weapon shop' : 'Loadout';
@@ -1258,9 +1488,11 @@ export class RoomLobby {
     );
     const headingHint = this.elements.weaponSelectPanel.querySelector('.weapon-select-heading span');
     if (isLongPlay) {
+      const carryover = state.quickPlay || state.customGameRules?.carryOverShopPicks !== false;
+      const savedHint = carryover ? ' · Unused picks carry over' : '';
       headingHint.textContent = shopResolved
-        ? 'Shop closed for this match'
-        : `Choose up to ${localPlayer?.shopPicksRemaining ?? 1} offer${localPlayer?.shopPicksRemaining === 1 ? '' : 's'} · ${offerIds.size + itemOffers.length + gadgetOfferIds.size} available · or skip`;
+        ? `Shop closed for this match${savedHint}`
+        : `Choose up to ${localPlayer?.shopPicksRemaining ?? 1} offer${localPlayer?.shopPicksRemaining === 1 ? '' : 's'} · ${offerIds.size + itemOffers.length + gadgetOfferIds.size} available · or skip${savedHint}`;
     } else headingHint.textContent = 'Choose your weapon and one gadget before the round';
     this.elements.weaponShopSkip.hidden = !isLongPlay || !prePhase || shopResolved ||
       (offerIds.size === 0 && itemOffers.length === 0 && gadgetOfferIds.size === 0);
@@ -1339,6 +1571,7 @@ export class RoomLobby {
     const prePhase = Boolean(match && !match.victory && Number.isFinite(match.gameplayStartsAt) &&
       Date.now() < match.gameplayStartsAt && !this.elements.weaponSelectPanel.hidden);
     const postPhase = Boolean(match?.victory ||
+      (!match && !state?.quickPlay && state?.customSeriesState?.lastResult) ||
       ['round-result', 'series-report'].includes(state?.quickPlayState?.phase));
     this.elements.gameSidebar.classList.toggle('shop-first', prePhase);
     this.elements.gameSidebar.classList.toggle('scoreboard-first', postPhase);
@@ -1454,6 +1687,9 @@ export class RoomLobby {
     if (!state || !this.currentPlayerId) {
       delete this.elements.roomView.dataset.modeTheme;
       this.elements.startMatchButton.hidden = true;
+      this.elements.customRulesButton.hidden = true;
+      this.elements.customTeamApproveButton.hidden = true;
+      this.elements.customSeriesEndButton.hidden = true;
       this.elements.quickPlayReadyButton.hidden = true;
       this.elements.teamPanel.hidden = true;
       this.elements.inventoryPanel.hidden = true;
@@ -1461,6 +1697,7 @@ export class RoomLobby {
       this.elements.scoreboardPanel.hidden = true;
       this.elements.hostStatus.hidden = true;
       this.elements.mapSeedControls.hidden = true;
+      this.elements.roomDetailsForm.hidden = true;
       this.elements.botTakeoverPanel.hidden = true;
       this.elements.gameSidebar.classList.remove('bot-controlled');
       this.elements.roomView.classList.remove('match-active');
@@ -1488,6 +1725,17 @@ export class RoomLobby {
       this.renderScoreboard(state);
     this.elements.hostStatus.hidden = false;
     const isHost = state.hostId === this.currentPlayerId;
+    this.elements.roomDetailsForm.hidden = !isHost || state.locked !== true;
+    if (this.elements.roomDetailsName &&
+        globalThis.document?.activeElement !== this.elements.roomDetailsName) {
+      this.elements.roomDetailsName.value = state.name;
+    }
+    if (this.elements.roomDetailsPassword &&
+        globalThis.document?.activeElement !== this.elements.roomDetailsPassword) {
+      this.elements.roomDetailsPassword.value = this.currentRoomPassword;
+    }
+    this.elements.roomDetailsForm.querySelector('button[type="submit"]').disabled =
+      this.formsBusy || this.roomClient.socket.readyState !== WebSocket.OPEN;
     const count = state.players.length;
     const teams = this.getTeamCounts(state.players, state.bots?.roster);
     const botCount = (state.bots?.counts?.red ?? 0) + (state.bots?.counts?.blue ?? 0);
@@ -1500,15 +1748,47 @@ export class RoomLobby {
           : `Hosted by ${state.hostName} · ${count} ${count === 1 ? 'player' : 'players'}${botCount ? ` + ${botCount} bots` : ''}`;
     }
     this.elements.startMatchButton.hidden = matchActive || Boolean(state.quickPlay) || !isHost;
+    this.elements.customRulesButton.hidden = matchActive || Boolean(state.quickPlay) || !isHost;
+    const seriesState = state.customSeriesState;
+    const teamShufflePending = Boolean(seriesState?.teamShufflePending);
+    this.elements.customTeamApproveButton.hidden = matchActive || !isHost || !teamShufflePending;
+    this.elements.customTeamApproveButton.disabled = this.formsBusy ||
+      this.roomClient.socket.readyState !== WebSocket.OPEN;
+    this.elements.customSeriesEndButton.hidden = matchActive || !isHost ||
+      !seriesState || seriesState.matchNumber < 1 || seriesState.phase === 'complete';
+    this.elements.customSeriesEndButton.disabled = this.formsBusy ||
+      this.roomClient.socket.readyState !== WebSocket.OPEN;
     const mapGenerationPending = Boolean(state.mapGenerationPending);
     const mapReady = state.mapReady !== false;
-    this.elements.startMatchButton.disabled = mapGenerationPending || !mapReady;
+    this.elements.startMatchButton.disabled = mapGenerationPending || !mapReady || teamShufflePending;
     this.elements.startMatchButton.textContent = mapGenerationPending
-      ? 'Searching for map…' : !mapReady ? 'Map unavailable' : 'Start match';
-    if (mapGenerationPending && isHost && !matchActive) {
-      this.elements.hostStatus.textContent += ' · Competitive map generating…';
+      ? 'Searching for map…' : !mapReady
+        ? state.mapGenerationMode === 'host-choice' ? 'Choose a map' : 'Map unavailable'
+        : seriesState?.phase === 'complete' ? 'Start new series' : 'Start match';
+    if (!matchActive && seriesState?.matchNumber > 0) {
+      const score = seriesState.score ?? { A: 0, B: 0 };
+      const target = state.customGameRules?.winsToWin;
+      const progress = target === null
+        ? `Team A ${score.A}–${score.B} Team B · infinite`
+        : `Team A ${score.A}–${score.B} Team B · first to ${target}`;
+      this.elements.hostStatus.textContent += ` · Series ${progress}`;
+      if (teamShufflePending) this.elements.hostStatus.textContent += ' · host team approval required';
+      if (seriesState.phase === 'complete' && seriesState.endedByHost) {
+        this.elements.hostStatus.textContent += ' · ended by host';
+      }
+    }
+    if (matchActive && !state.quickPlay && state.match?.victory &&
+        seriesState?.phase === 'postgame' && mapGenerationPending) {
+      this.elements.hostStatus.textContent =
+        `Searching for next map · ${state.mapGenerationCount ?? 0} generated`;
+    }
+    if (mapGenerationPending && !matchActive) {
+      const generated = state.mapGenerationCount ?? 0;
+      this.elements.hostStatus.textContent += ` · Searching for maps · ${generated} generated`;
+    } else if (state.mapGenerationMode === 'host-choice' && !mapReady && isHost && !matchActive) {
+      this.elements.hostStatus.textContent += ' · Choose a map before starting';
     } else if ((state.mapGenerationError || !mapReady) && isHost && !matchActive) {
-      this.elements.hostStatus.textContent += ' · Map unavailable; generate a map before starting';
+      this.elements.hostStatus.textContent += ' · Map unavailable; prepare one before starting';
     }
     const quickPlayLobby = Boolean(state.quickPlay && !state.match && state.quickPlayState?.phase === 'lobby');
     const localQuickPlayReady = state.quickPlayState?.ready?.[this.currentPlayerId] === true;
@@ -1542,10 +1822,15 @@ export class RoomLobby {
 
   renderScoreboard(state = this.currentRoomState) {
     const match = state?.match;
-    this.elements.scoreboardPanel.hidden = !match;
+    const customSeries = state?.quickPlay ? null : state?.customSeriesState;
+    const savedMatchPlayers = customSeries?.seriesScoreboard ?? customSeries?.lastMatchScoreboard ?? [];
+    const hasSavedCustomScoreboard = savedMatchPlayers.length > 0;
+    this.elements.scoreboardPanel.hidden = !match && !hasSavedCustomScoreboard;
     this.renderInfoPanelOrdering(state);
-    if (!match) {
+    if (!match && !hasSavedCustomScoreboard) {
       this.scoreboardSignature = '';
+      this.elements.scoreboardSeriesScore.hidden = true;
+      this.elements.scoreboardSeriesScore.textContent = '';
       return;
     }
 
@@ -1553,16 +1838,21 @@ export class RoomLobby {
     const human = scoreboardPlayers.find((player) => player.id === this.currentPlayerId);
     const roomHuman = state.players?.find((player) => player.id === this.currentPlayerId);
     const ownTeam = human?.team ?? roomHuman?.team ?? 'red';
-    const teams = state?.quickPlay
-      ? ['A', 'B'].map((squadId) => state.quickPlaySquadRoles?.[squadId]).filter(Boolean)
+    const squadRoles = state?.quickPlay ? state.quickPlaySquadRoles : customSeries?.rolesBySquad;
+    this.elements.scoreboardSeriesScore.hidden = true;
+    this.elements.scoreboardSeriesScore.textContent = '';
+    const teams = squadRoles
+      ? ['A', 'B'].map((squadId) => squadRoles[squadId]).filter(Boolean)
       : [ownTeam, ownTeam === 'red' ? 'blue' : 'red'];
     const signature = JSON.stringify({
-      matchId: match.startedAt ?? null,
-      matchFinished: Boolean(match.victory),
+      matchId: match?.startedAt ?? null,
+      matchFinished: Boolean(match?.victory),
+      customSeriesPhase: customSeries?.phase ?? null,
+      customSeriesLastResult: customSeries?.lastResult?.at ?? null,
       quickPlayRound: state?.quickPlayState?.round ?? null,
       quickPlayPhase: state?.quickPlayState?.phase ?? null,
       teams,
-      squadRoles: state?.quickPlay ? state.quickPlaySquadRoles : null,
+      squadRoles,
       players: scoreboardPlayers.map((player) => [player.id, player.team, player.name, player.isBot,
         player.squadId ?? null,
         player.alive, player.controlledById,
@@ -1577,8 +1867,8 @@ export class RoomLobby {
       const teamGroup = getTeamGroup(team);
       section.className = `scoreboard-team scoreboard-team--${teamGroup.cssName}`;
       const heading = document.createElement('h3');
-      const squadId = state?.quickPlay
-        ? Object.entries(state.quickPlaySquadRoles ?? {}).find(([, role]) => role === team)?.[0]
+      const squadId = squadRoles
+        ? Object.entries(squadRoles).find(([, role]) => role === team)?.[0]
         : null;
       const teamLabel = squadId ? `TEAM ${squadId}` : teamGroup.label.toUpperCase();
       heading.textContent = team === ownTeam ? `${teamLabel} · YOUR TEAM` : `${teamLabel} · OPPONENTS`;
@@ -1640,21 +1930,29 @@ export class RoomLobby {
 
   getScoreboardPlayers(state) {
     const match = state?.match;
-    if (!state?.quickPlay || this.quickPlaySeriesStats.size === 0) return match?.players ?? [];
+    if (!state?.quickPlay) return getCustomSeriesScoreboardPlayers(match, state?.customSeriesState);
+    if (this.quickPlaySeriesStats.size === 0) return match?.players ?? [];
     return getQuickPlayScoreboardPlayers(match, this.quickPlaySeriesStats, this.quickPlayAccumulatedMatches);
   }
 
   renderBotTakeover(state = this.currentRoomState) {
     const match = state?.match;
-    const human = match?.players.find((player) => player.id === this.currentPlayerId);
-    const team = human?.team ?? state?.players.find((player) => player.id === this.currentPlayerId)?.team;
+    const human = match?.players?.find((player) => player.id === this.currentPlayerId);
+    const team = human?.team ?? state?.players?.find((player) => player.id === this.currentPlayerId)?.team;
     const eligibleSpectator = Boolean(match && team &&
-      (!human || !human.alive || human.health <= 0));
+      (!human || human.isSpectator === true || human.alive === false || human.health <= 0));
     const availableBots = eligibleSpectator
-      ? match.players.filter((player) => player.isBot && player.team === team && player.alive && player.health > 0)
+      ? match.players.filter((player) => player.isBot && player.team === team &&
+        player.isSpectator !== true && player.alive !== false && (player.health ?? 0) > 0)
       : [];
-    this.elements.botTakeoverPanel.hidden = !eligibleSpectator || availableBots.length === 0;
-    if (this.elements.botTakeoverPanel.hidden) {
+    this.elements.botTakeoverPanel.hidden = !eligibleSpectator;
+    if (!eligibleSpectator) {
+      this.botTakeoverButtons.clear();
+      this.elements.botTakeoverOptions.replaceChildren();
+      return;
+    }
+    if (availableBots.length === 0) {
+      this.elements.botTakeoverHelp.textContent = 'No living teammate bots are available to take over.';
       this.botTakeoverButtons.clear();
       this.elements.botTakeoverOptions.replaceChildren();
       return;
@@ -1766,6 +2064,13 @@ export class RoomLobby {
         return;
       }
     }
+    if (!state?.quickPlay && !state?.match && state?.customSeriesState?.lastResult) {
+      const status = getCustomIntermissionStatus(state);
+      this.elements.gameHudTimer.textContent = status;
+      this.elements.gameHudTimer.hidden = false;
+      this.setPostGameMessage(status);
+      return;
+    }
     const postGame = state?.postGame ?? state?.match?.postGame;
     if (!state?.match?.victory || !Number.isFinite(postGame?.endsAt)) {
       this.setPostGameMessage('');
@@ -1773,7 +2078,7 @@ export class RoomLobby {
     }
     const remainingSeconds = Math.max(0, Math.ceil((postGame.endsAt - Date.now()) / 1000));
     this.setPostGameMessage(
-      `Lobby in ${String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`);
+      `${getPostGameCountdownLabel(state)} in ${String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`);
   }
 
   setPostGameMessage(message) {
@@ -1849,6 +2154,7 @@ export class RoomLobby {
     this.elements.quickPlayButton.disabled = busy || !connected;
     this.elements.longPlayButton.disabled = busy || !connected;
     this.elements.longSeriesButton.disabled = busy || !connected;
+    this.elements.customRulesButton.disabled = busy || !connected;
     this.elements.seriesModePublicButton.disabled = busy || !connected;
     this.elements.seriesModePrivateButton.disabled = busy || !connected;
     this.elements.privateSeriesForm.querySelectorAll('input, button').forEach((element) => { element.disabled = busy || !connected; });
@@ -1984,12 +2290,11 @@ export class RoomLobby {
     this.currentTeamCounts = counts;
     this.teamIsHost = isHost;
     if (isHost && canEditTeams) this.updateTeamActionOptions(true);
-    this.renderBotSettings(state, isHost, canEditTeams);
+    this.renderBotSettings(state, isHost);
   }
 
-  renderBotSettings(state, isHost, canEdit) {
-    const visible = isHost && canEdit && !state.quickPlay && !state.match;
-    this.elements.botSettingsPanel.hidden = !visible;
+  renderBotSettings(state, isHost) {
+    const visible = isHost && !state.quickPlay && !state.match;
     if (!visible) return;
     const humans = this.getTeamCounts(state.players);
     const assignedBots = state.bots?.roster ?? [];
@@ -2165,6 +2470,11 @@ export class RoomLobby {
   }
 
   renderMapMetrics(seed, options) {
+    if (this.currentRoomState?.mapGenerationMode === 'host-choice' &&
+        this.currentRoomState.mapReady === false && !this.currentRoomState.mapGenerationPending) {
+      this.elements.mapMetrics.textContent = 'Choose a seed, generate a random map, or search for a competitive map.';
+      return;
+    }
     if (this.currentRoomState?.mapGenerationPending) {
       this.elements.mapMetrics.textContent = 'Generating map…';
       return;

@@ -23,12 +23,18 @@ import {
   isUniqueGadgetDefinition,
 } from '../shared/WeaponShopModel.js';
 import {
+  DEFAULT_CUSTOM_GAME_RULES,
+  getCustomMapCriteria,
+  normalizeCustomGameRules,
+} from '../shared/CustomGameRules.js';
+import {
   calculateGadgetTrajectory,
   activateVineTrap,
   advanceOrbitalStrikeCooldown,
   advancePerChargeGadgetRecharges,
   advanceSonarChargeRecharges,
   advanceVineTrapRecharge,
+  consumeGadgetCharge,
   BIO_FIELD_COOLDOWN_MS,
   BIO_FIELD_ID,
   GADGET_DEFINITIONS,
@@ -52,6 +58,7 @@ import {
   SONAR_ID,
   queueOrbitalStrikeRecharge,
   queuePerChargeGadgetRecharge,
+  refillGadgetCharges,
   queueSonarChargeRecharge,
   startVineTrapRecharge,
   VINE_TRAP_ID,
@@ -60,6 +67,7 @@ import {
   TROPHY_SYSTEM_COMMAND_COOLDOWN_MS,
   TROPHY_SYSTEM_COMMAND_EFFECT_ID,
   TROPHY_SYSTEM_COMMAND_VISUAL_DURATION_MS,
+  TROPHY_INTERCEPT_VISUAL_DURATION_MS,
 } from '../shared/GadgetModel.js';
 import {
   createDefaultMatchItemInventory,
@@ -82,10 +90,10 @@ export const MATCH_COUNTDOWN_MS = 15_000;
 export const QUICK_PLAY_COUNTDOWN_MS = 15_000;
 export const QUICK_PLAY_RESULT_MS = 5_000;
 export const QUICK_PLAY_FINAL_REPORT_MS = 8_000;
+export const QUICK_PLAY_ROLE_SWAP_EVERY = 2;
 export const LONG_PLAY_WINS_TO_WIN = 4;
-export const LONG_PLAY_ROLE_SWAP_EVERY = 2;
+export const LONG_PLAY_ROLE_SWAP_EVERY = 5;
 export const LONG_SERIES_WINS_TO_WIN = 10;
-export const LONG_SERIES_ROLE_SWAP_EVERY = 5;
 export { MAP_HEIGHT, MAP_WIDTH };
 export { MAX_ROOM_CAPACITY, TEAM_CAPACITY };
 export const MAX_PLAYER_SPEED = MOVEMENT_MAX_PLAYER_SPEED;
@@ -98,16 +106,58 @@ export const POST_GAME_RESPONSE_WINDOW_MS = 15_000;
 export { FOOTSTEP_HEARING_RADIUS };
 const SERIES_MODE_RULES = Object.freeze({
   quickplay: Object.freeze({ label: 'Practice', winsToWin: null, roleSwapEvery: 1 }),
-  longplay: Object.freeze({ label: 'Quick Play', winsToWin: LONG_PLAY_WINS_TO_WIN, roleSwapEvery: LONG_PLAY_ROLE_SWAP_EVERY }),
+  longplay: Object.freeze({ label: 'Quick Play', winsToWin: LONG_PLAY_WINS_TO_WIN, roleSwapEvery: QUICK_PLAY_ROLE_SWAP_EVERY }),
   longseries: Object.freeze({
     label: 'Long Play',
     winsToWin: LONG_SERIES_WINS_TO_WIN,
-    roleSwapEvery: LONG_SERIES_ROLE_SWAP_EVERY,
+    roleSwapEvery: LONG_PLAY_ROLE_SWAP_EVERY,
   }),
 });
 const LONG_PLAY_SHOP_MODES = new Set(['longplay', 'longseries']);
 const LONG_PLAY_STARTER_WEAPON_ID = 'classic-pistol';
 const GADGET_IDS = Object.freeze(Object.keys(GADGET_DEFINITIONS));
+
+function isProgressionShop(room) {
+  return LONG_PLAY_SHOP_MODES.has(room?.gameMode) ||
+    (!room?.quickPlay && room?.customGameRules?.buyPhase === 'progression');
+}
+
+function isInfiniteGadgetUseEnabled(room) {
+  return room?.quickPlay !== true && room?.customGameRules?.infiniteGadgetUse === true;
+}
+
+function getPrePhaseDurationMs(room) {
+  return room.quickPlay
+    ? QUICK_PLAY_COUNTDOWN_MS
+    : (room.customGameRules?.prePhaseSeconds ?? MATCH_COUNTDOWN_MS / 1000) * 1_000;
+}
+
+function getGamePhaseDurationMs(room) {
+  return room.quickPlay
+    ? MATCH_DURATION_MS
+    : (room.customGameRules?.gamePhaseSeconds ?? MATCH_DURATION_MS / 1_000) * 1_000;
+}
+
+function getPostPhaseDurationMs(room) {
+  return room.quickPlay
+    ? POST_GAME_RESPONSE_WINDOW_MS
+    : (room.customGameRules?.postPhaseSeconds ?? POST_GAME_RESPONSE_WINDOW_MS / 1_000) * 1_000;
+}
+
+function getRoomMapCriteria(room) {
+  return room?.customGameRules?.mapMode === 'varied'
+    ? getCustomMapCriteria(room.customGameRules)
+    : COMPETITIVE_MAP_RULES;
+}
+
+function getRoomMapOptions(room, { minRooms, maxRooms } = room.mapOptions) {
+  const criteria = getRoomMapCriteria(room);
+  return {
+    minRooms,
+    maxRooms,
+    maxSiteApproachSightline: criteria.maxSiteApproachSightline,
+  };
+}
 const STANDARD_GADGET_IDS = Object.freeze(GADGET_IDS.filter((id) =>
   !isUniqueGadgetDefinition(GADGET_DEFINITIONS[id])));
 const BOT_GADGETS = Object.values(GADGET_DEFINITIONS);
@@ -144,7 +194,7 @@ function getBotStartingGadgetId(bot, random) {
 }
 
 function isUniqueGadgetAvailableInLoadoutShop(definition, room) {
-  if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) return false;
+  if (isProgressionShop(room)) return false;
   if (definition.customMatchShopAvailable === true) return room.quickPlay !== true;
   return definition.alwaysAvailableInLoadoutShop === true;
 }
@@ -295,6 +345,7 @@ function getMatchSnapshot(match, team = null) {
     gameplayStartsAt: match.gameplayStartsAt,
     endsAt: match.endsAt,
     updatedAt: match.updatedAt,
+    infiniteGadgetUse: match.infiniteGadgetUse === true,
     players: match.players.map(({ botBrain, botDecision, pendingBotDecision, botInputSequence, nextProjectileAt, ...player }) => structuredClone(player)),
     smokes: structuredClone(match.smokes ?? []),
     gadgetEffects: structuredClone((match.gadgetEffects ?? []).filter((effect) => {
@@ -465,7 +516,9 @@ export class RoomManager {
         clients: room.clients.size,
         capacity: this.maxClientsPerRoom,
         full: room.clients.size >= this.maxClientsPerRoom ||
-          (teamCounts.red >= TEAM_CAPACITY && teamCounts.blue >= TEAM_CAPACITY),
+          (teamCounts.red >= TEAM_CAPACITY && teamCounts.blue >= TEAM_CAPACITY &&
+            !(room.customGameRules?.autoFillBots &&
+              [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])].length > 0)),
         teamCounts,
         quickPlaySquadCounts,
         teamCapacity: TEAM_CAPACITY,
@@ -523,12 +576,16 @@ export class RoomManager {
       mapGenerationPending: true,
       mapGenerationError: null,
       mapGenerationRevision: 0,
+      mapGenerationCount: 0,
       customMapPromise: null,
       mapFallbackRequested: false,
       requestMapFallback: null,
       quickPlayStartedAt: null,
       quickPlayAutoStartAt: null,
       quickPlayState: null,
+      customGameRules: structuredClone(DEFAULT_CUSTOM_GAME_RULES),
+      customSeriesState: null,
+      customSeriesMap: null,
     };
     client.sessionToken ??= randomUUID();
     this.rooms.set(key, room);
@@ -606,6 +663,9 @@ export class RoomManager {
       throw new RoomManagerError('That room is full.');
     }
 
+    if (room.customGameRules?.autoFillBots && !room.quickPlay) {
+      this.makeRoomForHumanJoin(room);
+    }
     const team = room.quickPlay ? this.getBalancedQuickPlayTeam(room) : this.getBalancedTeam(room);
     const squadId = room.quickPlay ? getQuickPlaySquadForTeam(room, team) : null;
     const departure = this.leave(client);
@@ -620,6 +680,42 @@ export class RoomManager {
       playerId: client.id,
       sessionToken: client.sessionToken,
     };
+  }
+
+  async setRoomDetails(client, { name, password = '' } = {}) {
+    const room = this.requireClientRoom(client);
+    if (room.hostId !== client.id) throw new RoomManagerError('Only the room host can change room details.');
+    if (room.passwordHash === null) {
+      throw new RoomManagerError('Room details can only be changed for a private room.');
+    }
+    const details = this.validateRoomDetails(name, password);
+    if (!details.password) throw new RoomManagerError('Private rooms must keep a password.');
+    const nextKey = details.name.toLowerCase();
+    const conflictingRoom = this.rooms.get(nextKey);
+    if (conflictingRoom && conflictingRoom !== room) {
+      throw new RoomManagerError('A room with that name already exists.');
+    }
+
+    const passwordSalt = randomBytes(16);
+    const passwordHash = await scrypt(details.password, passwordSalt, PASSWORD_HASH_BYTES);
+    this.assertClientConnected(client);
+    if (client.room !== room || room.hostId !== client.id || this.rooms.get(room.key) !== room) {
+      throw new RoomManagerError('The room changed while its details were being updated.');
+    }
+    const finalConflict = this.rooms.get(nextKey);
+    if (finalConflict && finalConflict !== room) {
+      throw new RoomManagerError('A room with that name already exists.');
+    }
+
+    if (room.key !== nextKey) {
+      this.rooms.delete(room.key);
+      room.key = nextKey;
+      this.rooms.set(nextKey, room);
+    }
+    room.name = details.name;
+    room.passwordSalt = passwordSalt;
+    room.passwordHash = passwordHash;
+    return this.toRoomState(room);
   }
 
   quickPlay(client, { displayName } = {}) {
@@ -817,6 +913,7 @@ export class RoomManager {
       room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
       room.preparedMap = null;
       room.mapGenerationError = null;
+      room.mapGenerationCount = 0;
     }
   }
 
@@ -829,11 +926,13 @@ export class RoomManager {
   leave(client) {
     const room = client.room;
     if (!room) return null;
+    const departingTeam = client.team;
 
     room.clients.delete(client);
     client.room = null;
     client.team = null;
     client.squadId = null;
+    client.customSquadId = null;
     client.inventory = createEmptyItemInventory();
     client.inventoryWeaponIds = undefined;
     client.selectedWeaponId = undefined;
@@ -862,6 +961,10 @@ export class RoomManager {
         room.match.flag.lastDroppedBy = null;
       }
       room.match.players = room.match.players.filter((player) => player.id !== client.id);
+      if (matchPlayer && room.match.teamRoster?.[matchPlayer.team] !== undefined) {
+        room.match.teamRoster[matchPlayer.team] = Math.max(0, room.match.teamRoster[matchPlayer.team] - 1);
+      }
+      room.match.updatedAt = this.now();
       if (room.latestHostFrame?.matchId === room.match.startedAt) {
         room.latestHostFrame.actors = room.latestHostFrame.actors.filter((actor) => actor.id !== client.id);
         room.latestHostFrame.acknowledgements =
@@ -869,6 +972,9 @@ export class RoomManager {
         const flag = room.latestHostFrame.objectives.find((objective) => objective.id === 'flag');
         if (flag) flag.state = structuredClone(room.match.flag);
       }
+    }
+    if (room.customSeriesState?.teamShufflePending) {
+      room.customSeriesState.teamShuffleTargetSizes = this.getCustomTeamSizes(room);
     }
 
     if (room.clients.size === 0) {
@@ -880,9 +986,12 @@ export class RoomManager {
       this.electHost(room);
     }
 
-    if (!room.quickPlay && room.postGame && [...room.clients].every((member) => room.postGame.choices[member.id] === 'stay')) {
-      room.match = null;
-      room.postGame = null;
+    if (!room.quickPlay && room.postGame && room.customSeriesState?.phase !== 'postgame' &&
+        [...room.clients].every((member) => room.postGame.choices[member.id] === 'stay')) {
+      this.prepareCustomIntermission(room);
+    }
+    if (departingTeam && room.customGameRules?.autoFillBots) {
+      this.reconcileAutoFillBots(room);
     }
 
     return {
@@ -943,9 +1052,17 @@ export class RoomManager {
 
     player.team = selectedTeam;
     if (room.quickPlay) player.squadId = getQuickPlaySquadForTeam(room, selectedTeam);
+    else if (room.customSeriesState?.rolesBySquad) {
+      player.customSquadId = Object.entries(room.customSeriesState.rolesBySquad)
+        .find(([, role]) => role === selectedTeam)?.[0] ?? null;
+    }
     if (swappedPlayer) {
       swappedPlayer.team = currentTeam;
       if (room.quickPlay) swappedPlayer.squadId = getQuickPlaySquadForTeam(room, currentTeam);
+      else if (room.customSeriesState?.rolesBySquad) {
+        swappedPlayer.customSquadId = Object.entries(room.customSeriesState.rolesBySquad)
+          .find(([, role]) => role === currentTeam)?.[0] ?? null;
+      }
     }
     if (room.quickPlay && room.quickPlayState?.phase === 'lobby') {
       room.quickPlayState.ready[player.id] = false;
@@ -984,14 +1101,52 @@ export class RoomManager {
     room.mapSeed = nextSeed;
     room.mapOptions = { minRooms: nextMin, maxRooms: nextMax };
     room.mapGenerationMode = 'seed';
+    room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
+    room.mapGenerationError = null;
+    room.mapGenerationCount = 0;
+    room.mapGenerationPending = true;
+    room.preparedMap = null;
     if (room.simulationMode === 'host-authoritative') {
-      room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
-      room.mapGenerationPending = true;
-      room.mapGenerationError = null;
-      room.preparedMap = null;
+      room.customMapPromise = null;
     } else {
       this.startCustomMapGeneration(room, () => generateMap(nextSeed, MAP_WIDTH, MAP_HEIGHT, room.mapOptions));
     }
+    return this.toRoomState(room);
+  }
+
+  setCustomGameRules(client, rules) {
+    const room = this.requireClientRoom(client);
+    if (room.quickPlay) throw new RoomManagerError('Playlist rules cannot be changed in a custom room.');
+    if (room.hostId !== client.id) throw new RoomManagerError('Only the room host can change custom game rules.');
+    if (room.match) throw new RoomManagerError('Custom game rules can only be changed between matches.');
+    let nextRules;
+    try {
+      nextRules = normalizeCustomGameRules(rules, room.customGameRules ?? DEFAULT_CUSTOM_GAME_RULES);
+    } catch (error) {
+      if (error instanceof TypeError) throw new RoomManagerError(error.message);
+      throw error;
+    }
+
+    const previousRules = room.customGameRules ?? DEFAULT_CUSTOM_GAME_RULES;
+    const mapRulesChanged = previousRules.mapMode !== nextRules.mapMode ||
+      JSON.stringify(previousRules.mapCriteria) !== JSON.stringify(nextRules.mapCriteria);
+    room.customGameRules = nextRules;
+    if (mapRulesChanged) {
+      room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
+      room.mapGenerationError = null;
+      room.mapGenerationCount = 0;
+      room.preparedMap = null;
+      room.customMapPromise = null;
+      if (nextRules.mapMode === 'host') {
+        room.mapGenerationPending = false;
+        room.mapGenerationMode = 'host-choice';
+      } else {
+        room.mapGenerationPending = true;
+        room.mapGenerationMode = 'competitive';
+        this.prepareCustomRoomMap(room);
+      }
+    }
+    this.reconcileAutoFillBots(room);
     return this.toRoomState(room);
   }
 
@@ -1005,6 +1160,8 @@ export class RoomManager {
     if (team !== 'red' && team !== 'blue' && team !== 'none') {
       throw new RoomManagerError('Choose Strike Team, Flag Team, or Remove for this bot.');
     }
+    const assignedBot = [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])]
+      .find((bot) => bot.id === botId);
     const selectedBots = [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])]
       .filter((bot) => bot.id !== botId);
     if (team !== 'none') {
@@ -1019,7 +1176,162 @@ export class RoomManager {
       red: selectedBots.filter((bot) => bot.team === 'red'),
       blue: selectedBots.filter((bot) => bot.team === 'blue'),
     };
+    if (room.customSeriesState?.rolesBySquad) {
+      for (const bot of selectedBots) {
+        bot.customSquadId = Object.entries(room.customSeriesState.rolesBySquad)
+          .find(([, role]) => role === bot.team)?.[0] ?? null;
+      }
+    }
+    if (room.customSeriesState?.teamShufflePending && (!assignedBot || team === 'none')) {
+      room.customSeriesState.teamShuffleTargetSizes = this.getCustomTeamSizes(room);
+    }
+    this.reconcileAutoFillBots(room);
     return this.toRoomState(room);
+  }
+
+  reconcileAutoFillBots(room) {
+    if (room.quickPlay || room.customGameRules?.autoFillBots !== true) return;
+    const assignedIds = new Set([
+      ...(room.botRoster?.red ?? []),
+      ...(room.botRoster?.blue ?? []),
+    ].map((bot) => bot.id));
+    const available = BOT_PERSONALITIES.filter((bot) => !assignedIds.has(bot.id));
+    for (const team of ['red', 'blue']) {
+      while (this.getTeamCounts(room)[team] < TEAM_CAPACITY && available.length > 0) {
+        this.addRoomBot(room, available.shift(), team);
+      }
+    }
+    if (room.customSeriesState?.teamShufflePending) {
+      room.customSeriesState.teamShuffleTargetSizes = this.getCustomTeamSizes(room);
+    }
+  }
+
+  addRoomBot(room, personality, team) {
+    const bot = { ...personality, team };
+    if (room.customSeriesState?.rolesBySquad) {
+      bot.customSquadId = Object.entries(room.customSeriesState.rolesBySquad)
+        .find(([, role]) => role === team)?.[0] ?? null;
+    }
+    room.botRoster[team].push(bot);
+    if (room.match) this.addMatchBot(room, bot);
+  }
+
+  makeRoomForHumanJoin(room) {
+    const counts = this.getTeamCounts(room);
+    if (counts.red < TEAM_CAPACITY || counts.blue < TEAM_CAPACITY) return;
+    const removableBots = ['red', 'blue'].flatMap((team) =>
+      (room.botRoster?.[team] ?? []).map((bot) => ({ bot, team })));
+    if (removableBots.length === 0) return;
+    const selected = removableBots[Math.floor(this.random() * removableBots.length)];
+    this.removeRoomBot(room, selected.bot, selected.team);
+  }
+
+  removeRoomBot(room, bot, team) {
+    room.botRoster[team] = (room.botRoster[team] ?? []).filter((entry) => entry.id !== bot.id);
+    if (room.match) {
+      const matchBot = room.match.players.find((player) => player.id === bot.id);
+      if (matchBot && room.match.flag.heldBy === bot.id) {
+        room.match.flag.heldBy = null;
+        room.match.flag.x = matchBot.x;
+        room.match.flag.y = matchBot.y;
+        room.match.flag.dropped = true;
+        room.match.flag.lastDroppedBy = null;
+      }
+      room.match.players = room.match.players.filter((player) => player.id !== bot.id);
+      room.match.teamRoster[team] = Math.max(0, room.match.teamRoster[team] - Number(Boolean(matchBot)));
+      room.match.updatedAt = this.now();
+      room.botActors?.delete(bot.id);
+      if (room.latestHostFrame?.matchId === room.match.startedAt) {
+        room.latestHostFrame.actors = room.latestHostFrame.actors.filter((actor) => actor.id !== bot.id);
+      }
+    }
+  }
+
+  addMatchBot(room, bot) {
+    const match = room.match;
+    const now = this.now();
+    const teamIndex = match.players.filter((player) => player.team === bot.team).length;
+    const teammate = match.players.find((player) => player.team === bot.team);
+    const buyPhaseDisabled = room.customGameRules?.buyPhase === 'none';
+    const selectedWeaponId = buyPhaseDisabled
+      ? bot.selectedWeaponId ?? this.defaultProjectileType
+      : teammate?.selectedWeaponId ??
+        chooseBotLoadoutWeaponId([...this.projectileDefinitions.values()], this.random) ??
+        this.defaultProjectileType;
+    const selectedGadgetId = buyPhaseDisabled
+      ? null
+      : teammate?.selectedGadgetId ?? chooseBotLoadoutGadgetId(BOT_GADGETS, this.random);
+    const inventory = normalizeItemInventory(teammate?.inventory ?? createDefaultMatchItemInventory());
+    const gadgetCount = selectedGadgetId ? getGadgetStartingChargeCount(selectedGadgetId) : 0;
+    bot.selectedWeaponId = selectedWeaponId;
+    bot.selectedGadgetId = selectedGadgetId;
+    bot.gadgetCount = gadgetCount;
+    bot.gadgetCounts = createGadgetCounts(selectedGadgetId, gadgetCount);
+    bot.inventory = inventory;
+    bot.inventoryWeaponIds = isProgressionShop(room) ? [selectedWeaponId] : undefined;
+    bot.weaponShopOfferIds = [];
+    bot.itemShopOfferIds = [];
+    bot.gadgetShopOfferIds = [];
+    bot.shopPicksRemaining = 0;
+    bot.weaponShopResolved = true;
+    match.players.push({
+      id: bot.id,
+      name: bot.name,
+      team: bot.team,
+      isBot: true,
+      ...getTeamSpawn(match.map, bot.team, teamIndex),
+      vx: 0,
+      vy: 0,
+      health: PLAYER_MAX_HEALTH,
+      armor: getInventoryEffects(inventory).armor,
+      maxArmor: getInventoryEffects(inventory).armor,
+      lastDamagedAt: now,
+      stats: { kills: 0, assists: 0, deaths: 0 },
+      alive: true,
+      isSpectator: false,
+      weaponLean: 0,
+      visionAngle: 0,
+      selectedWeaponId,
+      selectedGadgetId,
+      gadgetCounts: structuredClone(bot.gadgetCounts),
+      gadgetCount,
+      uniqueGadgetShopOfferIds: [],
+      equippedSlot: 'weapon',
+      gadgetSwitchStartedAt: null,
+      gadgetSwitchEndsAt: null,
+      gadgetSwitchTargetSlot: null,
+      inventory,
+      ...(isProgressionShop(room) ? {
+        inventoryWeaponIds: [...bot.inventoryWeaponIds],
+        weaponShopOfferIds: [],
+        itemShopOfferIds: [],
+        gadgetShopOfferIds: [],
+        shopPicksRemaining: 0,
+        weaponShopResolved: true,
+      } : {}),
+      weaponStats: createWeaponAccuracyStates(this.projectileDefinitions, now, inventory),
+      lastInputSequence: 0,
+      lastWeaponActionSequence: 0,
+      input: { ...EMPTY_INPUT },
+      controlledById: null,
+      controlRevision: 0,
+    });
+    match.teamRoster[bot.team] += 1;
+    match.updatedAt = now;
+    room.botActors ??= new Map();
+    room.botActors.set(bot.id, {
+      [BOT_ACTOR]: true,
+      id: bot.id,
+      playerName: bot.name,
+      team: bot.team,
+      room,
+      connected: true,
+      roomInput: { ...EMPTY_INPUT },
+      roomInputSequence: 0,
+      roomInputAt: now,
+      nextProjectileAt: 0,
+      selectedWeaponId,
+    });
   }
 
   setBotController(client, { botId, takeControl = true } = {}) {
@@ -1033,13 +1345,15 @@ export class RoomManager {
     }
     if (!postGameFreeRoam) this.assertGameplayStarted(match);
     const human = match.players.find((player) => player.id === client.id);
-    if (human?.alive && human.health > 0) {
+    if (human && human.isSpectator !== true && human.alive !== false &&
+        (human.health ?? PLAYER_MAX_HEALTH) > 0) {
       throw new RoomManagerError('Living players cannot take over bots.');
     }
     const bot = match.players.find((player) => player.id === botId && player.isBot);
     const actor = room.botActors?.get(botId);
     const controllingTeam = human?.team ?? client.team;
-    if (!bot || !actor || !bot.alive || bot.health <= 0 || bot.team !== controllingTeam) {
+    if (!bot || !actor || bot.isSpectator === true || bot.alive === false ||
+        (bot.health ?? 0) <= 0 || bot.team !== controllingTeam) {
       throw new RoomManagerError('Choose a living bot on your team.');
     }
 
@@ -1073,6 +1387,7 @@ export class RoomManager {
     if (room.simulationMode === 'host-authoritative') {
       room.mapGenerationPending = true;
       room.mapGenerationError = null;
+      room.mapGenerationCount = 0;
       room.preparedMap = null;
       room.mapGenerationMode = 'competitive';
       room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
@@ -1080,9 +1395,11 @@ export class RoomManager {
       room.customMapPromise = promise;
       return { state: this.toRoomState(room), promise };
     }
+    const rules = getRoomMapCriteria(room);
     const generation = this.startCustomMapGeneration(room, () =>
-      this.createCompetitiveMapWithFallback((signal) => this.createCompetitiveMapData({ maxAttempts, signal }), {
+      this.createCompetitiveMapWithFallback((signal) => this.createCompetitiveMapData({ maxAttempts, signal, rules }), {
         fallbackAfterMs: CUSTOM_MAP_CATALOG_FALLBACK_MS,
+        rules,
         onFallbackAvailable: (requestFallback) => {
           room.requestMapFallback = requestFallback;
           if (room.mapFallbackRequested) requestFallback();
@@ -1115,6 +1432,7 @@ export class RoomManager {
     room.mapGenerationRevision = revision;
     room.mapGenerationPending = true;
     room.mapGenerationError = null;
+    room.mapGenerationCount = 0;
     room.mapFallbackRequested = false;
     room.requestMapFallback = null;
     const preparation = new Promise((resolve) => setImmediate(resolve))
@@ -1137,6 +1455,7 @@ export class RoomManager {
 
   async createCompetitiveMapWithFallback(buildFreshMap, {
     excludedFingerprints = new Set(),
+    rules = COMPETITIVE_MAP_RULES,
     fallbackAfterMs = null,
     onFallbackAvailable,
   } = {}) {
@@ -1161,7 +1480,7 @@ export class RoomManager {
     if (outcome.type === 'fresh') return outcome.prepared;
 
     const catalogMap = this.competitiveMapStore?.list
-      ? await this.createCatalogCompetitiveMapData({ excludedFingerprints })
+      ? await this.createCatalogCompetitiveMapData({ excludedFingerprints, rules })
       : null;
     if (catalogMap) {
       controller.abort();
@@ -1170,7 +1489,10 @@ export class RoomManager {
     return freshMapPromise;
   }
 
-  async createCatalogCompetitiveMapData({ excludedFingerprints = new Set() } = {}) {
+  async createCatalogCompetitiveMapData({
+    excludedFingerprints = new Set(),
+    rules = COMPETITIVE_MAP_RULES,
+  } = {}) {
     const catalog = await this.competitiveMapStore?.list?.();
     if (!catalog?.length) return null;
     const excluded = excludedFingerprints instanceof Set
@@ -1179,9 +1501,14 @@ export class RoomManager {
 
     for (let offset = 0; offset < catalog.length; offset += 1) {
       const entry = catalog[(firstIndex + offset) % catalog.length];
-      const mapOptions = { minRooms: entry.roomCount, maxRooms: entry.roomCount };
+      if (entry.roomCount < rules.minRooms || entry.roomCount > rules.maxRooms) continue;
+      const mapOptions = {
+        minRooms: entry.roomCount,
+        maxRooms: entry.roomCount,
+        maxSiteApproachSightline: rules.maxSiteApproachSightline,
+      };
       const map = this.generateCompetitiveMapCandidate(entry.seed, mapOptions);
-      if (!isCompetitiveMap(map)) continue;
+      if (!isCompetitiveMap(map, rules)) continue;
       const fingerprint = fingerprintMap(map);
       if (excluded.has(fingerprint)) continue;
       return { seed: entry.seed, mapOptions, map, fingerprint, attempts: 0, fromCatalog: true };
@@ -1190,21 +1517,30 @@ export class RoomManager {
     return null;
   }
 
-  async createCompetitiveMapData({ maxAttempts = Infinity, excludedFingerprints = new Set(), signal } = {}) {
+  async createCompetitiveMapData({
+    maxAttempts = Infinity,
+    excludedFingerprints = new Set(),
+    signal,
+    rules = COMPETITIVE_MAP_RULES,
+  } = {}) {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       if (signal?.aborted) throw new RoomManagerError('Competitive map search was cancelled.');
-      const roomCount = randomInt(COMPETITIVE_MAP_RULES.minRooms, COMPETITIVE_MAP_RULES.maxRooms + 1);
+      const roomCount = randomInt(rules.minRooms, rules.maxRooms + 1);
       const seed = this.createMapSeed();
-      const mapOptions = { minRooms: roomCount, maxRooms: roomCount };
+      const mapOptions = {
+        minRooms: roomCount,
+        maxRooms: roomCount,
+        maxSiteApproachSightline: rules.maxSiteApproachSightline,
+      };
       const map = this.generateCompetitiveMapCandidate(seed, mapOptions);
-      if (!isCompetitiveMap(map)) {
+      if (!isCompetitiveMap(map, rules)) {
         if (attempt % 4 === 3) await new Promise((resolve) => setImmediate(resolve));
         continue;
       }
       const fingerprint = fingerprintMap(map);
       if (excludedFingerprints.has(fingerprint)) continue;
       const prepared = { seed, mapOptions, map, fingerprint, attempts: attempt + 1 };
-      await this.recordCompetitiveMap(prepared);
+      if (rules === COMPETITIVE_MAP_RULES) await this.recordCompetitiveMap(prepared);
       return prepared;
     }
     throw new RoomManagerError(`Could not find a competitive map after ${maxAttempts} attempts. Try again.`);
@@ -1227,9 +1563,12 @@ export class RoomManager {
       room.mapGenerationPending = true;
       return null;
     }
-    if (room.quickPlay || !room.mapGenerationPending || room.customMapPromise) return room.customMapPromise;
+    if (room.quickPlay || (room.match && !room.match.victory) ||
+        !room.mapGenerationPending || room.customMapPromise) return room.customMapPromise;
+    const rules = getRoomMapCriteria(room);
     const generation = this.startCustomMapGeneration(room, () =>
-      this.createCompetitiveMapWithFallback((signal) => this.createCompetitiveMapData({ signal }), {
+      this.createCompetitiveMapWithFallback((signal) => this.createCompetitiveMapData({ signal, rules }), {
+        rules,
         onFallbackAvailable: (requestFallback) => {
           room.requestMapFallback = requestFallback;
           if (room.mapFallbackRequested) requestFallback();
@@ -1237,7 +1576,7 @@ export class RoomManager {
       }));
     const preparation = generation
       .then((prepared) => {
-        if (!prepared || this.rooms.get(room.key) !== room || room.match ||
+        if (!prepared || this.rooms.get(room.key) !== room || (room.match && !room.match.victory) ||
             room.mapGenerationRevision !== preparation.revision) return null;
         room.mapSeed = prepared.seed;
         room.mapOptions = prepared.mapOptions;
@@ -1362,74 +1701,172 @@ export class RoomManager {
       const modeLabel = SERIES_MODE_RULES[room.gameMode]?.label ?? 'Series';
       throw new RoomManagerError(`${modeLabel} starts automatically after players ready up.`);
     }
-    if (room.simulationMode === 'host-authoritative' && (room.mapGenerationPending || !room.preparedMap)) {
-      throw new RoomManagerError('Wait for the host to finish generating and submitting the competitive map.');
+    if (room.customSeriesState?.teamShufflePending) {
+      throw new RoomManagerError('The host must approve the team shuffle before the next match.');
+    }
+    if (room.mapGenerationMode === 'host-choice') {
+      throw new RoomManagerError('Choose and prepare a map before starting the next match.');
+    }
+    if ((room.simulationMode === 'host-authoritative' &&
+        (room.mapGenerationPending || (!room.preparedMap &&
+          !(room.customGameRules.mapMode === 'same' && room.customSeriesMap)))) ||
+        (room.simulationMode === 'server-authoritative' &&
+          room.customGameRules.mapMode !== 'competitive' && room.mapGenerationPending)) {
+      throw new RoomManagerError('Wait for the host to finish generating and submitting a map before starting.');
     }
     return this.startMatchForRoom(room, this.now());
   }
 
+  prepareMatchShop(room, clients, botRoster, matchNumber) {
+    const progressionShop = isProgressionShop(room);
+    const progressionRound = room.quickPlay
+      ? (LONG_PLAY_SHOP_MODES.has(room.gameMode) ? (room.quickPlayState?.round ?? 0) + 1 : 0)
+      : progressionShop ? matchNumber : 0;
+    const customRules = room.quickPlay ? null : room.customGameRules;
+    if (progressionRound) {
+      if (customRules && progressionRound === 1) {
+        for (const player of clients) {
+          player.inventory = createEmptyItemInventory();
+          player.inventoryWeaponIds = [LONG_PLAY_STARTER_WEAPON_ID];
+          player.selectedWeaponId = LONG_PLAY_STARTER_WEAPON_ID;
+          player.selectedGadgetId = null;
+          player.gadgetCount = 0;
+          player.gadgetCounts = createGadgetCounts();
+          player.uniqueGadgetShopCount = 0;
+          player.uniqueGadgetShopOfferIds = [];
+        }
+        for (const bot of botRoster) {
+          bot.inventory = createEmptyItemInventory();
+          bot.inventoryWeaponIds = [LONG_PLAY_STARTER_WEAPON_ID];
+          bot.selectedWeaponId = LONG_PLAY_STARTER_WEAPON_ID;
+          bot.selectedGadgetId = null;
+          bot.gadgetCount = 0;
+          bot.gadgetCounts = createGadgetCounts();
+        }
+      }
+      for (const player of clients) {
+        this.prepareLongPlayShop(player, progressionRound, true, { customRules });
+      }
+      for (const bot of botRoster) {
+        this.prepareLongPlayShop(bot, progressionRound, true, { allowUnique: false, customRules });
+        this.chooseLongPlayBotShopOffers(bot);
+      }
+      return;
+    }
+    if (customRules?.buyPhase === 'none') {
+      for (const player of clients) {
+        player.uniqueGadgetShopOfferIds = [];
+        player.weaponShopOfferIds = [];
+        player.itemShopOfferIds = [];
+        player.gadgetShopOfferIds = [];
+        player.shopPicksRemaining = 0;
+        player.weaponShopResolved = true;
+        player.itemShopResolved = true;
+      }
+      for (const bot of botRoster) {
+        bot.uniqueGadgetShopOfferIds = [];
+        bot.weaponShopOfferIds = [];
+        bot.itemShopOfferIds = [];
+        bot.gadgetShopOfferIds = [];
+        bot.shopPicksRemaining = 0;
+        bot.weaponShopResolved = true;
+        bot.itemShopResolved = true;
+      }
+      return;
+    }
+    for (const player of clients) {
+      this.prepareUniqueGadgetShopOffers(player, customRules);
+      const selectedGadget = GADGET_DEFINITIONS[player.selectedGadgetId];
+      const gadgetId = selectedGadget && (!isUniqueGadgetDefinition(selectedGadget) ||
+        isUniqueGadgetAvailableInLoadoutShop(selectedGadget, room) ||
+        player.uniqueGadgetShopOfferIds.includes(player.selectedGadgetId))
+        ? player.selectedGadgetId : SMOKE_GRENADE_ID;
+      player.selectedGadgetId = gadgetId;
+      player.gadgetCount = getGadgetStartingChargeCount(gadgetId);
+      player.gadgetCounts = createGadgetCounts(gadgetId, player.gadgetCount);
+      player.itemShopOfferIds = [];
+      player.shopPicksRemaining = 0;
+      player.itemShopResolved = true;
+    }
+    for (const bot of botRoster) {
+      bot.inventory = createDefaultMatchItemInventory();
+      const gadgetId = getBotStartingGadgetId(bot, this.random);
+      bot.uniqueGadgetShopOfferIds = [];
+      bot.selectedGadgetId = gadgetId;
+      bot.gadgetCount = getGadgetStartingChargeCount(gadgetId);
+      bot.gadgetCounts = createGadgetCounts(gadgetId, bot.gadgetCount);
+      bot.itemShopOfferIds = [];
+      bot.shopPicksRemaining = 0;
+      bot.itemShopResolved = true;
+    }
+  }
+
   startMatchForRoom(room, startedAt = this.now()) {
+    let customMatchNumber = 0;
+    if (!room.quickPlay) {
+      if (!room.customSeriesState || room.customSeriesState.phase === 'complete') {
+        room.customSeriesState = {
+          matchNumber: 0,
+          score: { A: 0, B: 0 },
+          rolesBySquad: { A: 'red', B: 'blue' },
+          phase: 'lobby',
+          winner: null,
+          lastResult: null,
+          lastMatchScoreboard: null,
+          seriesScoreboard: [],
+          teamShufflePending: false,
+          teamShuffleApproved: true,
+          teamShuffleTargetSizes: null,
+        };
+        for (const client of room.clients) {
+          client.customSquadId = client.team === 'blue' ? 'B' : 'A';
+        }
+        for (const bot of [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])]) {
+          bot.customSquadId = bot.team === 'blue' ? 'B' : 'A';
+        }
+      }
+      customMatchNumber = room.customSeriesState.matchNumber + 1;
+      room.customSeriesState.matchNumber = customMatchNumber;
+      room.customSeriesState.phase = 'playing';
+      room.customSeriesState.winner = null;
+      delete room.customSeriesState.nextMatchAt;
+    }
+    const progressionShop = isProgressionShop(room);
     if (room.simulationMode === 'host-authoritative') {
       const clients = [...room.clients];
       const botRoster = room.quickPlay
         ? this.createQuickPlayBotRoster(clients, room)
         : [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])];
       if (room.quickPlay) room.quickPlayBotRoster = botRoster;
-      const map = room.preparedMap ?? room.quickPlayMap?.map;
+      const map = room.preparedMap ?? room.quickPlayMap?.map ??
+        (!room.quickPlay && room.customGameRules?.mapMode === 'same' ? room.customSeriesMap : null);
       if (!map) throw new RoomManagerError('The host has not submitted a map yet.');
-      const longPlayRound = LONG_PLAY_SHOP_MODES.has(room.gameMode)
-        ? (room.quickPlayState?.round ?? 0) + 1 : 0;
-      if (longPlayRound) {
-        for (const player of clients) {
-          this.prepareLongPlayShop(player, longPlayRound);
-        }
-        for (const bot of botRoster) {
-          this.prepareLongPlayShop(bot, longPlayRound, true, { allowUnique: false });
-          this.chooseLongPlayBotShopOffers(bot);
-        }
-      } else {
-        for (const player of clients) {
-          this.prepareUniqueGadgetShopOffers(player);
-          const selectedGadget = GADGET_DEFINITIONS[player.selectedGadgetId];
-          const gadgetId = selectedGadget && (!isUniqueGadgetDefinition(selectedGadget) ||
-            isUniqueGadgetAvailableInLoadoutShop(selectedGadget, room) ||
-            player.uniqueGadgetShopOfferIds.includes(player.selectedGadgetId))
-            ? player.selectedGadgetId : SMOKE_GRENADE_ID;
-          player.selectedGadgetId = gadgetId;
-          player.gadgetCount = getGadgetStartingChargeCount(gadgetId);
-          player.gadgetCounts = createGadgetCounts(gadgetId, player.gadgetCount);
-          player.itemShopOfferIds = [];
-          player.shopPicksRemaining = 0;
-          player.itemShopResolved = true;
-        }
-        for (const bot of botRoster) {
-          bot.inventory = createDefaultMatchItemInventory();
-          const gadgetId = getBotStartingGadgetId(bot, this.random);
-          bot.uniqueGadgetShopOfferIds = [];
-          bot.selectedGadgetId = gadgetId;
-          bot.gadgetCount = 1;
-          bot.gadgetCounts = createGadgetCounts(gadgetId, 1);
-          bot.itemShopOfferIds = [];
-          bot.shopPicksRemaining = 0;
-          bot.itemShopResolved = true;
-        }
-      }
-      const gameplayStartsAt = startedAt + (room.quickPlay ? QUICK_PLAY_COUNTDOWN_MS : MATCH_COUNTDOWN_MS);
+      if (!room.quickPlay) room.customSeriesMap = structuredClone(map);
+      this.prepareMatchShop(room, clients, botRoster, customMatchNumber);
+      const gameplayStartsAt = startedAt + getPrePhaseDurationMs(room);
       const flagPosition = getInitialFlagPosition(map);
       room.match = {
         startedAt,
         gameplayStartsAt,
-        endsAt: gameplayStartsAt + MATCH_DURATION_MS,
+        endsAt: gameplayStartsAt + getGamePhaseDurationMs(room),
         updatedAt: startedAt,
+        infiniteGadgetUse: isInfiniteGadgetUseEnabled(room),
         map,
         flag: { ...flagPosition, heldBy: null, dropped: false, lastDroppedBy: null },
         victory: null,
         postGame: null,
         quickPlayState: null,
+        teamRoster: {
+          red: clients.filter((player) => player.team === 'red').length +
+            botRoster.filter((bot) => bot.team === 'red').length,
+          blue: clients.filter((player) => player.team === 'blue').length +
+            botRoster.filter((bot) => bot.team === 'blue').length,
+        },
         players: [
           ...clients.map((player) => ({
             id: player.id, name: player.playerName, team: player.team,
-            ...(room.quickPlay ? { squadId: player.squadId } : {}),
+            ...((room.quickPlay ? player.squadId : player.customSquadId)
+              ? { squadId: room.quickPlay ? player.squadId : player.customSquadId } : {}),
             selectedWeaponId: player.selectedWeaponId ?? this.defaultProjectileType,
             selectedGadgetId: player.selectedGadgetId,
             loadoutRevision: player.loadoutRevision ?? 0,
@@ -1440,7 +1877,7 @@ export class RoomManager {
             itemShopOfferIds: structuredClone(player.itemShopOfferIds ?? []),
             shopPicksRemaining: player.shopPicksRemaining ?? 0,
             itemShopResolved: player.itemShopResolved === true,
-            ...(LONG_PLAY_SHOP_MODES.has(room.gameMode) ? {
+            ...(isProgressionShop(room) ? {
               inventoryWeaponIds: [...(player.inventoryWeaponIds ?? [LONG_PLAY_STARTER_WEAPON_ID])],
               weaponShopOfferIds: [...(player.weaponShopOfferIds ?? [])],
               itemShopOfferIds: structuredClone(player.itemShopOfferIds ?? []),
@@ -1451,14 +1888,15 @@ export class RoomManager {
           })),
           ...botRoster.map((bot) => ({
             id: bot.id, name: bot.name, team: bot.team, isBot: true,
-            ...(room.quickPlay ? { squadId: bot.squadId } : {}),
+            ...((room.quickPlay ? bot.squadId : bot.customSquadId)
+              ? { squadId: room.quickPlay ? bot.squadId : bot.customSquadId } : {}),
             selectedWeaponId: bot.selectedWeaponId ?? this.defaultProjectileType,
             selectedGadgetId: bot.selectedGadgetId,
             gadgetCounts: structuredClone(bot.gadgetCounts),
             gadgetCount: bot.gadgetCount,
             uniqueGadgetShopOfferIds: [],
             inventory: normalizeItemInventory(bot.inventory),
-            ...(LONG_PLAY_SHOP_MODES.has(room.gameMode) ? {
+            ...(isProgressionShop(room) ? {
               inventoryWeaponIds: [...(bot.inventoryWeaponIds ?? [LONG_PLAY_STARTER_WEAPON_ID])],
               weaponShopOfferIds: [...(bot.weaponShopOfferIds ?? [])],
               itemShopOfferIds: structuredClone(bot.itemShopOfferIds ?? []),
@@ -1508,7 +1946,7 @@ export class RoomManager {
       ? this.createQuickPlayBotRoster(clients, room)
       : [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])];
     if (room.quickPlay) room.quickPlayBotRoster = botRoster;
-    if (!LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (!isProgressionShop(room)) {
       for (const bot of botRoster) {
         if (!this.projectileDefinitions.has(bot.selectedWeaponId)) {
           bot.selectedWeaponId = chooseBotLoadoutWeaponId([...this.projectileDefinitions.values()], this.random) ??
@@ -1516,38 +1954,9 @@ export class RoomManager {
         }
       }
     }
-    const longPlayRound = LONG_PLAY_SHOP_MODES.has(room.gameMode)
-      ? (room.quickPlayState?.round ?? 0) + 1 : 0;
-    if (longPlayRound) {
-      for (const player of clients) {
-        this.prepareLongPlayShop(player, longPlayRound);
-      }
-      for (const bot of botRoster) {
-        this.prepareLongPlayShop(bot, longPlayRound, true, { allowUnique: false });
-        this.chooseLongPlayBotShopOffers(bot);
-      }
-    } else {
-      for (const player of clients) {
-        this.prepareUniqueGadgetShopOffers(player);
-        const selectedGadget = GADGET_DEFINITIONS[player.selectedGadgetId];
-        const gadgetId = selectedGadget && (!isUniqueGadgetDefinition(selectedGadget) ||
-          isUniqueGadgetAvailableInLoadoutShop(selectedGadget, room) ||
-          player.uniqueGadgetShopOfferIds.includes(player.selectedGadgetId))
-          ? player.selectedGadgetId : SMOKE_GRENADE_ID;
-        player.selectedGadgetId = gadgetId;
-        player.gadgetCount = getGadgetStartingChargeCount(gadgetId);
-        player.gadgetCounts = createGadgetCounts(gadgetId, player.gadgetCount);
-      }
-      for (const bot of botRoster) {
-        const gadgetId = getBotStartingGadgetId(bot, this.random);
-        bot.uniqueGadgetShopOfferIds = [];
-        bot.selectedGadgetId = gadgetId;
-        bot.gadgetCount = getGadgetStartingChargeCount(gadgetId);
-        bot.gadgetCounts = createGadgetCounts(gadgetId, bot.gadgetCount);
-      }
-    }
+    this.prepareMatchShop(room, clients, botRoster, customMatchNumber);
     const teamPlayerIndices = { red: 0, blue: 0 };
-    const gameplayStartsAt = startedAt + (room.quickPlay ? QUICK_PLAY_COUNTDOWN_MS : MATCH_COUNTDOWN_MS);
+    const gameplayStartsAt = startedAt + getPrePhaseDurationMs(room);
     let map;
     if (room.quickPlay) {
       const modeLabel = SERIES_MODE_RULES[room.gameMode]?.label ?? 'Practice';
@@ -1559,25 +1968,29 @@ export class RoomManager {
       room.quickPlayMap = null;
       room.quickPlayMapFallbackRequested = false;
       room.requestQuickPlayMapFallback = null;
+    } else if (room.customGameRules?.mapMode === 'same' && room.customSeriesMap) {
+      map = structuredClone(room.customSeriesMap);
     } else {
-      map = generateMap(room.mapSeed, MAP_WIDTH, MAP_HEIGHT, room.mapOptions);
+      map = generateMap(room.mapSeed, MAP_WIDTH, MAP_HEIGHT, getRoomMapOptions(room));
     }
+    if (!room.quickPlay) room.customSeriesMap = structuredClone(map);
     for (const player of clients) {
       player.roomInput = { ...EMPTY_INPUT };
       player.roomInputSequence = 0;
       player.roomInputAt = startedAt;
       player.lastWeaponActionSequence = 0;
-      if (!LONG_PLAY_SHOP_MODES.has(room.gameMode)) player.inventory = createDefaultMatchItemInventory();
+      if (!isProgressionShop(room)) player.inventory = createDefaultMatchItemInventory();
     }
-    if (!LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (!isProgressionShop(room)) {
       for (const bot of botRoster) bot.inventory = createDefaultMatchItemInventory();
     }
     const flagPosition = getInitialFlagPosition(map);
     room.match = {
       startedAt,
       gameplayStartsAt,
-      endsAt: gameplayStartsAt + MATCH_DURATION_MS,
+      endsAt: gameplayStartsAt + getGamePhaseDurationMs(room),
       updatedAt: startedAt,
+      infiniteGadgetUse: isInfiniteGadgetUseEnabled(room),
       map,
       flag: {
         ...flagPosition,
@@ -1613,7 +2026,8 @@ export class RoomManager {
           id: player.id,
           name: player.playerName,
           team,
-          ...(room.quickPlay ? { squadId: player.squadId } : {}),
+          ...((room.quickPlay ? player.squadId : player.customSquadId)
+            ? { squadId: room.quickPlay ? player.squadId : player.customSquadId } : {}),
           ...getTeamSpawn(map, team, teamIndex),
           vx: 0,
           vy: 0,
@@ -1637,7 +2051,7 @@ export class RoomManager {
           gadgetSwitchEndsAt: null,
           gadgetSwitchTargetSlot: null,
           inventory: normalizeItemInventory(player.inventory),
-          ...(LONG_PLAY_SHOP_MODES.has(room.gameMode) ? {
+          ...(isProgressionShop(room) ? {
             inventoryWeaponIds: [...(player.inventoryWeaponIds ?? [LONG_PLAY_STARTER_WEAPON_ID])],
             weaponShopOfferIds: [...(player.weaponShopOfferIds ?? [])],
             itemShopOfferIds: structuredClone(player.itemShopOfferIds ?? []),
@@ -1656,7 +2070,8 @@ export class RoomManager {
           id: bot.id,
           name: bot.name,
           team: bot.team,
-          ...(room.quickPlay ? { squadId: bot.squadId } : {}),
+          ...((room.quickPlay ? bot.squadId : bot.customSquadId)
+            ? { squadId: room.quickPlay ? bot.squadId : bot.customSquadId } : {}),
           isBot: true,
           ...getTeamSpawn(map, bot.team, teamIndex),
           vx: 0,
@@ -1680,7 +2095,7 @@ export class RoomManager {
           gadgetSwitchEndsAt: null,
           gadgetSwitchTargetSlot: null,
           inventory: normalizeItemInventory(bot.inventory),
-          ...(LONG_PLAY_SHOP_MODES.has(room.gameMode) ? {
+          ...(isProgressionShop(room) ? {
             inventoryWeaponIds: [...(bot.inventoryWeaponIds ?? [LONG_PLAY_STARTER_WEAPON_ID])],
             weaponShopOfferIds: [...(bot.weaponShopOfferIds ?? [])],
             itemShopOfferIds: structuredClone(bot.itemShopOfferIds ?? []),
@@ -1798,13 +2213,13 @@ export class RoomManager {
           continue;
         }
         if (room.quickPlay) continue;
-        const departures = this.expirePostGameResponses(room, now);
-        if (departures.length > 0 || !room.match) {
+        const intermissionStarted = this.expirePostGameResponses(room, now);
+        if (intermissionStarted) {
           updates.push({
             room,
-            match: room.match ? getMatchSnapshot(room.match) : null,
+            match: null,
             roomState: this.toRoomState(room),
-            postGameDepartures: departures,
+            postGameDepartures: [],
           });
         }
         continue;
@@ -1842,6 +2257,27 @@ export class RoomManager {
         tickStartedAt,
         now,
       );
+      if (trophyInterceptions.length) {
+        match.gadgetEffects ??= [];
+        for (const interception of trophyInterceptions) {
+          match.gadgetEffects.push({
+            id: `${interception.effectId}:trophy-intercept`.slice(0, 96),
+            type: 'trophy-intercept-visual',
+            projectileId: interception.effectId,
+            trophyId: interception.trophyId,
+            trophyTeam: interception.team,
+            trophyX: interception.trophyPosition.x,
+            trophyY: interception.trophyPosition.y,
+            x: interception.position.x,
+            y: interception.position.y,
+            startedAt: now,
+            expiresAt: now + TROPHY_INTERCEPT_VISUAL_DURATION_MS,
+            blocksMovement: false,
+            blocksProjectiles: false,
+            blocksVision: false,
+          });
+        }
+      }
       const interceptedProjectileIds = new Set(trophyInterceptions.map((entry) => entry.effectId));
       for (const pending of match.pendingGadgetEffects ?? []) {
         if (interceptedProjectileIds.has(pending.effect?.id)) continue;
@@ -2288,11 +2724,253 @@ export class RoomManager {
       match.quickPlayState = structuredClone(room.quickPlayState);
       return;
     }
+    const series = room.customSeriesState;
+    if (series?.phase === 'playing') {
+      const winnerSquadId = Object.entries(series.rolesBySquad ?? {})
+        .find(([, team]) => team === victory.winner)?.[0];
+      if (!winnerSquadId) throw new RoomManagerError('The winning custom-game team could not be identified.');
+      series.score[winnerSquadId] += 1;
+      series.lastMatchScoreboard = match.players.map((player) => ({
+        id: player.id,
+        name: player.name,
+        team: player.team,
+        squadId: player.squadId ?? null,
+        isBot: player.isBot === true,
+        alive: player.alive !== false,
+        controlledById: player.controlledById ?? null,
+        stats: {
+          kills: player.stats?.kills ?? 0,
+          assists: player.stats?.assists ?? 0,
+          deaths: player.stats?.deaths ?? 0,
+        },
+      }));
+      const completedById = new Map((series.seriesScoreboard ?? []).map((player) => [player.id, player]));
+      for (const player of series.lastMatchScoreboard) {
+        const previous = completedById.get(player.id);
+        completedById.set(player.id, {
+          ...previous,
+          ...player,
+          stats: {
+            kills: (previous?.stats?.kills ?? 0) + player.stats.kills,
+            assists: (previous?.stats?.assists ?? 0) + player.stats.assists,
+            deaths: (previous?.stats?.deaths ?? 0) + player.stats.deaths,
+          },
+        });
+      }
+      series.seriesScoreboard = [...completedById.values()];
+      const seriesWon = room.customGameRules.winsToWin !== null &&
+        series.score[winnerSquadId] >= room.customGameRules.winsToWin;
+      series.winner = seriesWon ? winnerSquadId : null;
+      series.phase = seriesWon ? 'complete' : 'postgame';
+      if (seriesWon) delete series.nextMatchAt;
+      series.lastResult = {
+        matchNumber: series.matchNumber,
+        winner: victory.winner,
+        winnerSquadId,
+        reason: victory.reason,
+        at: victory.at,
+        score: { ...series.score },
+      };
+      if (!seriesWon && room.customGameRules.roleSwapEveryMatches > 0 &&
+          series.matchNumber % room.customGameRules.roleSwapEveryMatches === 0) {
+        series.roleSwapPending = true;
+      }
+      if (!seriesWon && room.customGameRules.teamShuffleEveryMatches > 0 &&
+          series.matchNumber % room.customGameRules.teamShuffleEveryMatches === 0) {
+        if (room.customGameRules.teamShuffleMode === 'host') {
+          series.teamShufflePending = true;
+          series.teamShuffleApproved = false;
+          series.teamShuffleTargetSizes = this.getCustomTeamSizes(room);
+        } else {
+          series.pendingTeamShuffleMode = room.customGameRules.teamShuffleMode;
+        }
+      }
+    }
     room.postGame = {
-      endsAt: victory.at + POST_GAME_RESPONSE_WINDOW_MS,
+      endsAt: victory.at + getPostPhaseDurationMs(room),
       choices: Object.fromEntries([...room.clients].map((member) => [member.id, 'waiting'])),
     };
+    if (series && series.phase !== 'complete') {
+      series.nextMatchAt = room.postGame.endsAt;
+      if (series.phase === 'postgame') this.prepareCustomNextMap(room);
+    }
     match.postGame = room.postGame;
+  }
+
+  prepareCustomNextMap(room) {
+    const mapMode = room.customGameRules?.mapMode;
+    if (room.quickPlay || mapMode === 'same' || mapMode === 'host') return false;
+    room.mapGenerationMode = 'competitive';
+    room.mapGenerationError = null;
+    room.mapGenerationCount = 0;
+    room.preparedMap = null;
+    room.mapGenerationPending = true;
+    if (room.simulationMode === 'host-authoritative') {
+      room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
+      this.prepareCustomRoomMap(room);
+    } else {
+      this.prepareCustomRoomMap(room);
+    }
+    return true;
+  }
+
+  isCustomNextMapReady(room) {
+    const mapMode = room.customGameRules?.mapMode;
+    if (mapMode === 'host') return true;
+    if (mapMode === 'same') return Boolean(room.customSeriesMap || room.match?.map);
+    if (room.mapGenerationPending || room.mapGenerationError) return false;
+    return room.simulationMode === 'host-authoritative'
+      ? Boolean(room.preparedMap)
+      : Number.isSafeInteger(room.mapSeed);
+  }
+
+  getCustomTeamSizes(room) {
+    const bots = [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])];
+    return {
+      red: [...room.clients].filter((player) => player.team === 'red').length +
+        bots.filter((bot) => bot.team === 'red').length,
+      blue: [...room.clients].filter((player) => player.team === 'blue').length +
+        bots.filter((bot) => bot.team === 'blue').length,
+    };
+  }
+
+  swapCustomSeriesRoles(room) {
+    const series = room.customSeriesState;
+    const rolesBySquad = series?.rolesBySquad ?? { A: 'red', B: 'blue' };
+    const nextRoles = { A: rolesBySquad.B, B: rolesBySquad.A };
+    if (series) series.rolesBySquad = nextRoles;
+    for (const client of room.clients) {
+      client.customSquadId ??= rolesBySquad.A === client.team ? 'A' : 'B';
+      client.team = nextRoles[client.customSquadId];
+    }
+    const bots = [...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])];
+    for (const bot of bots) {
+      bot.customSquadId ??= rolesBySquad.A === bot.team ? 'A' : 'B';
+      bot.team = nextRoles[bot.customSquadId];
+    }
+    room.botRoster = {
+      red: bots.filter((bot) => bot.team === 'red'),
+      blue: bots.filter((bot) => bot.team === 'blue'),
+    };
+  }
+
+  shuffleCustomTeams(room, mode) {
+    const humanPlayers = new Set(room.clients);
+    const members = [...room.clients, ...(room.botRoster?.red ?? []), ...(room.botRoster?.blue ?? [])];
+    const rolesBySquad = room.customSeriesState?.rolesBySquad ?? { A: 'red', B: 'blue' };
+    for (const member of members) {
+      member.customSquadId ??= rolesBySquad.A === member.team ? 'A' : 'B';
+    }
+    const squadA = members.filter((member) => member.customSquadId === 'A');
+    const squadB = members.filter((member) => member.customSquadId === 'B');
+    const squadASize = squadA.length;
+    let shuffled;
+    if (mode === 'faro') {
+      shuffled = [];
+      for (let index = 0; index < Math.max(squadA.length, squadB.length); index += 1) {
+        if (squadA[index]) shuffled.push(squadA[index]);
+        if (squadB[index]) shuffled.push(squadB[index]);
+      }
+    } else {
+      shuffled = [...squadA, ...squadB];
+      for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(this.random() * (index + 1));
+        [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+      }
+    }
+    for (const member of shuffled.slice(0, squadASize)) {
+      member.customSquadId = 'A';
+      member.team = rolesBySquad.A;
+    }
+    for (const member of shuffled.slice(squadASize)) {
+      member.customSquadId = 'B';
+      member.team = rolesBySquad.B;
+    }
+    const roster = members.filter((member) => !humanPlayers.has(member));
+    room.botRoster = {
+      red: roster.filter((bot) => bot.team === 'red'),
+      blue: roster.filter((bot) => bot.team === 'blue'),
+    };
+  }
+
+  approveCustomTeamShuffle(client) {
+    const room = this.requireClientRoom(client);
+    const series = room.customSeriesState;
+    if (room.quickPlay || room.hostId !== client.id || room.match ||
+        !series?.teamShufflePending || series.phase !== 'intermission') {
+      throw new RoomManagerError('There is no pending host team shuffle to approve.');
+    }
+    const sizes = this.getCustomTeamSizes(room);
+    if (sizes.red !== series.teamShuffleTargetSizes.red ||
+        sizes.blue !== series.teamShuffleTargetSizes.blue) {
+      throw new RoomManagerError('Keep the same number of players on each team before approving the shuffle.');
+    }
+    series.teamShufflePending = false;
+    series.teamShuffleApproved = true;
+    return this.toRoomState(room);
+  }
+
+  endCustomSeries(client) {
+    const room = this.requireClientRoom(client);
+    if (room.quickPlay || room.hostId !== client.id || room.match || !room.customSeriesState ||
+        room.customSeriesState.phase === 'complete') {
+      throw new RoomManagerError('Only the host can end a custom series between matches.');
+    }
+    room.customSeriesState.phase = 'complete';
+    room.customSeriesState.winner = null;
+    room.customSeriesState.endedByHost = true;
+    return this.toRoomState(room);
+  }
+
+  prepareCustomIntermission(room) {
+    const nextMapReady = this.isCustomNextMapReady(room);
+    room.match = null;
+    room.postGame = null;
+    room.hostMap = null;
+    const series = room.customSeriesState;
+    if (series && series.phase !== 'complete') {
+      if (series.roleSwapPending) {
+        this.swapCustomSeriesRoles(room);
+        series.roleSwapPending = false;
+      }
+      if (series.teamShufflePending) {
+        series.teamShuffleTargetSizes = this.getCustomTeamSizes(room);
+      }
+      if (series.pendingTeamShuffleMode) {
+        this.shuffleCustomTeams(room, series.pendingTeamShuffleMode);
+        delete series.pendingTeamShuffleMode;
+      }
+      series.phase = 'intermission';
+    }
+    if (room.customGameRules.mapMode === 'same' && room.customSeriesMap) {
+      room.mapGenerationPending = false;
+      room.mapGenerationError = null;
+      room.mapGenerationCount = 0;
+      room.preparedMap = null;
+      room.mapGenerationMode = 'competitive';
+    } else if (room.customGameRules.mapMode === 'host') {
+      room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
+      room.mapGenerationPending = false;
+      room.mapGenerationError = null;
+      room.mapGenerationCount = 0;
+      room.preparedMap = null;
+      room.customMapPromise = null;
+      room.mapGenerationMode = 'host-choice';
+    } else {
+      if (nextMapReady) {
+        room.mapGenerationPending = false;
+        room.mapGenerationError = null;
+        room.mapGenerationMode = 'competitive';
+      } else {
+        room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
+        room.mapGenerationError = null;
+        room.mapGenerationCount = 0;
+        room.preparedMap = null;
+        room.mapGenerationPending = true;
+        room.mapGenerationMode = 'competitive';
+        this.prepareCustomRoomMap(room);
+      }
+    }
   }
 
   setEliminationVictoryIfNeeded(room, at = this.now()) {
@@ -2329,18 +3007,19 @@ export class RoomManager {
 
     room.postGame.choices[client.id] = 'stay';
     room.match.postGame = room.postGame;
-    if ([...room.clients].every((member) => room.postGame.choices[member.id] === 'stay')) {
-      room.match = null;
-      room.postGame = null;
+    if (room.customSeriesState?.phase !== 'postgame' &&
+        [...room.clients].every((member) => room.postGame.choices[member.id] === 'stay')) {
+      this.prepareCustomIntermission(room);
     }
     return this.toRoomState(room);
   }
 
   expirePostGameResponses(room, now = this.now()) {
-    if (!room.postGame || now < room.postGame.endsAt) return [];
-    room.match = null;
-    room.postGame = null;
-    return [];
+    if (!room.postGame || now < room.postGame.endsAt) return false;
+    if (room.customSeriesState?.phase === 'postgame' &&
+        room.customGameRules?.mapMode !== 'host' && !this.isCustomNextMapReady(room)) return false;
+    this.prepareCustomIntermission(room);
+    return true;
   }
 
   updateGameInput(client, { sequence, input } = {}) {
@@ -2533,6 +3212,9 @@ export class RoomManager {
           : actor;
       });
     }
+    if (!room.quickPlay && frame.snapshot?.victory && previousVictoryAt === null) {
+      this.setMatchVictory(room, structuredClone(frame.snapshot.victory));
+    }
     room.latestHostFrame = acceptedFrame;
     if (frame.snapshot) {
       if (frame.snapshot.map) room.hostMap = structuredClone(frame.snapshot.map);
@@ -2545,6 +3227,10 @@ export class RoomManager {
         map: structuredClone(frame.snapshot.map ?? room.hostMap ?? room.match.map),
         destructibleObjects: structuredClone(frame.snapshot.destructibleObjects ?? room.match.destructibleObjects ?? []),
       };
+    }
+    if (!room.quickPlay && room.postGame) {
+      room.match.postGame = structuredClone(room.postGame);
+      if (acceptedFrame.snapshot) acceptedFrame.snapshot.postGame = structuredClone(room.postGame);
     }
     if (preGame) {
       const serverPlayers = new Map(room.match.players.map((player) => [player.id, player]));
@@ -2593,7 +3279,7 @@ export class RoomManager {
       room.match.quickPlayState = structuredClone(nextQuickPlayState);
       acceptedFrame.snapshot.quickPlayState = structuredClone(nextQuickPlayState);
     }
-    if (frame.snapshot?.postGame) {
+    if (room.quickPlay && frame.snapshot?.postGame) {
       const previousChoices = room.postGame?.choices ?? {};
       room.postGame = {
         ...structuredClone(frame.snapshot.postGame),
@@ -2623,10 +3309,14 @@ export class RoomManager {
     const room = this.requireClientRoom(client);
     const preparingNextQuickPlayMap = room.quickPlay && room.match?.victory &&
       room.quickPlayState?.phase === 'round-result';
+    const preparingNextCustomMap = !room.quickPlay && room.match?.victory &&
+      room.customSeriesState?.phase === 'postgame' && room.mapGenerationPending &&
+      !['host', 'same'].includes(room.customGameRules?.mapMode);
     const generationPending = room.quickPlay
       ? !room.quickPlayMap && ['lobby', 'round-result'].includes(room.quickPlayState?.phase)
       : room.mapGenerationPending === true;
-    if (room.simulationMode !== 'host-authoritative' || room.hostId !== client.id || (room.match && !preparingNextQuickPlayMap) ||
+    if (room.simulationMode !== 'host-authoritative' || room.hostId !== client.id ||
+        (room.match && !preparingNextQuickPlayMap && !preparingNextCustomMap) ||
         quickPlay !== room.quickPlay || !generationPending ||
       !Number.isSafeInteger(generationRevision) || generationRevision !== room.mapGenerationRevision ||
         !map || typeof map !== 'object' || Array.isArray(map) ||
@@ -2638,6 +3328,12 @@ export class RoomManager {
     }
     const byteLength = new TextEncoder().encode(JSON.stringify(map)).byteLength;
     if (byteLength > 700 * 1024) throw new RoomManagerError('Host map exceeds the maximum map size.');
+    const enforceCustomMapCriteria = room.customGameRules?.mapMode === 'varied' ||
+      (room.customGameRules?.mapMode === 'host' && room.mapGenerationMode === 'competitive');
+    if (!quickPlay && enforceCustomMapCriteria && room.mapGenerationMode === 'competitive' &&
+        !isCompetitiveMap(map, getRoomMapCriteria(room))) {
+      throw new RoomManagerError('Host map does not meet the custom room map criteria.');
+    }
     const mapCopy = structuredClone(map);
     room.mapSeed = Number.isSafeInteger(map.seed) ? map.seed : room.mapSeed;
     room.mapOptions = map.mapOptions ?? room.mapOptions;
@@ -2660,6 +3356,21 @@ export class RoomManager {
       started = true;
     }
     return { accepted: true, byteLength, started };
+  }
+
+  updateHostMapGenerationProgress(client, { generationRevision, mapsGenerated } = {}) {
+    const room = this.requireClientRoom(client);
+    if (room.simulationMode !== 'host-authoritative' || room.hostId !== client.id) {
+      throw new RoomManagerError('Only the host can report map generation progress.');
+    }
+    if (room.quickPlay || !room.mapGenerationPending ||
+        !Number.isSafeInteger(generationRevision) || generationRevision !== room.mapGenerationRevision) return false;
+    if (!Number.isSafeInteger(mapsGenerated) || mapsGenerated < 0 || mapsGenerated > 50_000) {
+      throw new RoomManagerError('Map generation progress is invalid.');
+    }
+    if (mapsGenerated <= (room.mapGenerationCount ?? 0)) return false;
+    room.mapGenerationCount = mapsGenerated;
+    return true;
   }
 
   advanceLobbyLifecycle(now = this.now()) {
@@ -2685,8 +3396,20 @@ export class RoomManager {
         continue;
       }
       if (!room.quickPlay && room.postGame && now >= room.postGame.endsAt) {
-        this.expirePostGameResponses(room, now);
-        changedRooms.push(room);
+        if (this.expirePostGameResponses(room, now)) changedRooms.push(room);
+      }
+      const series = room.customSeriesState;
+      const mapReady = !room.quickPlay && (room.simulationMode === 'host-authoritative'
+        ? Boolean(room.preparedMap ||
+          (room.customGameRules?.mapMode === 'same' && room.customSeriesMap))
+        : !room.mapGenerationPending && room.mapGenerationMode !== 'host-choice' &&
+          !room.mapGenerationError);
+      if (!room.quickPlay && room.clients.size > 0 && !room.match &&
+          series?.phase === 'intermission' && !series.teamShufflePending &&
+          now >= (series.nextMatchAt ?? 0) && !room.mapGenerationPending &&
+          room.mapGenerationMode !== 'host-choice' && mapReady) {
+        this.startMatchForRoom(room, now);
+        if (!changedRooms.includes(room)) changedRooms.push(room);
       }
     }
     return changedRooms;
@@ -2728,7 +3451,7 @@ export class RoomManager {
           !this.isValidInput(command.input) || directionLength < 0.9 || directionLength > 1.1 ||
           typeof command.fire !== 'boolean' || typeof command.reload !== 'boolean' ||
           (command.weaponId !== undefined && !this.projectileDefinitions.has(command.weaponId)) ||
-          (LONG_PLAY_SHOP_MODES.has(room.gameMode) && command.weaponId !== undefined &&
+          (isProgressionShop(room) && command.weaponId !== undefined &&
             !player?.inventoryWeaponIds?.includes(command.weaponId)) ||
           (now >= room.match.gameplayStartsAt && command.weaponId !== undefined &&
             command.weaponId !== player?.selectedWeaponId) ||
@@ -2791,7 +3514,8 @@ export class RoomManager {
         localAuthority: player.controlledById === client.id,
       });
       if (result.projectile) projectiles.push(...(result.projectiles ?? [result.projectile]));
-      if (result.audioCue) audioCues.push(result.audioCue);
+      if (result.audioCues) audioCues.push(...result.audioCues);
+      else if (result.audioCue) audioCues.push(result.audioCue);
       if (result.damageCues) damageCues.push(...result.damageCues);
       if (result.matchEnded) matchEnded = true;
     }
@@ -2925,7 +3649,9 @@ export class RoomManager {
       : shooter.weaponLean;
     const shotSource = localAuthority ? { ...shooter, ...playerPose, weaponLean: shotLean } : shooter;
     const start = getWeaponMuzzlePosition(shotSource, accuracyState.aimAngle, shotLean, match.map.objects);
-    const audioCue = this.createEnemyShotAudioCue(match, shotSource, start, now);
+    const audioCues = definition.suppressed
+      ? []
+      : this.createShotAudioCues(match, shotSource, start, now);
     const pelletHalfSpread = (definition.pelletSpreadDegrees ?? 0) * Math.PI / 180;
     const projectiles = [];
     const damageCuesByVictim = new Map();
@@ -2975,13 +3701,13 @@ export class RoomManager {
       projectile: projectiles[0],
       ...(pelletCount > 1 ? { projectiles } : {}),
       accepted: true,
-      ...(audioCue ? { audioCue } : {}),
+      ...(audioCues.length ? { audioCue: audioCues[0], audioCues } : {}),
       ...(damageCuesByVictim.size ? { damageCues: [...damageCuesByVictim.values()] } : {}),
       ...(matchEnded ? { matchEnded: true, match: getMatchSnapshot(match), matchByTeam: getMatchSnapshotsByTeam(match) } : {}),
     };
   }
 
-  createEnemyShotAudioCue(match, shooter, source, now = this.now()) {
+  createShotAudioCues(match, shooter, source, now = this.now()) {
     let listener = null;
     let closestDistanceSquared = Infinity;
     for (const player of match.players) {
@@ -2999,33 +3725,58 @@ export class RoomManager {
       match.players, source, shooter.team, match.gadgetEffects, now,
     );
     const visionObjects = [...match.map.objects, ...(match.smokes ?? [])];
-    let teamCue = null;
-    if (listener || sonarListener) {
-      const listenerTeam = sonarListener &&
-        (!listener || sonarListener.distanceSquared < closestDistanceSquared)
-        ? sonarListener.team : listener.team;
-      const visible = !sonarListener && isAudioSourceVisibleToTeam(
+    const teamCues = [];
+    const addTeamCue = (listenerTeam, distanceSquared, listener, sonar) => {
+      const visible = !sonar && isAudioSourceVisibleToTeam(
         match.players, listenerTeam, source, visionObjects, this.projectileDefinitions, now,
       );
       match.audioCueLastAt ??= { red: -Infinity, blue: -Infinity };
-      if (!visible && now - (match.audioCueLastAt[listenerTeam] ?? -Infinity) >= 600) {
-        match.audioCueLastAt[listenerTeam] = now;
-        const distance = Math.sqrt(closestDistanceSquared);
-        const radius = Math.min(320, Math.max(42, 30 + distance * 0.24));
-        const angle = this.random() * Math.PI * 2;
-        const offset = radius * (0.3 + this.random() * 0.45);
-        teamCue = {
-          id: randomUUID(),
-          kind: 'gunshot',
-          team: listenerTeam,
-          ...(listenerTeam === sonarListener?.team
-            ? { heardById: sonarListener.ownerId, sonarId: sonarListener.sonarId }
-            : listener ? { heardById: listener.id } : {}),
-          x: source.x + Math.cos(angle) * offset,
-          y: source.y + Math.sin(angle) * offset,
-          radius,
-          expiresAt: now + 2_400,
-        };
+      if (visible || now - (match.audioCueLastAt[listenerTeam] ?? -Infinity) < 600) return;
+      match.audioCueLastAt[listenerTeam] = now;
+      const distance = Math.sqrt(distanceSquared);
+      const radius = Math.min(320, Math.max(42, 30 + distance * 0.24));
+      const angle = this.random() * Math.PI * 2;
+      const offset = radius * (0.3 + this.random() * 0.45);
+      teamCues.push({
+        id: randomUUID(),
+        kind: 'gunshot',
+        team: listenerTeam,
+        ...(sonar
+          ? { heardById: sonar.ownerId, sonarId: sonar.sonarId }
+          : listener ? { heardById: listener.id } : {}),
+        x: source.x + Math.cos(angle) * offset,
+        y: source.y + Math.sin(angle) * offset,
+        radius,
+        expiresAt: now + 2_400,
+      });
+    };
+    if (listener || sonarListener) {
+      const useSonar = sonarListener &&
+        (!listener || sonarListener.distanceSquared < closestDistanceSquared);
+      addTeamCue(
+        useSonar ? sonarListener.team : listener.team,
+        useSonar ? sonarListener.distanceSquared : closestDistanceSquared,
+        useSonar ? null : listener,
+        useSonar ? sonarListener : null,
+      );
+    }
+
+    if (isPlayerJammed(shooter, now)) {
+      let teammate = null;
+      let teammateDistanceSquared = Infinity;
+      for (const player of match.players) {
+        if (!player.alive || player.health <= 0 || player.team !== shooter.team ||
+            isPlayerJammed(player, now) || isPlayerFlashBlinded(player, now)) continue;
+        const dx = player.x - source.x;
+        const dy = player.y - source.y;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < teammateDistanceSquared) {
+          teammate = player;
+          teammateDistanceSquared = distanceSquared;
+        }
+      }
+      if (teammate) {
+        addTeamCue(shooter.team, teammateDistanceSquared, teammate, null);
       }
     }
 
@@ -3033,7 +3784,8 @@ export class RoomManager {
     const personalCues = [];
     for (const jammedListener of match.players) {
       if (!jammedListener.alive || jammedListener.health <= 0 ||
-          jammedListener.team === shooter.team || !isPlayerJammed(jammedListener, now) ||
+          (jammedListener.team === shooter.team && !isPlayerJammed(shooter, now)) ||
+          !isPlayerJammed(jammedListener, now) ||
           isPlayerFlashBlinded(jammedListener, now) ||
           isAudioSourceVisibleToPlayer(
             jammedListener, source, visionObjects, this.projectileDefinitions, now,
@@ -3059,17 +3811,17 @@ export class RoomManager {
     }
 
     match.botNoises ??= [];
-    match.botNoises.push(...[teamCue, ...personalCues].filter(Boolean).map((cue) => ({ ...cue })));
+    match.botNoises.push(...[...teamCues, ...personalCues].map((cue) => ({ ...cue })));
     if (match.botNoises.length > 32) match.botNoises.splice(0, match.botNoises.length - 32);
-    return teamCue;
+    return teamCues;
   }
 
   createTeamPing(client, { x, y } = {}) {
     const room = this.requireClientRoom(client);
     const match = room.match;
     const now = this.now();
-    if (!match || match.victory || now >= match.endsAt) {
-      throw new RoomManagerError('Pings are only available during an active match.');
+    if (!match) {
+      throw new RoomManagerError('Pings are only available during a match.');
     }
     if (!['red', 'blue'].includes(client.team)) {
       throw new RoomManagerError('Only assigned team members can place a ping.');
@@ -3137,6 +3889,7 @@ export class RoomManager {
     const room = this.requireClientRoom(client);
     const match = room.match;
     const now = this.now();
+    const infiniteGadgetUse = match?.infiniteGadgetUse === true;
     if (!match || match.victory || now >= match.endsAt) {
       throw new RoomManagerError('There is no active match.');
     }
@@ -3168,9 +3921,14 @@ export class RoomManager {
         (isPlayerJammed(player, now) || isGadgetJammed(placedTrophy, now));
       const hasPlacedTrophy = Boolean(placedTrophy);
       if (trophyCommandJammed) return { accepted: false };
-      if (targetSlot === 'gadget' && (player.gadgetCounts[player.selectedGadgetId] ?? 0) <= 0 &&
-          !hasPlacedTrophy) {
+      if (targetSlot === 'gadget' &&
+          (!GADGET_DEFINITIONS[player.selectedGadgetId] ||
+            ((player.gadgetCounts[player.selectedGadgetId] ?? 0) <= 0 &&
+              !hasPlacedTrophy && !infiniteGadgetUse))) {
         throw new RoomManagerError('That gadget is not available.');
+      }
+      if (targetSlot === 'gadget' && infiniteGadgetUse) {
+        refillGadgetCharges(player, player.selectedGadgetId);
       }
       player.gadgetSwitchStartedAt = now;
       player.gadgetSwitchEndsAt = now + GADGET_SWITCH_DURATION_MS;
@@ -3184,7 +3942,8 @@ export class RoomManager {
     if (action === 'select') {
       const gadgetId = target?.gadgetId;
       if (player.equippedSlot !== 'weapon' || !GADGET_DEFINITIONS[gadgetId] ||
-          (player.gadgetCounts[gadgetId] ?? 0) <= 0) return { accepted: false };
+          ((player.gadgetCounts[gadgetId] ?? 0) <= 0 && !infiniteGadgetUse)) return { accepted: false };
+      if (infiniteGadgetUse) refillGadgetCharges(player, gadgetId);
       player.selectedGadgetId = gadgetId;
       player.gadgetCount = player.gadgetCounts[gadgetId];
       match.updatedAt = now;
@@ -3203,18 +3962,13 @@ export class RoomManager {
       ? getOwnedActiveTrophySystem(match.gadgetEffects, player.id, now)
       : null;
     if (ownedTrophy) {
-      if (now < (player.trophyCommandReadyAt ?? 0)) return { accepted: false };
-      const visionObjects = [
-        ...(match.map?.objects ?? []),
-        ...(match.smokes ?? []).filter((smoke) => smoke.expiresAt > now),
-      ];
+      if (!infiniteGadgetUse && now < (player.trophyCommandReadyAt ?? 0)) return { accepted: false };
       const projectile = createHostTrophyCommandProjectile({
         id: randomUUID(),
         player,
         trophy: ownedTrophy,
         target,
         mapObjects: match.map.objects,
-        visionObjects,
         now,
         matchEndsAt: match.endsAt,
         mapWidth: match.map.width,
@@ -3223,7 +3977,8 @@ export class RoomManager {
       if (!projectile) return { accepted: false };
       match.pendingGadgetEffects ??= [];
       match.pendingGadgetEffects.push(projectile);
-      player.trophyCommandReadyAt = now + TROPHY_SYSTEM_COMMAND_COOLDOWN_MS;
+      player.trophyCommandReadyAt = now +
+        (infiniteGadgetUse ? 0 : TROPHY_SYSTEM_COMMAND_COOLDOWN_MS);
       player.equippedSlot = 'weapon';
       player.gadgetSwitchStartedAt = null;
       player.gadgetSwitchEndsAt = null;
@@ -3238,7 +3993,7 @@ export class RoomManager {
         gadgetId: gadget.id,
       };
     }
-    if ((player.gadgetCounts[gadget.id] ?? 0) <= 0) return { accepted: false };
+    if ((player.gadgetCounts[gadget.id] ?? 0) <= 0 && !infiniteGadgetUse) return { accepted: false };
     if (gadget.id === ORBITAL_STRIKE_ID) {
       const warning = createHostOrbitalStrikeWarning({
         id: randomUUID(),
@@ -3254,9 +4009,10 @@ export class RoomManager {
         landedAt: now,
         detonatesAt: warning.strikeAt,
       });
-      player.gadgetCounts[gadget.id] = Math.max(0, player.gadgetCounts[gadget.id] - 1);
+      if (infiniteGadgetUse) refillGadgetCharges(player, gadget.id);
+      else consumeGadgetCharge(player, gadget.id);
       player.gadgetCount = player.gadgetCounts[gadget.id];
-      queueOrbitalStrikeRecharge(player, gadget.cooldownMs);
+      if (!infiniteGadgetUse) queueOrbitalStrikeRecharge(player, gadget.cooldownMs);
       if (!client[BOT_ACTOR]) {
         client.selectedGadgetId = player.selectedGadgetId;
         client.gadgetCounts = structuredClone(player.gadgetCounts);
@@ -3298,9 +4054,10 @@ export class RoomManager {
       if (!projectile) return { accepted: false };
       match.gadgetEffects ??= [];
       match.gadgetEffects.push(projectile);
-      player.gadgetCounts[gadget.id] = Math.max(0, player.gadgetCounts[gadget.id] - 1);
+      if (infiniteGadgetUse) refillGadgetCharges(player, gadget.id);
+      else consumeGadgetCharge(player, gadget.id);
       player.gadgetCount = player.gadgetCounts[gadget.id];
-      queueSonarChargeRecharge(player, gadget.cooldownMs);
+      if (!infiniteGadgetUse) queueSonarChargeRecharge(player, gadget.cooldownMs);
       if (!client[BOT_ACTOR]) {
         client.selectedGadgetId = player.selectedGadgetId;
         client.gadgetCounts = structuredClone(player.gadgetCounts);
@@ -3332,10 +4089,11 @@ export class RoomManager {
     });
     if (!created) return { accepted: false };
     const { effect, landedAt: flightEndsAt, detonatesAt } = created;
-    player.gadgetCounts[gadget.id] = Math.max(0, player.gadgetCounts[gadget.id] - 1);
+    if (infiniteGadgetUse) refillGadgetCharges(player, gadget.id);
+    else consumeGadgetCharge(player, gadget.id);
     player.gadgetCount = player.gadgetCounts[gadget.id];
     if (gadget.id === VINE_TRAP_ID) player.vineTrapRechargeAt = null;
-    if (Number.isFinite(gadget.cooldownMs) && Number.isSafeInteger(gadget.charges)) {
+    if (!infiniteGadgetUse && Number.isFinite(gadget.cooldownMs) && Number.isSafeInteger(gadget.charges)) {
       queuePerChargeGadgetRecharge(player, gadget.id, gadget.cooldownMs, gadget.charges);
     }
     if (!client[BOT_ACTOR]) {
@@ -3472,7 +4230,9 @@ export class RoomManager {
       const targetDied = isVineTrapTargetDead(effect, match.players);
       if (!targetDied && effect.activeUntil > now) continue;
       const owner = match.players.find((player) => player.id === effect.ownerId);
-      if (owner) {
+      if (owner && match.infiniteGadgetUse === true) {
+        owner.vineTrapRechargeAt = null;
+      } else if (owner) {
         startVineTrapRecharge(owner, targetDied ? now : effect.activeUntil ?? now, effect.rechargeDurationMs);
       }
       completedVineTrapIds.add(effect.id);
@@ -3692,8 +4452,10 @@ export class RoomManager {
       }
       const isVineTrapBeforeActivation = effect.type === VINE_TRAP_ID && !effect.latchedEnemyId &&
         effect.expiresAt > this.now();
+      const isMine = effect.type === 'mine' &&
+        (!Number.isFinite(effect.expiresAt) || effect.expiresAt > this.now());
       if (!effect.triggerOnEnemyProximity ||
-          (!isVineTrapBeforeActivation && !isProximityMineArmed(effect, this.now())) ||
+          (!isVineTrapBeforeActivation && !isMine) ||
           !projectile.ownerTeam || projectile.ownerTeam === effect.team) continue;
       const hitRadius = Math.max(0, effect.hitRadius ?? PROXIMITY_MINE_HIT_RADIUS) + (projectile.radius ?? 0);
       if (effect.x < minX - hitRadius || effect.x > maxX + hitRadius ||
@@ -3866,13 +4628,7 @@ export class RoomManager {
       const message = this.now() < room.match.endsAt ? 'The match timer has not expired.' : 'The match outcome is not ready yet.';
       throw new RoomManagerError(message);
     }
-    room.match = null;
-    if (room.simulationMode === 'host-authoritative') {
-      room.mapGenerationRevision = (room.mapGenerationRevision ?? 0) + 1;
-      room.mapGenerationPending = true;
-      room.mapGenerationError = null;
-      room.preparedMap = null;
-    }
+    this.prepareCustomIntermission(room);
     return this.toRoomState(room);
   }
 
@@ -3900,7 +4656,11 @@ export class RoomManager {
     client.joinOrder = this.nextJoinOrder++;
     client.playerName = displayName ?? `Player ${room.nextPlayerNumber++}`;
     client.team = team;
-    client.inventory = LONG_PLAY_SHOP_MODES.has(room.gameMode)
+    if (!room.quickPlay && room.customSeriesState?.rolesBySquad) {
+      client.customSquadId = Object.entries(room.customSeriesState.rolesBySquad)
+        .find(([, role]) => role === team)?.[0] ?? null;
+    }
+    client.inventory = isProgressionShop(room)
       ? normalizeItemInventory(client.inventory ?? createEmptyItemInventory())
       : createDefaultMatchItemInventory();
     client.squadId = room.quickPlay ? squadId ?? getQuickPlaySquadForTeam(room, team) : null;
@@ -3910,7 +4670,7 @@ export class RoomManager {
     client.gadgetShopOfferIds ??= [];
     client.uniqueGadgetShopOfferIds ??= [];
     client.uniqueGadgetShopCount ??= 0;
-    if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (isProgressionShop(room)) {
       client.inventoryWeaponIds ??= [LONG_PLAY_STARTER_WEAPON_ID];
       client.selectedWeaponId ??= LONG_PLAY_STARTER_WEAPON_ID;
       client.weaponShopOfferIds ??= [];
@@ -4000,6 +4760,9 @@ export class RoomManager {
 
   selectWeapon(client, { weaponId } = {}) {
     const room = this.requireClientRoom(client);
+    if (room.customGameRules?.buyPhase === 'none') {
+      throw new RoomManagerError('Weapon selection is disabled for this custom match.');
+    }
     const definition = this.projectileDefinitions.get(weaponId);
     if (!definition) throw new RoomManagerError('That weapon is not available.');
     const now = this.now();
@@ -4007,7 +4770,7 @@ export class RoomManager {
       throw new RoomManagerError('Weapons can only be selected during the pre-game countdown.');
     }
     const player = room.match?.players.find((entry) => entry.id === client.id);
-    if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (isProgressionShop(room)) {
       if ((client.shopPicksRemaining ?? 0) <= 0 || !(client.weaponShopOfferIds ?? []).includes(definition.id)) {
         throw new RoomManagerError('That weapon is not in your shop.');
       }
@@ -4017,7 +4780,7 @@ export class RoomManager {
     client.selectedWeaponId = definition.id;
     if (player) {
       player.selectedWeaponId = definition.id;
-      if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+      if (isProgressionShop(room)) {
         player.inventoryWeaponIds = [...client.inventoryWeaponIds];
         player.weaponShopOfferIds = [...client.weaponShopOfferIds];
         player.itemShopOfferIds = structuredClone(client.itemShopOfferIds);
@@ -4034,6 +4797,9 @@ export class RoomManager {
 
   selectGadget(client, { gadgetId } = {}) {
     const room = this.requireClientRoom(client);
+    if (room.customGameRules?.buyPhase === 'none') {
+      throw new RoomManagerError('Gadget selection is disabled for this custom match.');
+    }
     const now = this.now();
     const gadgetDefinition = GADGET_DEFINITIONS[gadgetId];
     if (!gadgetDefinition) throw new RoomManagerError('That gadget is not available.');
@@ -4045,7 +4811,7 @@ export class RoomManager {
         !(client.uniqueGadgetShopOfferIds ?? []).includes(gadgetId)) {
       throw new RoomManagerError('That unique gadget is not in your shop.');
     }
-    if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (isProgressionShop(room)) {
       if ((client.shopPicksRemaining ?? 0) <= 0 || !(client.gadgetShopOfferIds ?? []).includes(gadgetId)) {
         throw new RoomManagerError('That gadget is not in your shop.');
       }
@@ -4062,7 +4828,7 @@ export class RoomManager {
       player.selectedGadgetId = gadgetId;
       player.gadgetCount = getGadgetStartingChargeCount(gadgetId);
       player.gadgetCounts = createGadgetCounts(gadgetId, player.gadgetCount);
-      if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+      if (isProgressionShop(room)) {
         player.weaponShopOfferIds = [...client.weaponShopOfferIds];
         player.itemShopOfferIds = structuredClone(client.itemShopOfferIds);
         player.gadgetShopOfferIds = [...client.gadgetShopOfferIds];
@@ -4077,7 +4843,7 @@ export class RoomManager {
 
   selectShopItem(client, { itemId, level, kind } = {}) {
     const room = this.requireClientRoom(client);
-    if (!LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (!isProgressionShop(room)) {
       throw new RoomManagerError('Perks and armor upgrades are only available in Quick Play or Long Play.');
     }
     const now = this.now();
@@ -4107,7 +4873,7 @@ export class RoomManager {
     }
 
     client.inventory = normalizeItemInventory(inventory);
-    if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+    if (isProgressionShop(room)) {
       this.consumeLongPlayShopPick(client, offer);
     } else {
       client.itemShopOfferIds = (client.itemShopOfferIds ?? []).filter((item) =>
@@ -4121,7 +4887,7 @@ export class RoomManager {
       player.itemShopOfferIds = structuredClone(client.itemShopOfferIds ?? []);
       player.shopPicksRemaining = client.shopPicksRemaining ?? 0;
       player.itemShopResolved = client.itemShopResolved === true;
-      if (LONG_PLAY_SHOP_MODES.has(room.gameMode)) {
+      if (isProgressionShop(room)) {
         player.weaponShopResolved = client.weaponShopResolved;
         player.weaponShopOfferIds = [...client.weaponShopOfferIds];
       }
@@ -4154,7 +4920,8 @@ export class RoomManager {
     client.gadgetShopOfferIds = (client.gadgetShopOfferIds ?? []).filter((id) =>
       !(offer.kind === 'gadget' && id === offer.id));
     client.shopPicksRemaining = Math.max(0, (client.shopPicksRemaining ?? 0) - 1);
-    client.weaponShopResolved = client.shopPicksRemaining === 0;
+    client.weaponShopResolved = client.shopPicksRemaining === 0 ||
+      !(client.weaponShopOfferIds.length + client.itemShopOfferIds.length + client.gadgetShopOfferIds.length);
     if (client.weaponShopResolved) {
       client.weaponShopOfferIds = [];
       client.itemShopOfferIds = [];
@@ -4165,19 +4932,21 @@ export class RoomManager {
   skipWeaponShop(client) {
     const room = this.requireClientRoom(client);
     const now = this.now();
-    if (!LONG_PLAY_SHOP_MODES.has(room.gameMode) || !room.match || room.match.victory ||
+    if (!isProgressionShop(room) || !room.match || room.match.victory ||
         now >= room.match.gameplayStartsAt) {
       throw new RoomManagerError('The Quick Play or Long Play shop can only be skipped during its pre-game countdown.');
     }
     client.weaponShopResolved = true;
-    client.shopPicksRemaining = 0;
+    if (room.customGameRules?.carryOverShopPicks === false && !room.quickPlay) {
+      client.shopPicksRemaining = 0;
+    }
     client.weaponShopOfferIds = [];
     client.itemShopOfferIds = [];
     client.gadgetShopOfferIds = [];
     const player = room.match.players.find((entry) => entry.id === client.id);
     if (player) {
       player.weaponShopResolved = true;
-      player.shopPicksRemaining = 0;
+      player.shopPicksRemaining = client.shopPicksRemaining;
       player.weaponShopOfferIds = [];
       player.itemShopOfferIds = [];
       player.gadgetShopOfferIds = [];
@@ -4198,23 +4967,28 @@ export class RoomManager {
       const objective = frame.objectives.find((entry) => entry.id === 'flag');
       const preGame = !room.match.victory && this.now() < room.match.gameplayStartsAt;
       const serverPlayers = new Map(room.match.players.map((player) => [player.id, player]));
+      const frameActorIds = new Set(frame.actors.map((actor) => actor.id));
       match = {
         ...match,
         ...structuredClone(frame.snapshot),
-        players: frame.actors.map(({ id, state }) => {
-          const copiedState = structuredClone(state);
-          const serverPlayer = serverPlayers.get(id);
-          const staleLoadout = serverPlayer &&
-            (copiedState.loadoutRevision ?? 0) < (serverPlayer.loadoutRevision ?? 0);
-          const roomStatePlayer = serverPlayer && (preGame || staleLoadout)
-            ? preservePreGameLoadout(copiedState, serverPlayer)
-            : copiedState;
-          if (serverPlayer?.isBot) {
-            roomStatePlayer.controlledById = serverPlayer.controlledById ?? null;
-            roomStatePlayer.controlRevision = serverPlayer.controlRevision ?? 0;
-          }
-          return roomStatePlayer;
-        }),
+        players: [
+          ...frame.actors.map(({ id, state }) => {
+            const copiedState = structuredClone(state);
+            const serverPlayer = serverPlayers.get(id);
+            const staleLoadout = serverPlayer &&
+              (copiedState.loadoutRevision ?? 0) < (serverPlayer.loadoutRevision ?? 0);
+            const roomStatePlayer = serverPlayer && (preGame || staleLoadout)
+              ? preservePreGameLoadout(copiedState, serverPlayer)
+              : copiedState;
+            if (serverPlayer?.isBot) {
+              roomStatePlayer.controlledById = serverPlayer.controlledById ?? null;
+              roomStatePlayer.controlRevision = serverPlayer.controlRevision ?? 0;
+            }
+            return roomStatePlayer;
+          }),
+          ...room.match.players.filter((player) => !frameActorIds.has(player.id))
+            .map((player) => structuredClone(player)),
+        ],
         flag: structuredClone(objective?.state ?? match.flag),
         map: structuredClone(frame.snapshot.map ?? room.hostMap ?? match.map),
         destructibleObjects: structuredClone(frame.snapshot.destructibleObjects ?? match.destructibleObjects ?? []),
@@ -4222,6 +4996,7 @@ export class RoomManager {
     }
     return {
       name: room.name,
+      locked: room.passwordHash !== null,
       quickPlay: room.quickPlay === true,
       gameMode: room.gameMode ?? (room.quickPlay ? 'quickplay' : 'custom'),
       gameModeLabel: room.quickPlay ? (SERIES_MODE_RULES[room.gameMode]?.label ?? 'Practice') : null,
@@ -4241,12 +5016,16 @@ export class RoomManager {
       quickPlaySidesSwapped: room.quickPlay ? room.quickPlaySidesSwapped : null,
       mapGenerationPending: room.quickPlay ? false : room.mapGenerationPending === true,
       mapReady: room.quickPlay ? Boolean(room.quickPlayMap) : room.simulationMode === 'host-authoritative'
-        ? Boolean(room.preparedMap) : !room.mapGenerationPending,
+        ? Boolean(room.preparedMap || (room.customGameRules?.mapMode === 'same' && room.customSeriesMap))
+        : !room.mapGenerationPending && room.mapGenerationMode !== 'host-choice',
       mapGenerationMode: room.mapGenerationMode ?? 'competitive',
       mapGenerationRevision: room.mapGenerationRevision ?? 0,
+      mapGenerationCount: room.mapGenerationCount ?? 0,
       mapGenerationError: room.quickPlay ? null : room.mapGenerationError ?? null,
       seed: room.quickPlay ? null : room.mapSeed,
       mapOptions: room.quickPlay ? null : { ...room.mapOptions },
+      customGameRules: room.quickPlay ? null : structuredClone(room.customGameRules ?? DEFAULT_CUSTOM_GAME_RULES),
+      customSeriesState: room.quickPlay ? null : room.customSeriesState ? structuredClone(room.customSeriesState) : null,
       postGame: room.postGame ? structuredClone(room.postGame) : null,
       hostId: room.hostId,
       hostName: this.getHost(room)?.playerName ?? 'Unknown player',
@@ -4265,7 +5044,7 @@ export class RoomManager {
         itemShopOfferIds: structuredClone(client.itemShopOfferIds ?? []),
         shopPicksRemaining: client.shopPicksRemaining ?? 0,
         itemShopResolved: client.itemShopResolved === true,
-        ...(LONG_PLAY_SHOP_MODES.has(room.gameMode) ? {
+        ...(isProgressionShop(room) ? {
           inventoryWeaponIds: [...(client.inventoryWeaponIds ?? [LONG_PLAY_STARTER_WEAPON_ID])],
           weaponShopOfferIds: [...(client.weaponShopOfferIds ?? [])],
           itemShopOfferIds: structuredClone(client.itemShopOfferIds ?? []),
@@ -4406,21 +5185,32 @@ export class RoomManager {
     return preferenceOrder;
   }
 
-  prepareUniqueGadgetShopOffers(player) {
+  prepareUniqueGadgetShopOffers(player, customRules = null) {
     const shopCount = (Number.isInteger(player.uniqueGadgetShopCount) && player.uniqueGadgetShopCount > 0
       ? player.uniqueGadgetShopCount : 0) + 1;
+    const chanceOptions = customRules ? {
+      initialChance: customRules.uniqueGadgetInitialChancePercent / 100,
+      increment: customRules.uniqueGadgetChanceIncrementPercent / 100,
+      maxChance: customRules.uniqueGadgetMaxChancePercent / 100,
+    } : undefined;
     player.uniqueGadgetShopCount = shopCount;
     const uniqueGadgetId = chooseUniqueGadgetOffer(
       GADGET_DEFINITIONS,
       shopCount,
       this.random,
       player.selectedGadgetId ? [player.selectedGadgetId] : [],
+      chanceOptions,
     );
     player.uniqueGadgetShopOfferIds = uniqueGadgetId ? [uniqueGadgetId] : [];
     return uniqueGadgetId;
   }
 
-  prepareLongPlayShop(player, round, includeItems = true, { allowUnique = true } = {}) {
+  prepareLongPlayShop(
+    player,
+    round,
+    includeItems = true,
+    { allowUnique = true, customRules = null } = {},
+  ) {
     if (!allowUnique && isUniqueGadgetDefinition(GADGET_DEFINITIONS[player.selectedGadgetId])) {
       player.selectedGadgetId = null;
       player.gadgetCount = 0;
@@ -4441,22 +5231,26 @@ export class RoomManager {
       player.gadgetCounts = createGadgetCounts();
     }
     const owned = new Set(player.inventoryWeaponIds);
+    const progressionRound = customRules?.shopProgression === 'fixed' ? 100 : round;
     const weaponOffers = LONG_PLAY_SHOP_WEAPON_IDS
       .filter((id) => this.projectileDefinitions.has(id) && !owned.has(id))
       .filter((id) => {
         const shopValue = this.projectileDefinitions.get(id)?.shopValue;
-        if (round < getMinimumWeaponShopMatch(shopValue)) return false;
+        if (customRules?.shopProgression !== 'fixed' && round < getMinimumWeaponShopMatch(shopValue)) return false;
+        if (customRules?.shopProgression === 'fixed') return true;
         if (round === 1) return LONG_PLAY_FIRST_ROUND_WEAPON_IDS.has(id);
         return round === 2 || !LONG_PLAY_FIRST_ROUND_WEAPON_IDS.has(id);
       })
       .map((id) => ({ kind: 'weapon', id }));
     const nextItems = includeItems ? getNextItemShopOffers(player.inventory) : [];
-    const offerCount = round === 1 ? LONG_PLAY_FIRST_SHOP_OFFER_COUNT : LONG_PLAY_LATER_SHOP_OFFER_COUNT;
+    const offerCount = round === 1
+      ? customRules?.firstShopOffers ?? LONG_PLAY_FIRST_SHOP_OFFER_COUNT
+      : customRules?.laterShopOffers ?? LONG_PLAY_LATER_SHOP_OFFER_COUNT;
     const armorOffers = nextItems.filter((offer) => offer.kind === 'armor');
     const perkOffers = nextItems.filter((offer) => offer.kind === 'perk');
     const weaponSlotCount = this.random() < 0.5 ? 1 : 2;
     const uniqueGadgetOfferId = allowUnique
-      ? this.prepareUniqueGadgetShopOffers(player) : null;
+      ? this.prepareUniqueGadgetShopOffers(player, customRules) : null;
     if (!allowUnique) player.uniqueGadgetShopOfferIds = [];
     const gadgetOffers = STANDARD_GADGET_IDS
       .filter((id) => id !== player.selectedGadgetId)
@@ -4466,7 +5260,7 @@ export class RoomManager {
       : [gadgetOffers[Math.min(gadgetOffers.length - 1,
         Math.floor(this.random() * gadgetOffers.length))]];
     const selectedArmor = this.drawWeightedLongPlayOffers(armorOffers, round).slice(0, 1);
-    const selectedWeapons = this.drawWeightedLongPlayOffers(weaponOffers, round).slice(0, weaponSlotCount);
+    const selectedWeapons = this.drawWeightedLongPlayOffers(weaponOffers, progressionRound).slice(0, weaponSlotCount);
     const perkSlotCount = Math.max(0,
       offerCount - selectedArmor.length - selectedGadgets.length - selectedWeapons.length);
     const selectedPerks = this.drawWeightedLongPlayOffers(perkOffers, round).slice(0, perkSlotCount);
@@ -4485,9 +5279,13 @@ export class RoomManager {
     player.itemShopOfferIds = offers.filter((offer) => offer.kind !== 'weapon');
     player.itemShopOfferIds = player.itemShopOfferIds.filter((offer) => offer.kind !== 'gadget');
     player.gadgetShopOfferIds = offers.filter((offer) => offer.kind === 'gadget').map((offer) => offer.id);
-    player.shopPicksRemaining = Math.min(
+    const carriedPicks = round > 1 && customRules?.carryOverShopPicks !== false
+      ? player.shopPicksRemaining ?? 0 : 0;
+    player.shopPicksRemaining = carriedPicks + Math.min(
       offers.length,
-      round === 1 ? LONG_PLAY_FIRST_SHOP_PICK_COUNT : LONG_PLAY_LATER_SHOP_PICK_COUNT,
+      round === 1
+        ? customRules?.firstShopPicks ?? LONG_PLAY_FIRST_SHOP_PICK_COUNT
+        : customRules?.laterShopPicks ?? LONG_PLAY_LATER_SHOP_PICK_COUNT,
     );
     player.weaponShopResolved = player.shopPicksRemaining === 0;
   }

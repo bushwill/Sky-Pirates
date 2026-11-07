@@ -14,7 +14,22 @@ import {
   shouldRenderConfirmedProjectile,
 } from './ProjectilePrediction.js';
 import { decayRenderCorrection, getRenderedPosition, getRenderCorrection } from './RenderCorrection.js';
-import { createVision, createXrayVision, forgetRememberedObjectSurfaces, getNewlyRevealedWalls, getPlayerVisionOrigin, getSegmentVisionIntervals, isCircleVisible, isPointVisible, pointInVisionPolygon, revealVisionCells, VISION_HALF_ANGLE, VISION_MEMORY_CELL_SIZE } from '../../../shared/VisionModel.js';
+import {
+  createVision,
+  createXrayVision,
+  forgetRememberedObjectSurfaces,
+  getNewlyRevealedWalls,
+  getPlayerVisionOrigin,
+  getSegmentVisionIntervals,
+  getVisionPolygonScanlineIntervals,
+  isCircleVisible,
+  isPointVisible,
+  pointInVisionPolygon,
+  revealVisionCells,
+  TEAMMATE_VISION_BASE_RAY_COUNT,
+  VISION_HALF_ANGLE,
+  VISION_MEMORY_CELL_SIZE,
+} from '../../../shared/VisionModel.js';
 import {
   HOST_FRAME_INTERVAL_MS,
   getAdaptiveUpdateProfile,
@@ -22,8 +37,15 @@ import {
   getTeammateVisionInterval,
   smoothComputationTime,
 } from '../../../shared/ComputationMetric.js';
-import { formatAliveTeamCounts, formatQuickPlayScore, formatVictoryText, getAliveTeamCounts } from './MatchStatus.js';
+import {
+  formatAliveTeamCounts,
+  formatQuickPlayScore,
+  formatVictoryText,
+  getAliveTeamCounts,
+  getPostGameCountdownLabel,
+} from './MatchStatus.js';
 import { advanceQuickPlaySeriesResult } from './QuickPlayScore.js';
+import { getNextBotActionSequence } from './BotActionSequence.js';
 import {
   advanceWeaponState,
   applyWeaponAction,
@@ -78,7 +100,6 @@ import {
   findTrophyPlacedGadgetInterceptions,
   findTrophyProjectileInterceptions,
   getOwnedActiveTrophySystem,
-  hasTrophyLineOfSight,
 } from '../../../shared/TrophySystemModel.js';
 import { collectFootstepAudioCues, findSonarListener, isAudioSourceVisibleToPlayer, isAudioSourceVisibleToTeam } from '../../../shared/AudioCueModel.js';
 import {
@@ -88,7 +109,11 @@ import {
   preservePendingGadgetState,
 } from './GadgetState.js';
 import { isAudioCueSupersededByVisibleEnemy } from './AudioCueIntel.js';
-import { isPersonalAudioCueForViewer, isPersonalDamageCueForViewer } from './JammedCuePolicy.js';
+import {
+  isHostBotCueEvent,
+  isPersonalAudioCueForViewer,
+  isPersonalDamageCueForViewer,
+} from './JammedCuePolicy.js';
 import { pruneSmokeMemory, rememberSmokeObservation } from './SmokeMemory.js';
 import { getSmokeVisibleSamples } from './SmokeVisibility.js';
 import { consumeFixedSteps, SIMULATION_STEP_MS } from './FixedStepClock.js';
@@ -105,7 +130,12 @@ import {
   playSonarCastSound,
   playSpatialGameSound,
 } from './SoundEffects.js';
-import { getFlagTransitionSound, getOutcomeSoundNames, getUrgentTimerCue } from './MatchAudio.js';
+import {
+  getFlagTransitionSound,
+  getOutcomeSoundNames,
+  getUrgentCustomPostGameCue,
+  getUrgentTimerCue,
+} from './MatchAudio.js';
 import { reconcileOwnerWeaponSnapshot } from './HostFrameReconciliation.js';
 import { applyOwnerMovementUpdate } from './OwnerMovementSync.js';
 import { isPlayerVisibleToViewer } from './PlayerIntelVisibility.js';
@@ -142,6 +172,7 @@ import {
   queuePerChargeGadgetRecharge,
   queueSonarChargeRecharge,
   advancePerChargeGadgetRecharges,
+  refillGadgetCharges,
   isGadgetJammed,
   isPlayerJammed,
   refundKatanaCharge,
@@ -154,6 +185,7 @@ import {
   TROPHY_SYSTEM_COMMAND_EFFECT_ID,
   TROPHY_SYSTEM_COMMAND_RADIUS,
   TROPHY_SYSTEM_COMMAND_VISUAL_DURATION_MS,
+  TROPHY_INTERCEPT_VISUAL_DURATION_MS,
   SONAR_ID,
   KATANA_ID,
   KATANA_DASH_HIT_RADIUS,
@@ -178,6 +210,7 @@ const SHOT_SOUND_BASE_VOLUMES = Object.freeze({
   'gunshot-revolver': 0.25,
   'gunshot-pocket-shotgun': 0.32,
   'gunshot-marksman-rifle': 0.3,
+  'gunshot-suppressed': 0.14,
   'gunshot-pistol': 0.25,
   'gunshot-shotgun': 0.32,
   'gunshot-rifle': 0.25,
@@ -211,7 +244,6 @@ const GADGET_SOUND_BASE_VOLUMES = Object.freeze({
 });
 const PLAYER_VISIBILITY_CACHE_INTERVAL_MS = 50;
 const VISION_POSITION_EPSILON = 1;
-const TROPHY_INTERCEPT_VISUAL_DURATION_MS = 420;
 const VISION_OVERLAY_UPDATE_INTERVAL_MS = 1000 / 30;
 const VISION_MEMORY_REFRESH_INTERVAL_MS = 120;
 const CONTROLLED_PLAYER_OUTLINE_COLOR = 0xffd12e;
@@ -552,14 +584,24 @@ class MatchScene extends Phaser.Scene {
       } else if (match.victory) {
         const endsAt = match.postGame?.endsAt ?? this.roomState?.postGame?.endsAt;
         if (Number.isFinite(endsAt)) {
-          const seconds = Math.max(0, Math.ceil((endsAt - now) / 1000));
-          timer = `Returning to lobby in ${seconds}s`;
+          const postGameExpired = now >= endsAt;
+          if (this.roomState?.quickPlay !== true && postGameExpired &&
+              this.roomState?.mapGenerationPending) {
+            timer = 'Generating next map...';
+          } else if (this.roomState?.quickPlay !== true && postGameExpired &&
+              this.roomState?.mapGenerationError) {
+            timer = `Map generation failed · ${this.roomState.mapGenerationError}`;
+          } else {
+            const seconds = Math.max(0, Math.ceil((endsAt - now) / 1000));
+            timer = `${getPostGameCountdownLabel(this.roomState)} in ${seconds}s`;
+          }
         }
       } else if (Number.isFinite(match.endsAt)) {
         timer = `TIME REMAINING · ${this.formatTime(Math.max(0, match.endsAt - now))}`;
       }
     }
-    const urgentCue = getUrgentTimerCue(match, now);
+    const urgentCue = getUrgentTimerCue(match, now) ??
+      getUrgentCustomPostGameCue(match, this.roomState, now);
     const urgentTickKey = urgentCue
       ? `${match.startedAt}:${urgentCue.phase}:${urgentCue.seconds}`
       : null;
@@ -613,7 +655,8 @@ class MatchScene extends Phaser.Scene {
           ownedTrophy && !isPlayerJammed(player, now) && !isGadgetJammed(ownedTrophy, now) &&
           now >= (player.trophyCommandReadyAt ?? 0);
         if (this.gadgetUsePendingUntil > now ||
-            (gadgetCount <= 0 && !trophyCommandReady) || !this.aimWorldPoint) {
+            (gadgetCount <= 0 && !trophyCommandReady &&
+              !this.isInfiniteGadgetUseEnabled()) || !this.aimWorldPoint) {
           this.logGadgetActionDiagnostic('client-use-blocked', player, {
             action: 'use',
             actionSequence: this.weaponActionSequence + 1,
@@ -630,7 +673,8 @@ class MatchScene extends Phaser.Scene {
         const gadgetCount = player.gadgetCounts?.[player.selectedGadgetId] ?? player.gadgetCount ?? 0;
         const hasPlacedTrophy = player.selectedGadgetId === TROPHY_SYSTEM_ID &&
           Boolean(this.getOwnedTrophySystem(player));
-        if (!player.selectedGadgetId || (gadgetCount <= 0 && !hasPlacedTrophy)) {
+        if (!player.selectedGadgetId ||
+            (gadgetCount <= 0 && !hasPlacedTrophy && !this.isInfiniteGadgetUseEnabled())) {
           this.logGadgetActionDiagnostic('client-switch-blocked-no-gadget', player, {
             action: 'switch',
             actionSequence: this.weaponActionSequence + 1,
@@ -670,6 +714,12 @@ class MatchScene extends Phaser.Scene {
 
   isGadgetSwitching(player) {
     return Number.isFinite(player?.gadgetSwitchEndsAt) && Date.now() < player.gadgetSwitchEndsAt;
+  }
+
+  isInfiniteGadgetUseEnabled() {
+    return this.match?.infiniteGadgetUse === true ||
+      (this.roomState?.quickPlay !== true &&
+        this.roomState?.customGameRules?.infiniteGadgetUse === true);
   }
 
   sendGadgetAction(action, player, target = null) {
@@ -722,15 +772,17 @@ class MatchScene extends Phaser.Scene {
       this.gadgetUsePendingUntil = Date.now() + 1_000;
       player.gadgetCounts ??= {};
       if (this.roomState?.hostId !== this.playerId) {
+        const now = Date.now();
+        const infiniteGadgetUse = this.isInfiniteGadgetUseEnabled();
         if (player.selectedGadgetId === KATANA_ID) {
           const dash = calculateKatanaDash(player, target, this.mapObjects, this.mapWidth, this.mapHeight);
           if (dash) Object.assign(player, { x: dash.end.x, y: dash.end.y, vx: 0, vy: 0 });
         }
         if (isTrophyCommand) {
-          player.trophyCommandReadyAt = Date.now() + TROPHY_SYSTEM_COMMAND_COOLDOWN_MS;
+          player.trophyCommandReadyAt = now +
+            (infiniteGadgetUse ? 0 : TROPHY_SYSTEM_COMMAND_COOLDOWN_MS);
         } else {
-          player.gadgetCounts[player.selectedGadgetId] = Math.max(0,
-            (player.gadgetCounts[player.selectedGadgetId] ?? 0) - 1);
+          consumeSelectedGadget(player, { infiniteUse: infiniteGadgetUse });
         }
       }
       player.gadgetCount = player.gadgetCounts[player.selectedGadgetId];
@@ -763,8 +815,10 @@ class MatchScene extends Phaser.Scene {
     if (!player?.alive || this.isGadgetSwitching(player) || this.getEquippedSlot(player) !== 'weapon' ||
         !GADGET_DEFINITIONS[gadgetId]) return false;
     player.gadgetCounts ??= {};
-    if ((player.gadgetCounts[gadgetId] ?? 0) <= 0) return false;
+    const infiniteGadgetUse = this.isInfiniteGadgetUseEnabled();
+    if (!infiniteGadgetUse && (player.gadgetCounts[gadgetId] ?? 0) <= 0) return false;
     if (!this.sendGadgetAction('select', player, { gadgetId })) return false;
+    if (infiniteGadgetUse) refillGadgetCharges(player, gadgetId);
     player.selectedGadgetId = gadgetId;
     player.gadgetCount = player.gadgetCounts[gadgetId];
     return true;
@@ -912,6 +966,9 @@ class MatchScene extends Phaser.Scene {
     const quickPlay = state.quickPlay === true;
     const preparingNextQuickPlayMap = quickPlay && state.match?.victory &&
       state.quickPlayState?.phase === 'round-result' && state.quickPlayMapGenerationPending;
+    const preparingNextCustomMap = !quickPlay && state.match?.victory &&
+      state.customSeriesState?.phase === 'postgame' && state.mapGenerationPending === true &&
+      !['host', 'same'].includes(state.customGameRules?.mapMode);
     const generationPending = quickPlay
       ? state.quickPlayMapGenerationPending === true
       : state.mapGenerationPending === true;
@@ -921,7 +978,8 @@ class MatchScene extends Phaser.Scene {
       this.hostMapSubmission = null;
       return;
     }
-    const canGenerate = state.hostId === this.playerId && (!state.match || preparingNextQuickPlayMap) &&
+    const canGenerate = state.hostId === this.playerId &&
+      (!state.match || preparingNextQuickPlayMap || preparingNextCustomMap) &&
       this.roomState?.simulation?.mode === 'host-authoritative';
     if (!canGenerate) {
       if (this.hostMapGenerationKey !== null) {
@@ -933,14 +991,33 @@ class MatchScene extends Phaser.Scene {
     if (quickPlay && !state.quickPlayMapGenerationPending) return;
     if (!quickPlay && !state.mapGenerationPending && this.hostMapGenerationKey === null) return;
     const generationRevision = state.mapGenerationRevision ?? 0;
+    const criteria = state.customGameRules?.mapMode === 'varied'
+      ? {
+        minRooms: state.customGameRules.mapCriteria.minRooms,
+        maxRooms: state.customGameRules.mapCriteria.maxRooms,
+        minDoorwaysPerSite: state.customGameRules.mapCriteria.minDoorwaysPerSite,
+        minSymmetryPercent: state.customGameRules.mapCriteria.minSymmetryPercent,
+        minRoomUtilization: state.customGameRules.mapCriteria.minRoomUtilizationPercent / 100,
+        maxSiteApproachSightline: state.customGameRules.mapCriteria.maxSiteApproachSightline,
+      }
+      : COMPETITIVE_MAP_RULES;
     const key = quickPlay
       ? `${state.name}:quickplay:${generationRevision}:${state.quickPlayState?.round ?? 0}`
       : state.mapGenerationMode === 'competitive'
-        ? `${state.name}:competitive:${generationRevision}`
+        ? `${state.name}:competitive:${generationRevision}:${JSON.stringify(criteria)}`
         : `${state.name}:seed:${generationRevision}:${state.seed}:${state.mapOptions?.minRooms}:${state.mapOptions?.maxRooms}`;
     if (this.hostMapGenerationKey === key) return;
     this.hostMapGenerationKey = key;
     const searchToken = ++this.hostMapSearchToken;
+    let mapsGenerated = 0;
+    let lastProgressSentAt = 0;
+    const publishProgress = (force = false) => {
+      if (quickPlay || searchToken !== this.hostMapSearchToken || mapsGenerated === 0) return;
+      const now = Date.now();
+      if (!force && now - lastProgressSentAt < 1_000) return;
+      lastProgressSentAt = now;
+      this.roomClient.send('game:map-progress', { generationRevision, mapsGenerated });
+    };
     const submit = (map) => {
       const current = this.roomState;
       const currentRound = current?.quickPlayState?.round ?? 0;
@@ -948,6 +1025,7 @@ class MatchScene extends Phaser.Scene {
       if (searchToken !== this.hostMapSearchToken || current?.name !== state.name ||
           current?.hostId !== this.playerId || current?.mapGenerationRevision !== generationRevision ||
           current?.quickPlay !== quickPlay || (quickPlay && currentRound !== requestedRound)) return;
+      publishProgress(true);
       // Do not reveal the candidate during lobby/round-result preparation. The
       // accepted room state exposes it at match start, avoiding a visible flash.
       this.hostMapSubmission = { map, quickPlay, generationRevision, roomName: state.name,
@@ -958,6 +1036,7 @@ class MatchScene extends Phaser.Scene {
       try {
         const map = generateMap(state.seed, MAP_WIDTH, MAP_HEIGHT,
           state.mapOptions ?? { minRooms: DEFAULT_MIN_ROOMS, maxRooms: DEFAULT_MAX_ROOMS });
+        mapsGenerated += 1;
         submit(map);
       } catch {
         this.publishHud({ status: 'Map generation failed · choose another seed' });
@@ -976,20 +1055,26 @@ class MatchScene extends Phaser.Scene {
         attempts += 1;
         const seed = new Uint32Array(1);
         crypto.getRandomValues(seed);
-        const roomCount = COMPETITIVE_MAP_RULES.minRooms +
-          (seed[0] % (COMPETITIVE_MAP_RULES.maxRooms - COMPETITIVE_MAP_RULES.minRooms + 1));
+        const roomCount = criteria.minRooms +
+          (seed[0] % (criteria.maxRooms - criteria.minRooms + 1));
         const candidateSeed = (seed[0] % MAX_MAP_SEED) + 1;
         let map;
         try {
-          map = generateMap(candidateSeed, MAP_WIDTH, MAP_HEIGHT, { minRooms: roomCount, maxRooms: roomCount });
+          map = generateMap(candidateSeed, MAP_WIDTH, MAP_HEIGHT, {
+            minRooms: roomCount,
+            maxRooms: roomCount,
+            maxSiteApproachSightline: criteria.maxSiteApproachSightline,
+          });
         } catch {
           continue;
         }
-        if (isCompetitiveMap(map)) {
+        mapsGenerated += 1;
+        if (isCompetitiveMap(map, criteria)) {
           submit(map);
           return;
         }
       }
+      publishProgress();
       window.setTimeout(search, 0);
     };
     search();
@@ -1335,6 +1420,7 @@ class MatchScene extends Phaser.Scene {
     for (const playerId of this.authorityInputs.keys()) {
       if (!snapshot.players.some((player) => player.id === playerId)) this.authorityInputs.delete(playerId);
     }
+    const previousActivePlayerId = this.getActivePlayerId();
     const controlledBot = snapshot.players.find((player) => player.isBot && player.controlledById === this.playerId);
     const nextControlledBotId = controlledBot?.id ?? null;
     const localControlChanged = nextControlledBotId !== this.controlledBotId;
@@ -1516,6 +1602,9 @@ class MatchScene extends Phaser.Scene {
         lastWeaponActionSequence: player.lastWeaponActionSequence ?? previous?.lastWeaponActionSequence ?? 0,
       });
       const updatedPlayer = this.players.get(player.id);
+      if (!isNewMatch && previous?.alive && !updatedPlayer.alive && player.id === previousActivePlayerId) {
+        this.showLocalDeathExplosion(updatedPlayer);
+      }
       if (!isNewMatch && previous?.weaponStats) {
         for (const [weaponId, state] of Object.entries(weaponStats ?? {})) {
           const weapon = WEAPON_DEFINITIONS_BY_ID.get(weaponId);
@@ -1643,6 +1732,30 @@ class MatchScene extends Phaser.Scene {
     this.rememberedWallGraphics?.clear();
     this.drawRememberedWalls([...this.exploredWallObjects.values()]);
     this.drawVisibleProps(true);
+  }
+
+  showLocalDeathExplosion(player) {
+    const position = getRenderedPosition(player);
+    const feedback = this.add.graphics().setPosition(position.x, position.y).setDepth(7);
+    feedback.lineStyle(3, 0xff394d, 1).strokeCircle(0, 0, 9);
+    feedback.fillStyle(0xff394d, 0.65).fillCircle(0, 0, 6);
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI / 4;
+      feedback.lineBetween(Math.cos(angle) * 12, Math.sin(angle) * 12,
+        Math.cos(angle) * 19, Math.sin(angle) * 19);
+    }
+    this.deathFeedbacks.add(feedback);
+    this.tweens.add({
+      targets: feedback,
+      scale: 1.8,
+      alpha: 0,
+      duration: 450,
+      ease: 'Cubic.Out',
+      onComplete: () => {
+        this.deathFeedbacks.delete(feedback);
+        feedback.destroy();
+      },
+    });
   }
 
   showDeathFeedback(player, attribution) {
@@ -1980,16 +2093,18 @@ class MatchScene extends Phaser.Scene {
     );
     const angles = getPredictedPelletAngles(shotBaseAngle, weapon, sequence);
     const origin = getWeaponMuzzlePosition(player, aimAngle, player.weaponLean ?? 0, this.mapObjects);
-    for (const audioCue of this.createHostShotAudioCues(player, origin, now)) {
-      const event = {
-        id: audioCue.id,
-        type: 'audio-cue',
-        audienceTeam: audioCue.team,
-        ...(audioCue.audiencePlayerId ? { audiencePlayerId: audioCue.audiencePlayerId } : {}),
-        data: audioCue,
-      };
-      this.pendingHostEvents.push(event);
-      this.applyHostEvent(event);
+    if (!weapon.suppressed) {
+      for (const audioCue of this.createHostShotAudioCues(player, origin, now)) {
+        const event = {
+          id: audioCue.id,
+          type: 'audio-cue',
+          audienceTeam: audioCue.team,
+          ...(audioCue.audiencePlayerId ? { audiencePlayerId: audioCue.audiencePlayerId } : {}),
+          data: audioCue,
+        };
+        this.pendingHostEvents.push(event);
+        this.applyHostEvent(event);
+      }
     }
     for (let pelletIndex = 0; pelletIndex < angles.length; pelletIndex += 1) {
       const angle = angles[pelletIndex];
@@ -2082,11 +2197,8 @@ class MatchScene extends Phaser.Scene {
     }
     const sonarListener = findSonarListener(players, source, shooter.team, match.gadgetEffects, now);
     const cues = [];
-    if (listener || sonarListener) {
-      const listenerTeam = sonarListener &&
-        (!listener || sonarListener.distanceSquared < closestDistanceSquared)
-        ? sonarListener.team : listener.team;
-      const visible = !sonarListener && isAudioSourceVisibleToTeam(
+    const addTeamCue = (listenerTeam, distanceSquared, listener, sonar) => {
+      const visible = !sonar && isAudioSourceVisibleToTeam(
         players,
         listenerTeam,
         source,
@@ -2095,31 +2207,58 @@ class MatchScene extends Phaser.Scene {
         now,
       );
       match.hostAudioCueLastAt ??= { red: -Infinity, blue: -Infinity };
-      if (!visible && now - match.hostAudioCueLastAt[listenerTeam] >= 600) {
-        match.hostAudioCueLastAt[listenerTeam] = now;
-        const distance = Math.sqrt(closestDistanceSquared);
-        const radius = Math.min(320, Math.max(42, 30 + distance * 0.24));
-        const angle = Math.random() * Math.PI * 2;
-        const offset = radius * (0.3 + Math.random() * 0.45);
-        cues.push({
-          id: `${match.startedAt}:shot:${shooter.id}:${now}`.slice(0, 96),
-          kind: 'gunshot',
-          team: listenerTeam,
-          ...(sonarListener && listenerTeam === sonarListener.team
-            ? { heardById: sonarListener.ownerId, sonarId: sonarListener.sonarId }
-            : listener ? { heardById: listener.id } : {}),
-          x: source.x + Math.cos(angle) * offset,
-          y: source.y + Math.sin(angle) * offset,
-          radius,
-          expiresAt: now + 2_400,
-        });
+      if (visible || now - match.hostAudioCueLastAt[listenerTeam] < 600) return;
+      match.hostAudioCueLastAt[listenerTeam] = now;
+      const distance = Math.sqrt(distanceSquared);
+      const radius = Math.min(320, Math.max(42, 30 + distance * 0.24));
+      const angle = Math.random() * Math.PI * 2;
+      const offset = radius * (0.3 + Math.random() * 0.45);
+      cues.push({
+        id: `${match.startedAt}:shot:${shooter.id}:${listenerTeam}:${now}`.slice(0, 96),
+        kind: 'gunshot',
+        team: listenerTeam,
+        ...(sonar
+          ? { heardById: sonar.ownerId, sonarId: sonar.sonarId }
+          : listener ? { heardById: listener.id } : {}),
+        x: source.x + Math.cos(angle) * offset,
+        y: source.y + Math.sin(angle) * offset,
+        radius,
+        expiresAt: now + 2_400,
+      });
+    };
+    if (listener || sonarListener) {
+      const useSonar = sonarListener &&
+        (!listener || sonarListener.distanceSquared < closestDistanceSquared);
+      addTeamCue(
+        useSonar ? sonarListener.team : listener.team,
+        useSonar ? sonarListener.distanceSquared : closestDistanceSquared,
+        useSonar ? null : listener,
+        useSonar ? sonarListener : null,
+      );
+    }
+
+    if (isPlayerJammed(shooter, now)) {
+      let teammate = null;
+      let teammateDistanceSquared = Infinity;
+      for (const player of players) {
+        if (!player.alive || player.health <= 0 || player.team !== shooter.team ||
+            isPlayerJammed(player, now) || hasFlashBlindness(player, now)) continue;
+        const dx = player.x - source.x;
+        const dy = player.y - source.y;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < teammateDistanceSquared) {
+          teammate = player;
+          teammateDistanceSquared = distanceSquared;
+        }
       }
+      if (teammate) addTeamCue(shooter.team, teammateDistanceSquared, teammate, null);
     }
 
     match.hostPrivateAudioCueLastAt ??= {};
     for (const jammedListener of players) {
       if (!jammedListener.alive || jammedListener.health <= 0 ||
-          jammedListener.team === shooter.team || !isPlayerJammed(jammedListener, now) ||
+          (jammedListener.team === shooter.team && !isPlayerJammed(shooter, now)) ||
+          !isPlayerJammed(jammedListener, now) ||
           hasFlashBlindness(jammedListener, now) ||
           isAudioSourceVisibleToPlayer(jammedListener, source, visionObjects, undefined, now)) continue;
       const key = `${shooter.id}:${jammedListener.id}`;
@@ -2230,6 +2369,7 @@ class MatchScene extends Phaser.Scene {
     const attribution = awardKillAndAssists(
       this.players.values(), victim, attackerId, contributions,
     );
+    if (victim.id === this.getActivePlayerId()) this.showLocalDeathExplosion(victim);
     victim.alive = false;
     victim.isSpectator = true;
     victim.health = 0;
@@ -2268,6 +2408,7 @@ class MatchScene extends Phaser.Scene {
 
   resolveHostGadget(player, action) {
     const now = Date.now();
+    const infiniteGadgetUse = this.isInfiniteGadgetUseEnabled();
     const equippedSlot = this.getEquippedSlot(player);
     if (action.action === 'switch') {
       if (now < (this.match.gameplayStartsAt ?? 0)) {
@@ -2287,7 +2428,7 @@ class MatchScene extends Phaser.Scene {
         this.logGadgetActionDiagnostic('host-switch-rejected-trophy-command-jammed', player, action);
       } else if (targetSlot === 'gadget' &&
           (player.gadgetCounts?.[player.selectedGadgetId] ?? player.gadgetCount ?? 0) <= 0 &&
-          !hasPlacedTrophy) {
+          !hasPlacedTrophy && !infiniteGadgetUse) {
         this.logGadgetActionDiagnostic('host-switch-rejected-no-gadget', player, action, { equippedSlot });
       } else {
         const target = beginGadgetSwitch(player, now);
@@ -2297,7 +2438,8 @@ class MatchScene extends Phaser.Scene {
       const selected = action.target?.gadgetId;
       const selectedDefinition = GADGET_DEFINITIONS[selected];
       if (selectedDefinition && equippedSlot === 'weapon' &&
-          (player.gadgetCounts?.[selected] ?? 0) > 0) {
+          ((player.gadgetCounts?.[selected] ?? 0) > 0 || infiniteGadgetUse)) {
+        if (infiniteGadgetUse) refillGadgetCharges(player, selected);
         player.selectedGadgetId = selected;
         this.logGadgetActionDiagnostic('host-selection-accepted', player, action, { selectedGadgetId: selected }, 'info');
       } else {
@@ -2323,12 +2465,12 @@ class MatchScene extends Phaser.Scene {
         this.logGadgetActionDiagnostic('host-use-rejected-gameplay-not-started', player, action, {
           startsInMs: this.match.gameplayStartsAt - now,
         });
-      } else if (gadgetCount <= 0 && !ownedTrophy) {
+      } else if (gadgetCount <= 0 && !ownedTrophy && !infiniteGadgetUse) {
         this.logGadgetActionDiagnostic('host-use-rejected-no-count', player, action, { gadgetCount });
       } else if (!targetValid) {
         this.logGadgetActionDiagnostic('host-use-rejected-invalid-target', player, action, { target: action.target ?? null });
       } else if (gadgetId === TROPHY_SYSTEM_ID && ownedTrophy) {
-        if (now < (player.trophyCommandReadyAt ?? 0)) {
+        if (!infiniteGadgetUse && now < (player.trophyCommandReadyAt ?? 0)) {
           this.logGadgetActionDiagnostic('host-use-rejected-trophy-command-cooldown', player, action, {
             cooldownRemainingMs: Math.max(0, (player.trophyCommandReadyAt ?? 0) - now),
           });
@@ -2339,7 +2481,6 @@ class MatchScene extends Phaser.Scene {
             trophy: ownedTrophy,
             target: action.target,
             mapObjects: this.mapObjects,
-            visionObjects: this.getVisionObjects(),
             now,
             matchEndsAt: this.match.endsAt,
             mapWidth: this.mapWidth,
@@ -2353,7 +2494,8 @@ class MatchScene extends Phaser.Scene {
           } else {
             this.match.pendingGadgetEffects ??= [];
             this.match.pendingGadgetEffects.push(created);
-            player.trophyCommandReadyAt = now + TROPHY_SYSTEM_COMMAND_COOLDOWN_MS;
+            player.trophyCommandReadyAt = now +
+              (infiniteGadgetUse ? 0 : TROPHY_SYSTEM_COMMAND_COOLDOWN_MS);
             player.equippedSlot = 'weapon';
             player.gadgetSwitchStartedAt = null;
             player.gadgetSwitchEndsAt = null;
@@ -2409,7 +2551,10 @@ class MatchScene extends Phaser.Scene {
               });
             }
             const killed = Boolean(hit && (hit.player.alive === false || hit.player.health <= 0));
-            consumeSelectedGadget(player, { keepEquippedWhenEmpty: killed });
+            consumeSelectedGadget(player, {
+              keepEquippedWhenEmpty: killed,
+              infiniteUse: infiniteGadgetUse,
+            });
             if (killed) {
               refundKatanaCharge(player);
             } else {
@@ -2445,7 +2590,7 @@ class MatchScene extends Phaser.Scene {
             landedAt: now,
             detonatesAt: warning.strikeAt,
           });
-          consumeSelectedGadget(player);
+          consumeSelectedGadget(player, { infiniteUse: infiniteGadgetUse });
           queueOrbitalStrikeRecharge(player, warning.cooldownMs);
           this.logGadgetActionDiagnostic('host-use-accepted', player, action, {
             gadgetId,
@@ -2470,7 +2615,7 @@ class MatchScene extends Phaser.Scene {
         } else {
           this.match.gadgetEffects ??= [];
           this.match.gadgetEffects.push(camera);
-          consumeSelectedGadget(player);
+          consumeSelectedGadget(player, { infiniteUse: infiniteGadgetUse });
           this.logGadgetActionDiagnostic('host-use-accepted', player, action, {
             gadgetId,
             endpoint: { x: player.x, y: player.y },
@@ -2507,7 +2652,7 @@ class MatchScene extends Phaser.Scene {
           this.match.gadgetEffects ??= [];
           this.match.gadgetEffects.push(sonar);
           queueSonarChargeRecharge(player, definition.cooldownMs);
-          consumeSelectedGadget(player);
+          consumeSelectedGadget(player, { infiniteUse: infiniteGadgetUse });
           this.lastMineIntelPublishAt = -Infinity;
           this.playGadgetEffectSound(sonar);
           this.logGadgetActionDiagnostic('host-use-accepted', player, action, {
@@ -2549,7 +2694,7 @@ class MatchScene extends Phaser.Scene {
               trajectory: projectilePath,
               projectileSpeed,
             });
-            consumeSelectedGadget(player);
+            consumeSelectedGadget(player, { infiniteUse: infiniteGadgetUse });
             if (Number.isFinite(definition.cooldownMs) && Number.isSafeInteger(definition.charges)) {
               queuePerChargeGadgetRecharge(player, gadgetId, definition.cooldownMs, definition.charges);
             }
@@ -2748,6 +2893,13 @@ class MatchScene extends Phaser.Scene {
   }
 
   applyHostEvent(event) {
+    const forwardedToBotController = isHostBotCueEvent(
+      event, this.roomState?.hostId, this.playerId,
+    );
+    if (forwardedToBotController) {
+      if (event.type === 'audio-cue') this.audioCueHandler?.(event.data);
+      else this.damageCueHandler?.(event.data);
+    }
     if (!event || (event.audienceTeam && event.audienceTeam !== this.getLocalTeam()) ||
         (event.audiencePlayerId && event.audiencePlayerId !== this.playerId)) return;
     const activePlayerId = this.getActivePlayerId();
@@ -2776,18 +2928,23 @@ class MatchScene extends Phaser.Scene {
       if (typeof event.id === 'string' &&
           [event.data?.x, event.data?.y].every(Number.isFinite)) {
         this.trophyInterceptVisuals.set(event.id, {
+          projectileId: event.data.projectileId,
           x: event.data.x,
           y: event.data.y,
+          trophyX: event.data.trophyX,
+          trophyY: event.data.trophyY,
+          trophyTeam: event.data.trophyTeam,
           startedAt: Date.now(),
+          expiresAt: Date.now() + TROPHY_INTERCEPT_VISUAL_DURATION_MS,
         });
         this.drawSmokeClouds();
       }
     } else if (event.type === 'audio-cue') {
       this.applyAudioCue(event.data);
-      this.audioCueHandler?.(event.data);
+      if (!forwardedToBotController) this.audioCueHandler?.(event.data);
     } else if (event.type === 'damage-cue') {
       this.applyDamageCue(event.data);
-      this.damageCueHandler?.(event.data);
+      if (!forwardedToBotController) this.damageCueHandler?.(event.data);
     } else if (event.type === 'hit-marker') {
       if (event.data?.id && Number.isFinite(event.data.durationMs)) {
         this.hitMarkerExpiresAt = Math.max(this.hitMarkerExpiresAt,
@@ -2875,6 +3032,9 @@ class MatchScene extends Phaser.Scene {
           projectileId: interception.effectId,
           gadgetId: interception.gadgetId,
           trophyId: interception.trophyId,
+          trophyX: interception.trophyPosition.x,
+          trophyY: interception.trophyPosition.y,
+          trophyTeam: interception.team,
           x: interception.position.x,
           y: interception.position.y,
         },
@@ -2909,7 +3069,10 @@ class MatchScene extends Phaser.Scene {
           pulse: effect,
           gadgetEffects: this.match.gadgetEffects,
           smokes: this.match.smokes,
-          visionObjects: this.getVisionObjects(),
+          visionObjects: [
+            ...this.mapObjects,
+            ...(this.match.smokes ?? []).filter((smoke) => smoke.expiresAt > effect.startedAt),
+          ],
           now: effect.startedAt,
         });
         this.match.gadgetEffects = (this.match.gadgetEffects ?? []).filter((candidate) =>
@@ -3160,10 +3323,15 @@ class MatchScene extends Phaser.Scene {
       if (effect.type !== VINE_TRAP_ID || !effect.latchedEnemyId) continue;
       const targetDied = isVineTrapTargetDead(effect, this.players);
       if (!targetDied && effect.activeUntil > now) continue;
-      startVineTrapRecharge(
-        this.players.get(effect.ownerId), targetDied ? now : effect.activeUntil ?? now,
-        effect.rechargeDurationMs,
-      );
+      const owner = this.players.get(effect.ownerId);
+      if (this.isInfiniteGadgetUseEnabled()) {
+        if (owner) owner.vineTrapRechargeAt = null;
+      } else {
+        startVineTrapRecharge(
+          owner, targetDied ? now : effect.activeUntil ?? now,
+          effect.rechargeDurationMs,
+        );
+      }
       completedVineTrapIds.add(effect.id);
     }
     if (completedVineTrapIds.size) {
@@ -3545,12 +3713,15 @@ class MatchScene extends Phaser.Scene {
     const fixedSteps = consumeFixedSteps(this.simulationAccumulatorMs, elapsedMs);
     this.simulationAccumulatorMs = fixedSteps.accumulatorMs;
     let phaseStartedAt = performance.now();
+    // Keep a slow AI pass from running again during catch-up steps in this frame.
+    let botUpdateInvokedThisFrame = false;
     for (let step = 0; step < fixedSteps.steps; step += 1) {
       if (isMovementAuthority) {
         const hostMovementStartedAt = performance.now();
         this.advanceHostMovement(SIMULATION_STEP_MS / 1000);
         this.recordUpdatePhase('simulation.hostMovement', hostMovementStartedAt);
-        if (this.botUpdateHandler) {
+        if (this.botUpdateHandler && !botUpdateInvokedThisFrame) {
+          botUpdateInvokedThisFrame = true;
           const botUpdateStartedAt = performance.now();
           this.recordBotUpdateProfile(this.botUpdateHandler());
           this.recordUpdatePhase('simulation.botAI', botUpdateStartedAt);
@@ -4073,7 +4244,7 @@ class MatchScene extends Phaser.Scene {
     const kind = reloadPressed ? 'reload' : fireRequested ? 'fire' : null;
     const action = kind ? {
       kind,
-      sequence: this.botActionSequence + 1,
+      sequence: getNextBotActionSequence(this.botActionSequence, bot.lastWeaponActionSequence),
       weaponId: weapon.id,
       at: Date.now(),
       direction: { x: Math.cos(this.localAimAngle), y: Math.sin(this.localAimAngle) },
@@ -4160,7 +4331,7 @@ class MatchScene extends Phaser.Scene {
     const isTrophyCommand = action === 'use' && bot.selectedGadgetId === TROPHY_SYSTEM_ID &&
       Boolean(this.getOwnedTrophySystem(bot));
     const sequence = Math.max(this.botControlSequence, bot.inputSequence ?? 0) + 1;
-    const actionSequence = this.botActionSequence + 1;
+    const actionSequence = getNextBotActionSequence(this.botActionSequence, bot.lastWeaponActionSequence);
     const command = {
       botId: bot.id,
       sequence,
@@ -4204,15 +4375,17 @@ class MatchScene extends Phaser.Scene {
         if (dash) Object.assign(bot, { x: dash.end.x, y: dash.end.y, vx: 0, vy: 0 });
       }
       if (isTrophyCommand) {
-        bot.trophyCommandReadyAt = Date.now() + TROPHY_SYSTEM_COMMAND_COOLDOWN_MS;
+        const infiniteGadgetUse = this.isInfiniteGadgetUseEnabled();
+        bot.trophyCommandReadyAt = Date.now() +
+          (infiniteGadgetUse ? 0 : TROPHY_SYSTEM_COMMAND_COOLDOWN_MS);
         bot.equippedSlot = 'weapon';
         bot.gadgetSwitchStartedAt = null;
         bot.gadgetSwitchEndsAt = null;
         bot.gadgetSwitchTargetSlot = null;
       } else {
-        consumeSelectedGadget(bot);
+        consumeSelectedGadget(bot, { infiniteUse: this.isInfiniteGadgetUseEnabled() });
       }
-      if (isKatana) queueKatanaChargeRecharge(bot);
+      if (isKatana && !this.isInfiniteGadgetUseEnabled()) queueKatanaChargeRecharge(bot);
     }
     return true;
   }
@@ -4401,6 +4574,9 @@ class MatchScene extends Phaser.Scene {
         this.mapWidth,
         this.mapHeight,
         VISION_HALF_ANGLE,
+        undefined,
+        0,
+        isControlledPlayer ? undefined : TEAMMATE_VISION_BASE_RAY_COUNT,
       ));
       this.recordUpdatePhase('vision.playerRays', playerVisionStartedAt);
       this.visionInputCacheByPlayer.set(player.id, {
@@ -5023,7 +5199,14 @@ class MatchScene extends Phaser.Scene {
       this.aimGraphics.lineBetween(origin.x, origin.y, leftEnd.x, leftEnd.y);
       this.aimGraphics.lineBetween(origin.x, origin.y, rightEnd.x, rightEnd.y);
     }
-    this.aimGraphics.lineStyle(2.5, 0xbaffea, 0.95);
+    const ammoRatio = Number.isFinite(stats?.ammo) && Number.isFinite(weapon.magazineSize) &&
+      weapon.magazineSize > 0
+      ? Math.max(0, Math.min(1, stats.ammo / weapon.magazineSize))
+      : 1;
+    const aimColor = ammoRatio >= 0.5
+      ? interpolateHexColor(0xffd34a, 0xbaffea, (ammoRatio - 0.5) * 2)
+      : interpolateHexColor(0xff5d68, 0xffd34a, ammoRatio * 2);
+    this.aimGraphics.lineStyle(2.5, aimColor, 0.95);
     this.aimGraphics.lineBetween(origin.x, origin.y, laserEnd.x, laserEnd.y);
   }
 
@@ -5036,11 +5219,10 @@ class MatchScene extends Phaser.Scene {
         if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return;
         const inMap = target.x >= 0 && target.x <= this.mapWidth &&
           target.y >= 0 && target.y <= this.mapHeight;
-        const visible = inMap && hasTrophyLineOfSight(trophy, target, this.getVisionObjects());
-        const trajectory = visible ? calculateGadgetTrajectory(
+        const trajectory = inMap ? calculateGadgetTrajectory(
           { x: trophy.x, y: trophy.y },
           target,
-          this.mapObjects,
+          this.mapObjects.filter((object) => object?.blocksVision !== true),
           {
             maximumRange: Math.hypot(this.mapWidth, this.mapHeight),
             collisionRadius: DEFAULT_GADGET_THROW_COLLISION_RADIUS,
@@ -5203,6 +5385,66 @@ class MatchScene extends Phaser.Scene {
     const activeSmokeIds = new Set([...smokes, ...effects].map((effect) => effect.id));
     const isDirectlyVisible = (target) => postGameFreeRoam ||
       this.currentVisions.some((vision) => isPointVisible(target, vision, visionObjects));
+    const drawTrophyInterceptVisual = (impact) => {
+      const progress = (now - impact.startedAt) /
+        Math.max(1, (impact.expiresAt ?? impact.startedAt + TROPHY_INTERCEPT_VISUAL_DURATION_MS) - impact.startedAt);
+      if (progress < 0 || progress >= 1) return;
+      const hasTrailOrigin = Number.isFinite(impact.trophyX) && Number.isFinite(impact.trophyY);
+      const start = hasTrailOrigin
+        ? { x: impact.trophyX, y: impact.trophyY }
+        : { x: impact.x, y: impact.y };
+      const end = { x: impact.x, y: impact.y };
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      const segmentCount = hasTrailOrigin ? Math.max(1, Math.ceil(distance / 10)) : 0;
+      const visibleSegments = [];
+      for (let index = 0; index < segmentCount; index += 1) {
+        const from = index / segmentCount;
+        const to = (index + 1) / segmentCount;
+        const midpoint = (from + to) / 2;
+        const sample = {
+          x: start.x + (end.x - start.x) * midpoint,
+          y: start.y + (end.y - start.y) * midpoint,
+        };
+        if (!isDirectlyVisible(sample)) continue;
+        visibleSegments.push({
+          x1: start.x + (end.x - start.x) * from,
+          y1: start.y + (end.y - start.y) * from,
+          x2: start.x + (end.x - start.x) * to,
+          y2: start.y + (end.y - start.y) * to,
+        });
+      }
+      const impactVisible = isDirectlyVisible(end);
+      if (!visibleSegments.length && !impactVisible &&
+          (!hasTrailOrigin || !isDirectlyVisible(start))) return;
+
+      const alpha = (1 - progress) ** 2;
+      const beamColor = impact.trophyTeam === this.getLocalTeam()
+        ? ALLY_PLAYER_COLOR : ENEMY_PLAYER_COLOR;
+      for (const segment of visibleSegments) {
+        graphics.lineStyle(10, beamColor, 0.14 * alpha)
+          .lineBetween(segment.x1, segment.y1, segment.x2, segment.y2);
+        graphics.lineStyle(3, beamColor, 0.78 * alpha)
+          .lineBetween(segment.x1, segment.y1, segment.x2, segment.y2);
+        graphics.lineStyle(1.25, 0xffffff, 0.92 * alpha)
+          .lineBetween(segment.x1, segment.y1, segment.x2, segment.y2);
+      }
+      if (!impactVisible) return;
+      const radius = 3 + progress * 17;
+      graphics.lineStyle(2.5, 0xfff1bd, alpha).strokeCircle(end.x, end.y, radius);
+      graphics.lineStyle(1.25, 0xffd36b, alpha * 0.9)
+        .strokeCircle(end.x, end.y, radius * 0.55);
+      graphics.lineStyle(1.5, 0xffffff, alpha);
+      for (let ray = 0; ray < 8; ray += 1) {
+        const angle = (ray / 8) * Math.PI * 2;
+        graphics.lineBetween(
+          end.x + Math.cos(angle) * radius * 0.65,
+          end.y + Math.sin(angle) * radius * 0.65,
+          end.x + Math.cos(angle) * (radius + 5),
+          end.y + Math.sin(angle) * (radius + 5),
+        );
+      }
+      graphics.fillStyle(0xffffff, alpha).fillCircle(end.x, end.y, 2.5 * (1 - progress));
+    };
     for (const smoke of smokes) {
       const sampleCount = 128;
       const visibilityKey = `${Number(postGameFreeRoam)}:${smoke.x}:${smoke.y}:${smoke.radius}`;
@@ -5225,6 +5467,10 @@ class MatchScene extends Phaser.Scene {
       }
     }
     for (const effect of effects) {
+      if (effect.type === 'trophy-intercept-visual') {
+        drawTrophyInterceptVisual(effect);
+        continue;
+      }
       if (effect.type === 'flash') continue;
       const needsVisibilityMemory = effect.triggerOnEnemyProximity !== true &&
         effect.type !== SPY_CAMERA_ID && effect.type !== TROPHY_SYSTEM_ID &&
@@ -5545,28 +5791,17 @@ class MatchScene extends Phaser.Scene {
         .lineBetween(effect.x - 3.5, effect.y, effect.x + 3.5, effect.y)
         .lineBetween(effect.x, effect.y - 3.5, effect.x, effect.y + 3.5);
     }
+    const snapshotInterceptionIds = new Set(effects
+      .filter((effect) => effect.type === 'trophy-intercept-visual')
+      .map((effect) => effect.projectileId));
     for (const [id, impact] of this.trophyInterceptVisuals) {
       const progress = (now - impact.startedAt) / TROPHY_INTERCEPT_VISUAL_DURATION_MS;
       if (progress >= 1) {
         this.trophyInterceptVisuals.delete(id);
         continue;
       }
-      if (progress < 0 || !isDirectlyVisible(impact)) continue;
-      const alpha = (1 - progress) ** 2;
-      const radius = 3 + progress * 17;
-      graphics.lineStyle(2.5, 0xfff1bd, alpha).strokeCircle(impact.x, impact.y, radius);
-      graphics.lineStyle(1.25, 0xffd36b, alpha * 0.9).strokeCircle(impact.x, impact.y, radius * 0.55);
-      graphics.lineStyle(1.5, 0xffffff, alpha);
-      for (let ray = 0; ray < 8; ray += 1) {
-        const angle = (ray / 8) * Math.PI * 2;
-        graphics.lineBetween(
-          impact.x + Math.cos(angle) * radius * 0.65,
-          impact.y + Math.sin(angle) * radius * 0.65,
-          impact.x + Math.cos(angle) * (radius + 5),
-          impact.y + Math.sin(angle) * (radius + 5),
-        );
-      }
-      graphics.fillStyle(0xffffff, alpha).fillCircle(impact.x, impact.y, 2.5 * (1 - progress));
+      if (snapshotInterceptionIds.has(impact.projectileId)) continue;
+      drawTrophyInterceptVisual(impact);
     }
     pruneSmokeMemory(this.smokeVisibilityCache, activeSmokeIds);
     pruneSmokeMemory(this.rememberedSmokes, activeSmokeIds);
@@ -5614,12 +5849,30 @@ class MatchScene extends Phaser.Scene {
         const minCellY = Math.max(0, Math.floor((effect.y - effect.radius) / cellSize));
         const maxCellY = Math.min(this.intelRows - 1, Math.floor((effect.y + effect.radius) / cellSize));
         for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
-          for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
-            const index = cellY * this.intelColumns + cellX;
-            if (!this.exploredCells[index]) continue;
-            const center = { x: (cellX + 0.5) * cellSize, y: (cellY + 0.5) * cellSize };
-            if (!pointInVisionPolygon(center, vision)) continue;
-            graphics.fillRect(cellX * cellSize, cellY * cellSize, cellSize, cellSize);
+          const centerY = (cellY + 0.5) * cellSize;
+          const intervals = getVisionPolygonScanlineIntervals(vision, centerY);
+          for (const [left, right] of intervals) {
+            const startCellX = Math.max(minCellX, Math.ceil(left / cellSize - 0.5));
+            const endCellX = Math.min(maxCellX + 1, Math.ceil(right / cellSize - 0.5));
+            let runStart = -1;
+            for (let cellX = startCellX; cellX < endCellX; cellX += 1) {
+              const isExplored = this.exploredCells[cellY * this.intelColumns + cellX] !== 0;
+              if (isExplored && runStart < 0) {
+                runStart = cellX;
+              } else if (!isExplored && runStart >= 0) {
+                graphics.fillRect(
+                  runStart * cellSize, cellY * cellSize,
+                  (cellX - runStart) * cellSize, cellSize,
+                );
+                runStart = -1;
+              }
+            }
+            if (runStart >= 0) {
+              graphics.fillRect(
+                runStart * cellSize, cellY * cellSize,
+                (endCellX - runStart) * cellSize, cellSize,
+              );
+            }
           }
         }
         visual = { graphics };
@@ -6130,7 +6383,7 @@ class MatchScene extends Phaser.Scene {
       this.pings.clear();
       return;
     }
-    if (!this.match || this.match.victory || !this.pings.size) {
+    if (!this.match || !this.pings.size) {
       this.pings.clear();
       return;
     }
@@ -6316,15 +6569,25 @@ class MatchScene extends Phaser.Scene {
         : weapon.weaponClass === 'machine-gun' ? 22
         : weapon.id === 'smg' ? 11
           : weapon.weaponClass === 'pistol' || ['classic-pistol', 'battle-pistol', 'revolver'].includes(weapon.id) ? 8 : 18;
-      if (marker.gunWeaponId !== weapon.id) {
+      const holdsGadget = this.getEquippedSlot(player) === 'gadget';
+      const heldItemKey = holdsGadget ? 'gadget' : `weapon:${weapon.id}`;
+      if (marker.gunWeaponId !== heldItemKey) {
         marker.gun.clear();
-        marker.gun.lineStyle(5, 0x111820, 1).lineBetween(-6, 0, 5, 0);
-        marker.gun.lineStyle(2.8, 0xdce7ef, 1).lineBetween(-6, 0, 5, 0);
-        marker.gun.lineStyle(4.5, 0x111820, 1).lineBetween(3, 0, barrelLength, 0);
-        marker.gun.lineStyle(2, 0xaec2d2, 1).lineBetween(3, 0, barrelLength, 0);
-        marker.gun.lineStyle(4, 0x111820, 1).lineBetween(barrelLength, -2.5, barrelLength, 2.5);
-        marker.gun.fillStyle(0xffffff, 1).fillCircle(0, 0, 1.25);
-        marker.gunWeaponId = weapon.id;
+        if (holdsGadget) {
+          marker.gun.fillStyle(0x111820, 1).fillEllipse(5, 0, 12, 10);
+          marker.gun.fillStyle(0x647781, 1).fillEllipse(5, 0, 9, 7);
+          marker.gun.fillStyle(0xdce7ef, 0.95).fillRect(2, -2, 1.5, 4);
+          marker.gun.lineStyle(1.3, 0x111820, 1).lineBetween(8.5, -3, 8.5, 3);
+          marker.gun.lineStyle(1.2, 0xaec2d2, 1).lineBetween(10, -2, 10, 2);
+        } else {
+          marker.gun.lineStyle(5, 0x111820, 1).lineBetween(-6, 0, 5, 0);
+          marker.gun.lineStyle(2.8, 0xdce7ef, 1).lineBetween(-6, 0, 5, 0);
+          marker.gun.lineStyle(4.5, 0x111820, 1).lineBetween(3, 0, barrelLength, 0);
+          marker.gun.lineStyle(2, 0xaec2d2, 1).lineBetween(3, 0, barrelLength, 0);
+          marker.gun.lineStyle(4, 0x111820, 1).lineBetween(barrelLength, -2.5, barrelLength, 2.5);
+          marker.gun.fillStyle(0xffffff, 1).fillCircle(0, 0, 1.25);
+        }
+        marker.gunWeaponId = heldItemKey;
       }
       const gunCenter = getWeaponMuzzlePosition(rendered, aimAngle, player.weaponLean, this.mapObjects);
       marker.gun.setPosition(gunCenter.x, gunCenter.y).setRotation(aimAngle);

@@ -334,7 +334,7 @@ describe('smoke gadget model', () => {
     assert.match(bioField.description, /allies move 30% faster, enemies 30% slower/);
   });
 
-  it('recharges Bio Field charges one at a time every 60 seconds', () => {
+  it('recharges Bio Field charges one at a time every 30 seconds', () => {
     const player = {
       alive: true,
       health: 100,
@@ -454,7 +454,7 @@ describe('smoke gadget model', () => {
     assert.equal(blockedPlayer.flashUntil, undefined);
   });
 
-  it('disables spy cameras in flash radius only when they have line of sight', () => {
+  it('uses distance-scaled line of sight for cameras facing away from the flash', () => {
     const effect = {
       type: 'flash',
       x: 0,
@@ -479,6 +479,48 @@ describe('smoke gadget model', () => {
     assert.equal(visibleCamera.disabledUntil,
       effect.startedAt + getFlashBlindDurationMs(effect, visibleCamera));
     assert.equal(blockedCamera.disabledUntil, undefined);
+  });
+
+  it('blinds cameras facing the flash through walls for the full maximum duration', () => {
+    const effect = {
+      type: 'flash', x: 0, y: 0, radius: FLASH_GRENADE_RADIUS,
+      startedAt: 1_000, expiresAt: 6_000,
+    };
+    const wall = { shape: 'segment', x1: 50, y1: -100, x2: 50, y2: 100, blocksVision: true };
+    for (const distance of [100, 150, FLASH_GRENADE_RADIUS]) {
+      const camera = {
+        id: 'camera', type: SPY_CAMERA_ID, x: distance, y: 0, angle: Math.PI,
+        startedAt: 500, expiresAt: 30_000, health: 50,
+      };
+      applyFlashBlindness(effect, [], [wall], [camera]);
+      assert.equal(getFlashBlindDurationMs(effect, camera), 5_000);
+      assert.equal(camera.disabledUntil, 6_000);
+      camera.disabledUntil = 8_000;
+      applyFlashBlindness(effect, [], [wall], [camera]);
+      assert.equal(camera.disabledUntil, 8_000, 'a flash never shortens existing blindness');
+    }
+    const camera = {
+      type: SPY_CAMERA_ID, x: 150, y: 0, angle: Math.PI, expiresAt: 30_000,
+    };
+    for (const target of [
+      { ...camera, health: 0 },
+      { ...camera, startedAt: 1_001 },
+      { ...camera, expiresAt: 1_000 },
+      { ...camera, visionRange: 149 },
+      { ...camera, angle: Math.PI / 2 },
+      { ...camera, x: FLASH_GRENADE_RADIUS + 1 },
+    ]) {
+      applyFlashBlindness(effect, [], [wall], [target]);
+      assert.equal(target.disabledUntil, undefined);
+    }
+    const player = { id: 'player', x: 150, y: 0, visionAngle: Math.PI, alive: true };
+    applyFlashBlindness(effect, [player], [wall]);
+    assert.equal(player.flashUntil, undefined, 'players still need line of sight');
+    applyFlashBlindness(effect, [player], []);
+    assert.equal(player.flashUntil, 4_750, 'player blindness remains distance-scaled');
+    const shortFlash = { ...effect, radius: 100 };
+    applyFlashBlindness(shortFlash, [], [wall], [camera]);
+    assert.equal(camera.disabledUntil, 6_000, 'the camera cone can see a flash beyond its blast radius');
   });
 
   it('places a proximity mine at its first wall impact without bouncing', () => {

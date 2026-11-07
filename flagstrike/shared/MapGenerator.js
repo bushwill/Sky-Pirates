@@ -22,17 +22,17 @@ export const COMPETITIVE_MAP_RULES = Object.freeze({
   maxSiteApproachSightline: 750,
 });
 
-export function isCompetitiveMap(map) {
+export function isCompetitiveMap(map, rules = COMPETITIVE_MAP_RULES) {
   const metrics = map?.metrics;
   if (!metrics || !Number.isInteger(metrics.roomCount) ||
-      metrics.roomCount < COMPETITIVE_MAP_RULES.minRooms ||
-      metrics.roomCount > COMPETITIVE_MAP_RULES.maxRooms) return false;
+      metrics.roomCount < rules.minRooms ||
+      metrics.roomCount > rules.maxRooms) return false;
 
   const sitesQualify = ['red', 'blue'].every((team) =>
-    metrics.siteDoorways?.[team]?.doorwayCount >= COMPETITIVE_MAP_RULES.minDoorwaysPerSite &&
-    metrics.siteDoorways?.[team]?.graphEdgeCount >= COMPETITIVE_MAP_RULES.minDoorwaysPerSite);
-  const symmetryQualifies = metrics.topology?.maxSymmetryPercent >= COMPETITIVE_MAP_RULES.minSymmetryPercent;
-  const utilizationQualifies = metrics.roomUtilization?.ratio >= COMPETITIVE_MAP_RULES.minRoomUtilization;
+    metrics.siteDoorways?.[team]?.doorwayCount >= rules.minDoorwaysPerSite &&
+    metrics.siteDoorways?.[team]?.graphEdgeCount >= rules.minDoorwaysPerSite);
+  const symmetryQualifies = metrics.topology?.maxSymmetryPercent >= rules.minSymmetryPercent;
+  const utilizationQualifies = metrics.roomUtilization?.ratio >= rules.minRoomUtilization;
   const sightline = metrics.siteSightline;
   const sightlinesQualify = sightline?.mutuallyOccluded === true &&
     sightline.nearSiteSampleCount > 0 && sightline.longNearSiteSightlineCount === 0;
@@ -53,7 +53,11 @@ const LAYOUT_ITERATIONS = 150;
 
 // The map is modelled as a graph: each node is a room, each edge a corridor.
 // The Strike and Flag sites are the two mandatory nodes every other room connects back to.
-export function generateMap(seed, width = MAP_WIDTH, height = MAP_HEIGHT, { minRooms = DEFAULT_MIN_ROOMS, maxRooms = DEFAULT_MAX_ROOMS } = {}) {
+export function generateMap(seed, width = MAP_WIDTH, height = MAP_HEIGHT, {
+  minRooms = DEFAULT_MIN_ROOMS,
+  maxRooms = DEFAULT_MAX_ROOMS,
+  maxSiteApproachSightline = COMPETITIVE_MAP_RULES.maxSiteApproachSightline,
+} = {}) {
   if (!Number.isInteger(seed) || seed < MIN_MAP_SEED || seed > MAX_MAP_SEED) {
     throw new RangeError(`Map seed must be an integer from ${MIN_MAP_SEED} to ${MAX_MAP_SEED}.`);
   }
@@ -63,6 +67,10 @@ export function generateMap(seed, width = MAP_WIDTH, height = MAP_HEIGHT, { minR
   if (!Number.isInteger(minRooms) || !Number.isInteger(maxRooms) ||
       minRooms < MIN_ROOMS || maxRooms > MAX_ROOMS || minRooms > maxRooms) {
     throw new RangeError(`Room counts must be from ${MIN_ROOMS} to ${MAX_ROOMS}, with minRooms <= maxRooms.`);
+  }
+  if (!Number.isInteger(maxSiteApproachSightline) ||
+      maxSiteApproachSightline < 200 || maxSiteApproachSightline > 1_500) {
+    throw new RangeError('Maximum site approach sightline must be from 200 to 1500.');
   }
 
   const random = createRandom(seed);
@@ -79,7 +87,9 @@ export function generateMap(seed, width = MAP_WIDTH, height = MAP_HEIGHT, { minR
   const sightlineBaffle = addSiteSightlineBaffle(rooms, corridors, objects, width, height);
   const corridorLengths = new Map(corridors.map((corridor) => [corridor.id, pathLength(corridor.points)]));
   for (const edge of graph.edges) edge.layoutLength = corridorLengths.get(edge.id);
-  const siteSightline = analyzeSiteSightlines(rooms, corridors, objects, width, height);
+  const siteSightline = analyzeSiteSightlines(
+    rooms, corridors, objects, width, height, maxSiteApproachSightline,
+  );
 
   const metrics = computeMapMetrics({
     rooms,
@@ -99,7 +109,12 @@ export function generateMap(seed, width = MAP_WIDTH, height = MAP_HEIGHT, { minR
     generatorVersion: MAP_GENERATOR_VERSION,
     width,
     height,
-    mapOptions: { minRooms, maxRooms },
+    mapOptions: {
+      minRooms,
+      maxRooms,
+      ...(maxSiteApproachSightline !== COMPETITIVE_MAP_RULES.maxSiteApproachSightline
+        ? { maxSiteApproachSightline } : {}),
+    },
     spawnZones,
     graph,
     rooms,
@@ -1189,7 +1204,14 @@ function normalizeAngle(angle) {
   return (angle + Math.PI * 2) % (Math.PI * 2);
 }
 
-function analyzeSiteSightlines(rooms, corridors, walls, width, height) {
+function analyzeSiteSightlines(
+  rooms,
+  corridors,
+  walls,
+  width,
+  height,
+  maxSiteApproachSightline = COMPETITIVE_MAP_RULES.maxSiteApproachSightline,
+) {
   const red = rooms.find((room) => room.isSpawn && room.team === 'red');
   const blue = rooms.find((room) => room.isSpawn && room.team === 'blue');
   const spawnRooms = [red, blue];
@@ -1237,7 +1259,7 @@ function analyzeSiteSightlines(rooms, corridors, walls, width, height) {
         let distance = rayLength;
         for (const wall of wallSegments) distance = Math.min(distance, raySegmentDistance(origin, ray, wall));
         maxNearSiteSightline = Math.max(maxNearSiteSightline, distance);
-        if (distance > COMPETITIVE_MAP_RULES.maxSiteApproachSightline) longNearSiteSightlineCount += 1;
+        if (distance > maxSiteApproachSightline) longNearSiteSightlineCount += 1;
       }
     }
   }
@@ -1752,4 +1774,3 @@ function randomBetween(random, minimum, maximum) {
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
-

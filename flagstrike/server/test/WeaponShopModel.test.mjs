@@ -42,12 +42,15 @@ describe('WeaponShopModel', () => {
     assert.equal(getMinimumWeaponShopMatch(5), 5);
   });
 
-  it('raises unique gadget offer chance by two points per shop and caps at ten percent', () => {
+  it('raises unique gadget offer chance by two points per shop and caps at one hundred percent', () => {
     assert.equal(getUniqueGadgetOfferChance(1), 0.01);
     assert.equal(getUniqueGadgetOfferChance(2), 0.03);
     assert.equal(getUniqueGadgetOfferChance(5), 0.09);
-    assert.equal(getUniqueGadgetOfferChance(6), 0.1);
-    assert.equal(getUniqueGadgetOfferChance(100), 0.1);
+    assert.equal(getUniqueGadgetOfferChance(7), 0.13);
+    assert.equal(getUniqueGadgetOfferChance(19), 0.37);
+    assert.equal(getUniqueGadgetOfferChance(50), 0.99);
+    assert.equal(getUniqueGadgetOfferChance(51), 1);
+    assert.equal(getUniqueGadgetOfferChance(100), 1);
   });
 
   it('offers only explicitly unique gadgets after the per-shop probability roll', () => {

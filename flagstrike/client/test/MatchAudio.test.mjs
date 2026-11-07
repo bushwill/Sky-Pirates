@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   getFlagTransitionSound,
   getOutcomeSoundNames,
+  getUrgentCustomPostGameCue,
   getUrgentTimerCue,
 } from '../src/game/MatchAudio.js';
 
@@ -31,7 +32,21 @@ describe('match audio cues', () => {
     }, 4_000), null);
   });
 
-  it('distinguishes flag pickups, drops, and returns without a drop sound', () => {
+    it('ticks through the last five seconds of a custom post-phase only', () => {
+      const match = {
+        victory: { winner: 'red' },
+        postGame: { endsAt: 10_000 },
+      };
+      assert.equal(getUrgentCustomPostGameCue(match, { quickPlay: false }, 4_000), null);
+      assert.deepEqual(getUrgentCustomPostGameCue(match, { quickPlay: false }, 5_000),
+        { phase: 'postgame', seconds: 5 });
+      assert.deepEqual(getUrgentCustomPostGameCue(match, { quickPlay: false }, 9_000),
+        { phase: 'postgame', seconds: 1 });
+      assert.equal(getUrgentCustomPostGameCue(match, { quickPlay: false }, 10_000), null);
+      assert.equal(getUrgentCustomPostGameCue(match, { quickPlay: true }, 5_000), null);
+    });
+
+    it('distinguishes flag pickups, drops, and returns without a drop sound', () => {
     assert.equal(getFlagTransitionSound(undefined, { heldBy: 'red-1' }), null);
     assert.equal(getFlagTransitionSound(null, { heldBy: 'red-1' }), 'flag-pickup');
     assert.equal(getFlagTransitionSound('red-1', { heldBy: 'red-2' }), 'flag-pickup');

@@ -17,13 +17,15 @@ import {
   SMOKE_GRENADE_ID,
   SPY_CAMERA_ID,
   TROPHY_SYSTEM_ID,
+  TROPHY_SYSTEM_COMMAND_RADIUS,
   TROPHY_SYSTEM_HEALTH,
   VINE_TRAP_ID,
 } from '../../shared/GadgetModel.js';
-import { movePosition } from '../../shared/MovementModel.js';
+import { movePosition, PLAYER_RADIUS, SLOW_WALK_SPEED_SCALE } from '../../shared/MovementModel.js';
 import { DEFAULT_PROJECTILE_DEFINITIONS, segmentCircleEntryTCoordinates, segmentMapObjectEntryT } from '../../shared/ProjectileModel.js';
 import { circleOverlapsMapObjects } from '../../shared/MapGeometry.js';
 import { isPointVisible } from '../../shared/VisionModel.js';
+import { getWeaponAimAngle, getWeaponMuzzlePosition } from '../../shared/WeaponGeometry.js';
 
 function createMatch() {
   return {
@@ -144,6 +146,97 @@ describe('bot AI', () => {
     assert.notEqual(decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_050).gadgetAction?.action, 'use');
   });
 
+  it('uses Orbital Strike only on fresh gunshot cues precise enough for its impact radius', () => {
+    const decideForCue = (cue) => {
+      const match = createMatch();
+      const bot = createPlayer('orbital-audio-bot', 'red', 100, 340);
+      Object.assign(bot, {
+        botBrain: createBotBrain(bot.id, 0),
+        selectedGadgetId: ORBITAL_STRIKE_ID,
+        gadgetCount: 1,
+        gadgetCounts: { [ORBITAL_STRIKE_ID]: 1 },
+        equippedSlot: 'gadget',
+      });
+      match.players = [bot];
+      match.botNoises = [cue];
+      return decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    };
+
+    const imprecise = decideForCue({
+      id: 'distant-gunshot',
+      kind: 'gunshot',
+      team: 'red',
+      x: 500,
+      y: 340,
+      radius: 180,
+      expiresAt: 3_400,
+    });
+    assert.notEqual(imprecise.gadgetAction?.action, 'use',
+      'a broad distant gunshot cue cannot justify the 42-unit strike area');
+
+    const stale = decideForCue({
+      id: 'stale-gunshot',
+      kind: 'gunshot',
+      team: 'red',
+      x: 500,
+      y: 340,
+      radius: 50,
+      observedAt: 0,
+      expiresAt: 3_400,
+    });
+    assert.notEqual(stale.gadgetAction?.action, 'use',
+      'an expired-in-practice location is rejected even while its cue remains available');
+
+    const footstep = decideForCue({
+      id: 'precise-footstep',
+      kind: 'footstep',
+      team: 'red',
+      x: 500,
+      y: 340,
+      radius: 8,
+      expiresAt: 1_650,
+    });
+    assert.notEqual(footstep.gadgetAction?.action, 'use',
+      'footsteps are too mobile to justify a strike during its warning delay');
+
+    const precise = decideForCue({
+      id: 'nearby-gunshot',
+      kind: 'gunshot',
+      team: 'red',
+      x: 500,
+      y: 340,
+      radius: 50,
+      expiresAt: 3_400,
+    });
+    assert.equal(precise.gadgetAction?.action, 'use',
+      'a fresh gunshot cue whose uncertainty fits the strike radius remains actionable');
+    assert.deepEqual(precise.gadgetAction.target, { x: 500, y: 340 });
+
+    const match = createMatch();
+    const bot = createPlayer('orbital-damage-bot', 'red', 100, 340);
+    Object.assign(bot, {
+      botBrain: createBotBrain(bot.id, 0),
+      selectedGadgetId: ORBITAL_STRIKE_ID,
+      gadgetCount: 1,
+      gadgetCounts: { [ORBITAL_STRIKE_ID]: 1 },
+      equippedSlot: 'gadget',
+    });
+    match.players = [bot];
+    const damageIncident = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      teamIntel: {
+        incidents: [{
+          kind: 'damage',
+          team: 'red',
+          x: 500,
+          y: 340,
+          expiresAt: 5_000,
+        }],
+      },
+    });
+    assert.notEqual(damageIncident.gadgetAction?.action, 'use',
+      'a damage victim location is not treated as an enemy position');
+  });
+
   it('places Spy Cameras facing a visible enemy', () => {
     const match = createMatch();
     const bot = createPlayer('camera-bot', 'red', 100, 340);
@@ -161,6 +254,62 @@ describe('bot AI', () => {
     assert.equal(decision.gadgetAction?.action, 'use');
     assert.ok(decision.gadgetAction.target.x > enemy.x - 10);
     assert.ok(decision.gadgetAction.target.y > enemy.y - 10);
+  });
+
+  it('aims Spy Cameras at flag-site approaches and gives Strike Team cameras a view into the site', () => {
+    const createCameraBot = (id, team, x, y) => {
+      const bot = createPlayer(id, team, x, y);
+      Object.assign(bot, {
+        botBrain: createBotBrain(id, 0),
+        selectedGadgetId: SPY_CAMERA_ID,
+        gadgetCount: 1,
+        gadgetCounts: { [SPY_CAMERA_ID]: 1 },
+        equippedSlot: 'gadget',
+      });
+      return bot;
+    };
+    const match = createMatch();
+    match.map.spawnZones.blue = { x: 430, y: 280, width: 140, height: 140 };
+    match.map.rooms = [
+      { id: 'blue-spawn', isSpawn: true, team: 'blue', x: 430, y: 280, width: 140, height: 140 },
+      { id: 'approach', isSpawn: false, x: 430, y: 80, width: 140, height: 140 },
+      { id: 'side-room', isSpawn: false, x: 120, y: 280, width: 140, height: 140 },
+    ];
+    match.map.corridors = [
+      {
+        id: 'side-route',
+        a: 'side-room',
+        b: 'another-room',
+        points: [{ x: 260, y: 350 }, { x: 360, y: 350 }],
+      },
+      {
+        id: 'flag-approach',
+        a: 'blue-spawn',
+        b: 'approach',
+        points: [{ x: 500, y: 280 }, { x: 500, y: 160 }, { x: 500, y: 40 }],
+      },
+    ];
+    match.map.objects = [{
+      shape: 'segment',
+      x1: 400,
+      y1: 250,
+      x2: 600,
+      y2: 250,
+      blocksVision: true,
+    }];
+    const defender = createCameraBot('ingress-camera', 'blue', 500, 350);
+    match.players = [defender];
+    const defenseView = decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(defenseView.gadgetAction?.action, 'use');
+    assert.ok(defenseView.gadgetAction.target.y < defender.y,
+      'the Flag Team camera watches the entrance attackers need to cross');
+
+    const striker = createCameraBot('site-camera', 'red', 500, 500);
+    match.players = [striker];
+    const strikeView = decideBotAction(striker, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(strikeView.gadgetAction?.action, 'use');
+    assert.ok(strikeView.gadgetAction.target.y < striker.y,
+      'the Strike Team camera uses its x-ray view toward the flag site and approach');
   });
 
   it('saves a Strike Team Spy Camera at its own site and uses it after reaching midfield', () => {
@@ -275,6 +424,146 @@ describe('bot AI', () => {
         `${gadgetId} should favor its weighted tactical target`);
       assert.equal(decision.fire, false, 'a gadget use cannot share a command with weapon fire');
     }
+  });
+
+  it('does not throw a Molotov along a path intercepted by a known enemy Trophy System', () => {
+    const match = createMatch();
+    const bot = createPlayer('trophy-avoiding-bot', 'red', 100, 340);
+    Object.assign(bot, {
+      botBrain: createBotBrain(bot.id, 0),
+      selectedGadgetId: MOLOTOV_ID,
+      gadgetCount: 1,
+      gadgetCounts: { [MOLOTOV_ID]: 1 },
+      equippedSlot: 'gadget',
+    });
+    match.players = [
+      bot,
+      createPlayer('trophy-path-enemy-1', 'blue', 590, 340),
+      createPlayer('trophy-path-enemy-2', 'blue', 610, 340),
+    ];
+    match.gadgetEffects = [{
+      id: 'known-enemy-trophy',
+      type: TROPHY_SYSTEM_ID,
+      gadgetId: TROPHY_SYSTEM_ID,
+      team: 'blue',
+      x: 350,
+      y: 340,
+      radius: 8,
+      health: TROPHY_SYSTEM_HEALTH,
+      startedAt: 0,
+      expiresAt: 10_000,
+    }];
+
+    const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.notEqual(decision.gadgetAction?.action, 'use',
+      'the Trophy has line of sight to every available Molotov trajectory');
+  });
+
+  it('does not throw Molotovs or Cryos into overlapping area-denial zones', () => {
+    const overlaps = [
+      { type: 'cryo', gadgetId: CRYO_GRENADE_ID, radius: 60 },
+      { type: 'molotov', gadgetId: MOLOTOV_ID, radius: 60 },
+      { type: 'orbital-strike-warning', gadgetId: ORBITAL_STRIKE_ID, radius: 42 },
+      { type: BIO_FIELD_ID, gadgetId: BIO_FIELD_ID, radius: 60 },
+    ];
+    for (const gadgetId of [MOLOTOV_ID, CRYO_GRENADE_ID]) {
+      for (const [index, zone] of overlaps.entries()) {
+        const match = createMatch();
+        const bot = createPlayer(`no-overlap-${gadgetId}-${index}`, 'red', 300, 340);
+        Object.assign(bot, {
+          botBrain: createBotBrain(bot.id, 0),
+          selectedGadgetId: gadgetId,
+          gadgetCount: 1,
+          gadgetCounts: { [gadgetId]: 1 },
+          equippedSlot: 'gadget',
+        });
+        match.players = [
+          bot,
+          createPlayer('overlap-enemy-1', 'blue', 610, 340),
+          createPlayer('overlap-enemy-2', 'blue', 630, 340),
+        ];
+        match.gadgetEffects = [{
+          id: 'existing-denial',
+          ...zone,
+          team: 'red',
+          x: 620,
+          y: 340,
+          startedAt: 0,
+          expiresAt: 10_000,
+        }];
+
+        const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+        assert.notEqual(decision.gadgetAction?.action, 'use',
+          `${gadgetId} does not duplicate or overlap ${zone.type}`);
+      }
+    }
+  });
+
+  it('uses Cryo to extinguish a visible enemy Molotov threatening an ally without slowing teammates', () => {
+    const match = createMatch();
+    const bot = createPlayer('cryo-counter-bot', 'red', 300, 340);
+    Object.assign(bot, {
+      botBrain: createBotBrain(bot.id, 0),
+      selectedGadgetId: CRYO_GRENADE_ID,
+      gadgetCount: 1,
+      gadgetCounts: { [CRYO_GRENADE_ID]: 1 },
+      equippedSlot: 'gadget',
+    });
+    const ally = createPlayer('burning-ally', 'red', 500, 340);
+    match.players = [bot, ally];
+    match.gadgetEffects = [{
+      id: 'enemy-molotov',
+      type: 'molotov',
+      gadgetId: MOLOTOV_ID,
+      team: 'blue',
+      x: 500,
+      y: 340,
+      radius: 60,
+      startedAt: 0,
+      expiresAt: 10_000,
+    }];
+
+    const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(decision.gadgetAction?.action, 'use');
+    assert.ok(Math.hypot(decision.gadgetAction.target.x - 500,
+      decision.gadgetAction.target.y - 340) <= 120,
+    'the Cryo impact overlaps the Molotov area');
+    assert.ok(Math.hypot(decision.gadgetAction.target.x - ally.x,
+      decision.gadgetAction.target.y - ally.y) >
+      GADGET_DEFINITIONS[CRYO_GRENADE_ID].effectRadius + PLAYER_RADIUS + 35,
+    'the Cryo impact stays outside the teammate safety margin');
+  });
+
+  it('does not spend Cryo countering a Molotov that threatens no teammates or team route', () => {
+    const match = createMatch();
+    const bot = createPlayer('aggressive-molotov-bot', 'red', 300, 340);
+    Object.assign(bot, {
+      botBrain: createBotBrain(bot.id, 0),
+      selectedGadgetId: CRYO_GRENADE_ID,
+      gadgetCount: 1,
+      gadgetCounts: { [CRYO_GRENADE_ID]: 1 },
+      equippedSlot: 'gadget',
+    });
+    match.players = [
+      bot,
+      createPlayer('enemy-in-fire', 'blue', 610, 340),
+      createPlayer('enemy-in-fire-2', 'blue', 630, 340),
+    ];
+    match.gadgetEffects = [{
+      id: 'aggressive-enemy-molotov',
+      type: 'molotov',
+      gadgetId: MOLOTOV_ID,
+      team: 'blue',
+      x: 620,
+      y: 340,
+      radius: 60,
+      startedAt: 0,
+      expiresAt: 10_000,
+    }];
+
+    const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.notEqual(decision.gadgetAction?.action, 'use',
+      'the Molotov only threatens enemies, so it is not worth countering');
   });
 
   it('throws Flash Grenades at visible enemy groups without blinding the bot', () => {
@@ -708,6 +997,17 @@ describe('bot AI', () => {
   it('defines ten stable bot identities with distinct, realistic human reaction-time profiles', () => {
     assert.equal(BOT_PERSONALITIES.length, 10);
     assert.deepEqual(BOT_PERSONALITIES.map((bot) => bot.id), Array.from({ length: 10 }, (_, index) => `bot-${index + 1}`));
+    const names = BOT_PERSONALITIES.map((bot) => bot.name);
+    assert.equal(new Set(names).size, 10);
+    assert.ok(names.every((name) => typeof name === 'string' && name.trim().length > 0));
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-3')?.name, 'Brock Lee');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-4')?.name, 'Ben Dover');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-5')?.name, 'Phil McCracken');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-6')?.name, 'Moe Zarella');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-7')?.name, 'Hai Howie Yu');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-8')?.name, 'Chip Munk');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-9')?.name, 'Shay King');
+    assert.equal(BOT_PERSONALITIES.find((bot) => bot.id === 'bot-10')?.name, 'Anita Bath');
     const profiles = BOT_PERSONALITIES.map((bot) => JSON.stringify(bot.parameters));
     assert.equal(new Set(profiles).size, 10);
     assert.ok(BOT_PERSONALITIES.every((bot) => bot.parameters.reflexMs >= 170 && bot.parameters.reflexMs <= 350));
@@ -731,7 +1031,30 @@ describe('bot AI', () => {
     bot.selectedWeaponId = first.weaponId;
     bot.weaponStats[first.weaponId] ??= { aimAngle: 0 };
     const ready = decideBotAction(bot, match, parameters, 300);
+    assert.equal(ready.input.visionAngle, 0,
+      'the bot prioritizes the center when it is visible and has a clear shot');
     assert.equal(ready.fire, true, 'the aligned bot fires after the reflex interval');
+  });
+
+  it('aims at an exposed edge when the target center is blocked by cover', () => {
+    const match = createMatch();
+    const wall = { shape: 'segment', x1: 160, y1: 339.5, x2: 160, y2: 340.5 };
+    match.map.objects = [wall];
+    const bot = createPlayer('edge-aim-bot', 'red', 100, 340);
+    const enemy = createPlayer('edge-aim-target', 'blue', 220, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot, enemy];
+
+    const decision = decideBotAction(bot, match, {
+      ...DEFAULT_BOT_PARAMETERS,
+      accuracy: 1,
+      reflexMs: 0,
+    }, 1_000);
+
+    assert.equal(decision.enemyId, enemy.id);
+    assert.notEqual(decision.input.visionAngle, 0,
+      'the bot aims away from the occluded center toward a visible body edge');
+    assert.equal(decision.fire, true, 'the exposed edge has a clear shot lane');
   });
 
   it('shoots an armed enemy mine only when it is visible and has a clear shot lane', () => {
@@ -767,7 +1090,7 @@ describe('bot AI', () => {
 
     match.gadgetEffects = [{ ...mine, armedAt: 2_000 }];
     assert.equal(decideBotAction(bot, match, { ...DEFAULT_BOT_PARAMETERS, accuracy: 1 }, 1_000).fire,
-      false, 'unarmed mines cannot be damaged by bullets');
+      true, 'bots can destroy mines during arming');
 
     match.map.objects = [{ shape: 'segment', x1: 160, y1: 300, x2: 160, y2: 380 }];
     match.gadgetEffects = [mine];
@@ -873,6 +1196,53 @@ describe('bot AI', () => {
     match.gadgetEffects = [ownedTrophy];
     assert.equal(decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_400)
       .gadgetAction?.action, 'switch', 'the bot does not waste the command when no enemy gadget is visible');
+
+    match.infiniteGadgetUse = true;
+    match.gadgetEffects = [
+      ownedTrophy,
+      { id: 'enemy-cryo', type: CRYO_GRENADE_ID, gadgetId: CRYO_GRENADE_ID,
+        team: 'red', x: 320, y: 340, radius: 60, expiresAt: 10_000 },
+    ];
+    defender.trophyCommandReadyAt = 50_000;
+    defender.equippedSlot = 'gadget';
+    assert.equal(decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_500)
+      .gadgetAction?.action, 'use',
+    'infinite gadget use bypasses Trophy pulse cooldowns for bots');
+  });
+
+  it('spreads new Trophy Systems outside allied pulse coverage when a throw position is available', () => {
+    const match = createMatch();
+    const defender = createPlayer('spaced-trophy-defender', 'blue', 350, 340);
+    defender.botBrain = createBotBrain(defender.id, 0);
+    defender.selectedGadgetId = TROPHY_SYSTEM_ID;
+    defender.gadgetCount = 1;
+    defender.gadgetCounts = { [TROPHY_SYSTEM_ID]: 1 };
+    defender.equippedSlot = 'gadget';
+    const existingTrophy = {
+      id: 'existing-friendly-trophy',
+      type: TROPHY_SYSTEM_ID,
+      gadgetId: TROPHY_SYSTEM_ID,
+      ownerId: 'other-defender',
+      team: 'blue',
+      x: 300,
+      y: 340,
+      health: TROPHY_SYSTEM_HEALTH,
+      startedAt: 900,
+      expiresAt: 10_000,
+    };
+    match.players = [defender];
+    match.gadgetEffects = [existingTrophy];
+
+    const decision = decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    const target = decision.gadgetAction?.target;
+
+    assert.equal(decision.gadgetAction?.action, 'use');
+    assert.ok(Math.hypot(target.x - existingTrophy.x, target.y - existingTrophy.y) >
+      TROPHY_SYSTEM_COMMAND_RADIUS,
+    'the next Trophy is thrown beyond the existing system’s effective pulse range');
+    assert.ok(Math.hypot(target.x - defender.x, target.y - defender.y) <=
+      GADGET_DEFINITIONS[TROPHY_SYSTEM_ID].throwRange,
+    'the spaced placement remains within throw range');
   });
 
   it('weights Molotov and Cryo hazards when selecting a waypoint, while treating smoke as harmless', () => {
@@ -956,6 +1326,129 @@ describe('bot AI', () => {
     ), null, 'bots do not route around a friendly Bio Field');
   });
 
+  it('avoids redundant Bio Fields but places one over a visible enemy Bio Field to cancel it', () => {
+    const makeBot = (id) => {
+      const bot = createPlayer(id, 'red', 300, 340);
+      Object.assign(bot, {
+        botBrain: createBotBrain(id, 0),
+        selectedGadgetId: BIO_FIELD_ID,
+        gadgetCount: 1,
+        gadgetCounts: { [BIO_FIELD_ID]: 1 },
+        equippedSlot: 'gadget',
+      });
+      return bot;
+    };
+    for (const effect of [
+      { type: BIO_FIELD_ID, gadgetId: BIO_FIELD_ID, team: 'red' },
+      { type: 'cryo', gadgetId: CRYO_GRENADE_ID, team: 'blue' },
+      { type: 'molotov', gadgetId: MOLOTOV_ID, team: 'blue' },
+    ]) {
+      const match = createMatch();
+      const bot = makeBot(`bio-overlap-${effect.type}`);
+      match.players = [bot, createPlayer('bio-overlap-ally', 'red', 400, 340)];
+      match.gadgetEffects = [{
+        id: 'existing-area',
+        ...effect,
+        x: 400,
+        y: 340,
+        radius: 60,
+        startedAt: 0,
+        expiresAt: 10_000,
+      }];
+      const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+      assert.notEqual(decision.gadgetAction?.action, 'use',
+        `Bio Field does not overlap an existing ${effect.type}`);
+    }
+
+    const match = createMatch();
+    const bot = makeBot('bio-counter-bot');
+    const enemy = createPlayer('bio-counter-enemy', 'blue', 500, 340);
+    match.players = [bot, enemy];
+    match.gadgetEffects = [{
+      id: 'enemy-bio-field',
+      type: BIO_FIELD_ID,
+      gadgetId: BIO_FIELD_ID,
+      team: 'blue',
+      x: enemy.x,
+      y: enemy.y,
+      radius: 60,
+      startedAt: 0,
+      expiresAt: 10_000,
+    }];
+    const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(decision.gadgetAction?.action, 'use');
+    assert.ok(Math.hypot(decision.gadgetAction.target.x - enemy.x,
+      decision.gadgetAction.target.y - enemy.y) <= 120,
+    'the friendly field overlaps the enemy field to cancel its movement advantage');
+  });
+
+  it('keeps Spy Cameras on useful open space and avoids duplicating camera coverage', () => {
+    const makeBot = (id) => {
+      const bot = createPlayer(id, 'blue', 300, 350);
+      Object.assign(bot, {
+        botBrain: createBotBrain(id, 0),
+        selectedGadgetId: SPY_CAMERA_ID,
+        gadgetCount: 1,
+        gadgetCounts: { [SPY_CAMERA_ID]: 1 },
+        equippedSlot: 'gadget',
+      });
+      return bot;
+    };
+    const match = createMatch();
+    const bot = makeBot('open-camera-bot');
+    match.players = [bot, createPlayer('open-camera-enemy', 'red', 520, 350)];
+    const openView = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(openView.gadgetAction?.action, 'use',
+      'the camera has useful open space in its cone');
+
+    const obstructedMatch = createMatch();
+    const obstructedBot = makeBot('obstructed-camera-bot');
+    obstructedMatch.players = [obstructedBot,
+      createPlayer('obstructed-camera-enemy', 'red', 650, 350)];
+    obstructedMatch.map.objects = [{
+      shape: 'rect',
+      x: 700,
+      y: 350,
+      width: 600,
+      height: 700,
+      blocksMovement: true,
+    }];
+    const aroundDeadSpace = decideBotAction(
+      obstructedBot, obstructedMatch, DEFAULT_BOT_PARAMETERS, 1_000,
+    );
+    assert.equal(aroundDeadSpace.gadgetAction?.action, 'use');
+    assert.ok(aroundDeadSpace.gadgetAction.target.x < obstructedBot.x,
+      'the camera turns away from an inaccessible wall-filled view toward open space');
+
+    const duplicateMatch = createMatch();
+    const duplicateBot = makeBot('duplicate-camera-bot');
+    duplicateMatch.players = [duplicateBot, createPlayer('duplicate-camera-enemy', 'red', 520, 350)];
+    duplicateMatch.gadgetEffects = [{
+      id: 'existing-spy-camera',
+      type: SPY_CAMERA_ID,
+      gadgetId: SPY_CAMERA_ID,
+      team: 'blue',
+      x: duplicateBot.x,
+      y: duplicateBot.y,
+      angle: 0,
+      visionRange: GADGET_DEFINITIONS[SPY_CAMERA_ID].visionRange,
+      visionHalfAngle: GADGET_DEFINITIONS[SPY_CAMERA_ID].visionHalfAngle,
+      health: 50,
+      startedAt: 0,
+      expiresAt: 10_000,
+    }];
+    const duplicateView = decideBotAction(
+      duplicateBot, duplicateMatch, DEFAULT_BOT_PARAMETERS, 1_000,
+    );
+    assert.equal(duplicateView.gadgetAction?.action, 'use');
+    assert.ok(Math.abs(angleDifference(
+      Math.atan2(duplicateView.gadgetAction.target.y - duplicateBot.y,
+        duplicateView.gadgetAction.target.x - duplicateBot.x),
+      0,
+    )) > GADGET_DEFINITIONS[SPY_CAMERA_ID].visionHalfAngle,
+    'the new camera is directed away from the already-covered view');
+  });
+
   it('routes around active Molotov zones even when the predicted damage is survivable', () => {
     const decideForHealth = (health) => {
       const match = createMatch();
@@ -984,6 +1477,76 @@ describe('bot AI', () => {
     assert.equal(segmentCircleEntryTCoordinates(vulnerable.bot.x, vulnerable.bot.y, vulnerable.decision.waypoint.x,
       vulnerable.decision.waypoint.y, 400, 340, 70 + 10), null,
     'a bot facing lethal fire damage prefers a safer detour');
+  });
+
+  it('stops before active Molotovs and known enemy mines when no safe detour exists', () => {
+    for (const type of ['molotov', 'mine']) {
+      const match = createMatch();
+      match.map.height = 130;
+      match.map.spawnZones.red = { x: 820, y: 20, width: 140, height: 90 };
+      match.map.spawnZones.blue = { x: 40, y: 20, width: 140, height: 90 };
+      match.flag = { x: 120, y: 65, heldBy: null, dropped: false };
+      const bot = createPlayer(`blocked-by-${type}`, 'red', 700, 65);
+      bot.visionAngle = Math.PI;
+      bot.weaponStats['assault-rifle'].aimAngle = Math.PI;
+      bot.botBrain = createBotBrain(bot.id, 0);
+      bot.botBrain.spawnExited = true;
+      match.players = [bot];
+      const hazard = {
+        id: `blocking-${type}`,
+        type,
+        team: type === 'mine' ? 'blue' : undefined,
+        x: 400,
+        y: 65,
+        radius: type === 'mine' ? 50 : 70,
+        triggerRadius: 50,
+        startedAt: 0,
+        armedAt: 0,
+        expiresAt: 10_000,
+        damagePerSecond: 50,
+      };
+      match.gadgetEffects = [hazard];
+
+      const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+      assert.equal(segmentCircleEntryTCoordinates(bot.x, bot.y, decision.waypoint.x, decision.waypoint.y,
+        hazard.x, hazard.y, hazard.radius + 10), null,
+      `${type} blocks the only route rather than being crossed`);
+      assert.ok(Math.hypot(decision.waypoint.x - hazard.x, decision.waypoint.y - hazard.y) >
+        hazard.radius + 10, `${type} fallback remains outside its trigger/damage radius`);
+    }
+  });
+
+  it('avoids a visible Vine trap and shoots it when the bot can clear the trap safely', () => {
+    const match = createMatch();
+    const bot = createPlayer('vine-route-bot', 'red', 700, 340);
+    bot.visionAngle = Math.PI;
+    bot.weaponStats['assault-rifle'].aimAngle = Math.PI;
+    bot.botBrain = createBotBrain(bot.id, 0);
+    bot.botBrain.spawnExited = true;
+    match.players = [bot];
+    const trap = {
+      id: 'visible-vine-trap',
+      type: VINE_TRAP_ID,
+      team: 'blue',
+      x: 400,
+      y: 340,
+      radius: GADGET_DEFINITIONS[VINE_TRAP_ID].triggerRadius,
+      triggerRadius: GADGET_DEFINITIONS[VINE_TRAP_ID].triggerRadius,
+      hitRadius: GADGET_DEFINITIONS[VINE_TRAP_ID].hitRadius,
+      expiresAt: 10_000,
+    };
+    match.gadgetEffects = [trap];
+
+    const decision = decideBotAction(bot, match, {
+      ...DEFAULT_BOT_PARAMETERS,
+      accuracy: 1,
+    }, 1_000);
+
+    assert.equal(segmentCircleEntryTCoordinates(bot.x, bot.y, decision.waypoint.x, decision.waypoint.y,
+      trap.x, trap.y, trap.triggerRadius + 10), null,
+    'the route avoids the trap when a detour is available');
+    assert.equal(decision.fire, true, 'the bot prioritizes destroying the visible trap');
+    assert.ok(decision.direction.x < 0, 'the shot is aimed toward the trap');
   });
 
   it('immediately escapes a Molotov effect instead of continuing its objective route', () => {
@@ -1039,7 +1602,7 @@ describe('bot AI', () => {
       'the bot selects a waypoint outside the strike radius and its body clearance');
   });
 
-  it('tracks a recently seen enemy after losing sight without firing at remembered positions', () => {
+  it('tracks and suppressively fires at a recently seen enemy after losing sight', () => {
     const match = createMatch();
     const bot = createPlayer('bot-red', 'red', 100, 340);
     const enemy = createPlayer('enemy', 'blue', 220, 340);
@@ -1052,7 +1615,7 @@ describe('bot AI', () => {
 
     assert.equal(first.enemyId, enemy.id);
     assert.equal(lostSight.enemyId, enemy.id);
-    assert.equal(lostSight.fire, false, 'remembered locations never authorize a shot');
+    assert.equal(lostSight.fire, true, 'a recent last-known position can authorize a safe suppressive shot');
     assert.ok(lostSight.direction.x > 0, 'the bot keeps aiming toward the last known position');
 
     const expired = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_300);
@@ -1097,6 +1660,34 @@ describe('bot AI', () => {
     assert.equal(reacquired.fire, false, 'the bot still observes its configured reflex delay');
     const ready = decideBotAction(bot, match, parameters, 2_400);
     assert.equal(ready.fire, true, 'the bot may fire after the expired smoke reveals the target again');
+  });
+
+  it('fires at a recent last-known enemy position through smoke when projectiles are unobstructed', () => {
+    const match = createMatch();
+    const bot = createPlayer('smoke-suppressor', 'red', 100, 340);
+    const enemy = createPlayer('smoke-target', 'blue', 220, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot, enemy];
+    const parameters = { ...DEFAULT_BOT_PARAMETERS, reflexMs: 0 };
+
+    const sighted = decideBotAction(bot, match, parameters, 1_000);
+    match.smokes = [{
+      id: 'target-smoke',
+      shape: 'circle',
+      role: 'vision-smoke',
+      x: 160,
+      y: 340,
+      radius: 30,
+      blocksVision: true,
+      blocksMovement: false,
+      blocksProjectiles: false,
+      expiresAt: 3_000,
+    }];
+    const obscured = decideBotAction(bot, match, parameters, 1_100);
+
+    assert.equal(sighted.fire, true);
+    assert.equal(obscured.enemyId, enemy.id, 'the enemy remains only a short-lived remembered target');
+    assert.equal(obscured.fire, true, 'smoke blocks vision but not the suppressive shot');
   });
 
   it('keeps advancing the objective while engaging enemies that are not an immediate threat', () => {
@@ -1334,9 +1925,88 @@ describe('bot AI', () => {
 
     assert.equal(response.action, 'investigate-audio');
     assert.equal(response.enemyId, null, 'a footstep gives a location lead, not an enemy identity');
-    assert.equal(response.fire, false, 'the bot does not shoot at an audio cue');
+    assert.equal(response.fire, true, 'the bot can suppressively fire at a safe, audible enemy location');
     assert.ok(response.target.x > bot.x && response.target.x < 700,
       'the bot moves toward the sound while respecting its defensive boundary');
+  });
+
+  it('investigates gunfire even for a low-complexity bot without identifying a shooter', () => {
+    const match = createMatch();
+    const bot = createPlayer('gunshot-listener', 'blue', 250, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot];
+    match.botNoises.push({
+      id: 'gunshot-cue',
+      kind: 'gunshot',
+      team: 'blue',
+      x: 650,
+      y: 340,
+      radius: 80,
+      expiresAt: 5_000,
+    });
+
+    const response = decideBotAction(bot, match, {
+      ...DEFAULT_BOT_PARAMETERS,
+      thinkingComplexity: 1,
+    }, 1_000);
+
+    assert.equal(response.action, 'investigate-audio');
+    assert.equal(response.enemyId, null, 'gunfire gives a location lead, not an enemy identity');
+    assert.equal(response.fire, true, 'the bot can fire at a safe gunshot lead without identifying a shooter');
+    assert.ok(response.target.x > bot.x && response.target.x < 650);
+  });
+
+  it('lets only the intended bot fire at a private audio lead', () => {
+    const match = createMatch();
+    const hearer = createPlayer('private-hearer', 'blue', 250, 340);
+    const teammate = createPlayer('other-listener', 'blue', 280, 500);
+    for (const bot of [hearer, teammate]) bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [hearer, teammate];
+    match.botNoises.push({
+      id: 'private-gunshot',
+      kind: 'gunshot',
+      team: 'blue',
+      heardById: hearer.id,
+      audiencePlayerId: hearer.id,
+      x: 500,
+      y: 340,
+      radius: 80,
+      expiresAt: 5_000,
+    });
+    const teamContext = { teamIntel: { audioCues: [] } };
+
+    const hearerDecision = decideBotAction(hearer, match, DEFAULT_BOT_PARAMETERS, 1_000, teamContext);
+    const teammateDecision = decideBotAction(teammate, match, DEFAULT_BOT_PARAMETERS, 1_000, teamContext);
+
+    assert.equal(hearerDecision.fire, true);
+    assert.equal(hearerDecision.enemyId, null);
+    assert.equal(teammateDecision.fire, false, 'a private cue is not treated as pooled team intel');
+  });
+
+  it('does not fire suppressively through projectile blockers or teammates', () => {
+    for (const blocker of ['wall', 'teammate']) {
+      const match = createMatch();
+      const bot = createPlayer(`listener-${blocker}`, 'blue', 100, 340);
+      bot.botBrain = createBotBrain(bot.id, 0);
+      match.players = [bot];
+      if (blocker === 'wall') {
+        match.map.objects = [{ shape: 'segment', x1: 300, y1: 270, x2: 300, y2: 410 }];
+      } else {
+        match.players.push(createPlayer('friendly-blocker', 'blue', 280, 340));
+      }
+      match.botNoises.push({
+        id: `gunshot-${blocker}`,
+        kind: 'gunshot',
+        team: 'blue',
+        x: 500,
+        y: 340,
+        radius: 80,
+        expiresAt: 5_000,
+      });
+
+      const response = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+      assert.equal(response.fire, false, `a ${blocker} blocks suppressive fire`);
+    }
   });
 
   it('uses only visible enemies and tolerates map layouts without navigation data', () => {
@@ -1375,7 +2045,7 @@ describe('bot AI', () => {
     const bot = createPlayer('scanning-bot', 'red', 300, 350);
     const enemy = createPlayer('enemy-behind-objective', 'blue', 300, 180);
     bot.botBrain = createBotBrain(bot.id, 0);
-    match.flag = { x: 900, y: 350, heldBy: null, dropped: false };
+    match.flag = { x: 900,     y: 500, heldBy: null, dropped: false };
     match.players = [bot, enemy];
 
     let acquired = false;
@@ -1428,6 +2098,104 @@ describe('bot AI', () => {
     assert.notEqual(expired.action, 'investigate-damage');
   });
 
+  it('evades a visible close attacker after taking damage instead of committing to a fight', () => {
+    const match = createMatch();
+    const bot = createPlayer('damaged-bot', 'red', 100, 340);
+    const attacker = createPlayer('visible-attacker', 'blue', 220, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot, attacker];
+
+    const response = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      damageCue: { bearing: 0, expiresAt: 2_000 },
+    });
+
+    assert.equal(response.enemyId, attacker.id);
+    assert.equal(response.action, 'investigate-damage');
+    assert.ok(response.target.x < bot.x, 'the bot creates distance from the incoming fire');
+  });
+
+  it('fires along a damage bearing while flash-blinded without acquiring the shooter', () => {
+    const match = createMatch();
+    const bot = createPlayer('blinded-under-fire', 'red', 100, 340);
+    const unseenEnemy = createPlayer('unseen-shooter', 'blue', 520, 340);
+    bot.flashUntil = 2_000;
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot, unseenEnemy];
+
+    const response = decideBotAction(bot, match, {
+      ...DEFAULT_BOT_PARAMETERS,
+      reflexMs: 0,
+    }, 1_000, { damageCue: { bearing: 0, expiresAt: 2_000 } });
+
+    assert.equal(response.enemyId, null);
+    assert.equal(bot.botBrain.rememberedEnemies[unseenEnemy.id], undefined);
+    assert.equal(response.fire, true, 'the directional damage cue permits safe suppressive fire while blinded');
+  });
+
+  it('takes cover against an estimated shooter after damage even when the shooter is unseen', () => {
+    const match = createMatch();
+    match.map.objects = [{ shape: 'segment', x1: 160, y1: 270, x2: 160, y2: 410 }];
+    const bot = createPlayer('covered-damaged-bot', 'red', 100, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot];
+
+    const response = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      damageCue: { bearing: 0, expiresAt: 2_000 },
+    });
+
+    assert.equal(response.action, 'damage-cover');
+    assert.equal(response.enemyId, null, 'the estimated shooter is not promoted to a visible target');
+    assert.equal(response.fire, false, 'the bot does not shoot at an estimated position');
+    assert.ok(response.direction.x > 0.9, 'the bot keeps watching the incoming bearing while moving');
+    assert.ok(response.target.x > bot.x && response.target.x < 160,
+      'the bot uses the nearby wall as cover from the estimated shooter');
+  });
+
+  it('sends a nearby responder along a teammate damage bearing without targeting an unseen shooter', () => {
+    const match = createMatch();
+    const responder = createPlayer('damage-responder', 'red', 100, 340);
+    const victim = createPlayer('damaged-teammate', 'red', 220, 500);
+    const unseenEnemy = createPlayer('unseen-shooter', 'blue', 550, 500);
+    for (const bot of [responder, victim]) {
+      bot.isBot = true;
+      bot.visionAngle = Math.PI;
+      bot.weaponStats['assault-rifle'].aimAngle = Math.PI;
+      bot.botBrain = createBotBrain(bot.id, 0);
+    }
+    responder.weaponStats['assault-rifle'].aimAngle = Math.atan2(160, 450);
+    match.players = [responder, victim, unseenEnemy];
+
+    const response = decideBotAction(responder, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      teamIntel: {
+        incidents: [{
+          id: 'teammate-damage',
+          kind: 'damage',
+          victimId: victim.id,
+          team: 'red',
+          x: victim.x,
+          y: victim.y,
+          bearing: 0,
+          observedAt: 1_000,
+          expiresAt: 2_000,
+        }],
+        sightings: [{
+          team: 'red',
+          enemyId: unseenEnemy.id,
+          x: unseenEnemy.x,
+          y: unseenEnemy.y,
+          observedAt: 1_000,
+          expiresAt: 2_000,
+        }],
+      },
+    });
+
+    assert.equal(response.action, 'assist-damaged-teammate');
+    assert.ok(response.target.x > victim.x + 50, 'the responder advances toward the likely threat, not just the victim');
+    assert.ok(response.direction.x > 0.9, 'the responder watches the bearing reported by the victim');
+    assert.equal(response.enemyId, null, 'shared intel does not make the shooter personally targetable');
+    assert.equal(response.fire, true, 'the responder can fire at a safe position inferred from the damage report');
+  });
+
   it('repositions under ranged fire instead of standing still outside its normal engagement range', () => {
     const match = createMatch();
     const bot = createPlayer('damaged-bot', 'red', 100, 340);
@@ -1475,17 +2243,58 @@ describe('bot AI', () => {
     assert.equal(firstResponse.action, 'respond-team-threat');
     assert.equal(secondResponse.action, 'respond-team-threat');
     assert.equal(firstResponse.enemyId, null, 'shared intel does not expose an unseen enemy as a direct target');
-    assert.equal(firstResponse.fire, false, 'bots do not fire based only on a teammate report');
-    assert.equal(secondResponse.fire, false);
     assert.ok(Math.hypot(firstResponse.target.x - enemy.x, firstResponse.target.y - enemy.y) <= 120);
   });
 
-  it('chases a distant fresh team sighting without firing at the unseen enemy', () => {
+  it('sends the designated ping responder to investigate while nearby teammates watch it', () => {
+    const match = createMatch();
+    const responder = createPlayer('ping-responder', 'blue', 300, 340);
+    const watcher = createPlayer('ping-watcher', 'blue', 180, 340);
+    responder.botBrain = createBotBrain(responder.id, 0);
+    watcher.botBrain = createBotBrain(watcher.id, 0);
+    match.players = [responder, watcher];
+    const ping = {
+      id: 'blue-watch-ping',
+      team: 'blue',
+      x: 450,
+      y: 340,
+      expiresAt: 6_000,
+      createdAt: 1_000,
+      responderId: responder.id,
+    };
+    const teamIntel = { pings: [ping] };
+
+    const investigation = decideBotAction(responder, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      teamIntel,
+    });
+    const watching = decideBotAction(watcher, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      teamIntel,
+    });
+
+    assert.equal(investigation.action, 'investigate-ping');
+    assert.ok(Math.hypot(investigation.target.x - ping.x, investigation.target.y - ping.y) <= 100,
+      'the responder approaches the ping carefully rather than walking into its center');
+    assert.equal(watching.action, 'hold-site',
+      'unassigned defenders keep their post rather than all chasing the same ping');
+    assert.ok(Math.abs(angleDifference(watching.input.visionAngle, 0)) < 0.1,
+      'nearby teammates keep their attention on the ping');
+    assert.notDeepEqual(watching.target, { x: ping.x, y: ping.y });
+
+    responder.x = ping.x - 100;
+    const watchAtPing = decideBotAction(responder, match, DEFAULT_BOT_PARAMETERS, 1_100, {
+      teamIntel,
+    });
+    assert.equal(watchAtPing.action, 'watch-ping');
+    assert.deepEqual(watchAtPing.target, { x: responder.x, y: responder.y });
+  });
+
+  it('fires at a fresh team sighting when a clear shot is aligned without identifying the enemy', () => {
     const match = createMatch();
     const bot = createPlayer('intel-chaser', 'red', 100, 340);
     const enemy = createPlayer('distant-reported-enemy', 'blue', 900, 340);
     bot.visionAngle = Math.PI;
-    bot.weaponStats['assault-rifle'].aimAngle = Math.PI;
+    bot.selectedWeaponId = 'sniper';
+    bot.weaponStats.sniper = { aimAngle: 0 };
     bot.botBrain = createBotBrain(bot.id, 0);
     match.players = [bot, enemy];
 
@@ -1503,7 +2312,7 @@ describe('bot AI', () => {
     assert.equal(decision.action, 'investigate-team-sighting');
     assert.deepEqual(decision.target, { x: enemy.x, y: enemy.y });
     assert.equal(decision.enemyId, null);
-    assert.equal(decision.fire, false);
+    assert.equal(decision.fire, true, 'the fresh report permits a safe shot at the predicted position');
     assert.ok(decision.input.visionAngle < 0.1 || decision.input.visionAngle > Math.PI * 2 - 0.1,
       'the bot keeps looking toward the last known enemy position');
   });
@@ -1585,7 +2394,7 @@ describe('bot AI', () => {
     assert.equal(decision.action, 'watch-entrance');
     assert.deepEqual(decision.target, { x: 500, y: 340 });
     assert.equal(decision.enemyId, null);
-    assert.equal(decision.fire, false);
+    assert.equal(decision.fire, true, 'the bot may suppressively fire along its watched audio lead');
     assert.ok(decision.input.visionAngle < 0.1 || decision.input.visionAngle > Math.PI * 2 - 0.1,
       'the bot watches the reported sound source from the entrance');
   });
@@ -1695,7 +2504,7 @@ describe('bot AI', () => {
     assert.ok(push.target.x > runner.x, 'after exiting, the runner continues toward the Blue flag');
   });
 
-  it('keeps Strike Team spawn movement committed to the exit while reacting to damage', () => {
+  it('prioritizes personal damage over Strike Team spawn movement', () => {
     const match = createMatch();
     match.map.spawnZones.red = { x: 40, y: 270, width: 140, height: 140 };
     match.map.rooms = [
@@ -1710,9 +2519,27 @@ describe('bot AI', () => {
       teamIntel: { audioCues: [{ team: 'red', x: 130, y: 350, radius: 90, expiresAt: 2_000 }] },
     });
 
-    assert.equal(response.action, 'leave-spawn');
-    assert.ok(response.target.x > bot.x, 'damage response cannot turn the bot back into spawn');
+    assert.equal(response.action, 'investigate-damage');
+    assert.ok(response.target.x > bot.x, 'the bot evades the incoming fire while escaping spawn');
     assert.ok(response.direction.y > 0.9, 'the bot still turns toward the incoming damage');
+  });
+
+  it('does not leash a damaged, low-health defender back to its site', () => {
+    const match = createMatch();
+    const bot = createPlayer('blue-under-fire', 'blue', 350, 340, 20);
+    const attacker = createPlayer('visible-attacker', 'red', 250, 340);
+    bot.visionAngle = Math.PI;
+    bot.weaponStats['assault-rifle'].aimAngle = Math.PI;
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot, attacker];
+
+    const response = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+      damageCue: { bearing: Math.PI, expiresAt: 2_000 },
+    });
+
+    assert.equal(response.action, 'retreat');
+    assert.ok(Math.hypot(response.target.x - 110, response.target.y - 340) > 320,
+      'self-preservation movement is not clamped to the defensive-site leash');
   });
 
   it('navigates a generated multi-room route out of spawn and to the objective', () => {
@@ -1917,6 +2744,40 @@ describe('bot AI', () => {
       'combat movement remains inside the site leash even when the defender engages');
   });
 
+  it('assigns Blue to watch a route not already covered by team vision', () => {
+    const match = createMatch();
+    match.map.rooms = [{ id: 'blue-spawn', isSpawn: true, team: 'blue' }];
+    match.map.corridors = [
+      { id: 'a-covered-route', a: 'blue-spawn', b: 'north', points: [{ x: 180, y: 300 }, { x: 340, y: 300 }] },
+      { id: 'b-uncovered-route', a: 'blue-spawn', b: 'south', points: [{ x: 180, y: 380 }, { x: 340, y: 380 }] },
+    ];
+    const defender = createPlayer('blue-route-guard', 'blue', 110, 340);
+    defender.isBot = true;
+    defender.botBrain = createBotBrain(defender.id, 0);
+    match.players = [defender];
+
+    const decision = decideBotAction(defender, match, {
+      ...DEFAULT_BOT_PARAMETERS,
+      defenseFocus: 1,
+    }, 1_000, {
+      roleIndex: 0,
+      roleCount: 1,
+      teamIntel: {
+        visionSources: [{
+          origin: { x: 200, y: 300 },
+          angle: 0,
+          halfAngle: 0.2,
+          maximumRange: 1_000,
+          observerId: 'other-defender',
+        }],
+      },
+    });
+
+    assert.equal(decision.action, 'hold-site');
+    assert.ok(decision.target.y > 340,
+      'the defender chooses the uncovered southern route instead of duplicating existing vision');
+  });
+
   it('sends Blue after its stolen flag carrier beyond the site-defense leash', () => {
     const match = createMatch();
     const defender = createPlayer('blue-defender', 'blue', 110, 340);
@@ -1992,7 +2853,15 @@ describe('bot AI', () => {
 
   it('moves behind nearby cover while reloading under a visible threat', () => {
     const match = createMatch();
-    match.map.objects = [{ shape: 'segment', x1: 120, y1: 280, x2: 180, y2: 280 }];
+    match.map.objects = [
+      { shape: 'segment', x1: 120, y1: 280, x2: 180, y2: 280 },
+      ...Array.from({ length: 40 }, (_, index) => ({
+        shape: 'circle',
+        x: 500 + index * 10,
+        y: 40,
+        radius: 5,
+      })),
+    ];
     const bot = createPlayer('reloading-bot', 'red', 100, 340);
     const enemy = createPlayer('reload-threat', 'blue', 220, 340);
     bot.weaponStats['assault-rifle'].ammo = 0;
@@ -2011,6 +2880,84 @@ describe('bot AI', () => {
       halfAngle: Math.PI,
       maximumRange: 2_000,
     }, match.map.objects), false, 'the selected refuge is genuinely occluded from the threat');
+
+    bot.botBrain.reloadCoverTarget = { x: 150, y: 280 };
+    const replanned = decideBotAction(bot, match, { ...DEFAULT_BOT_PARAMETERS, reflexMs: 0 }, 1_100);
+    assert.equal(replanned.action, 'reload-cover');
+    assert.notDeepEqual(replanned.target, { x: 150, y: 280 },
+      'a stored cover point inside map geometry is rejected before reuse');
+    assert.equal(circleOverlapsMapObjects(replanned.target, match.map.objects, PLAYER_RADIUS), false);
+  });
+
+  it('holds a defended ingress behind cover and leans around the corner', () => {
+    const match = createMatch();
+    match.map.spawnZones.blue = { x: 430, y: 280, width: 140, height: 140 };
+    match.map.rooms = [
+      { id: 'blue-spawn', isSpawn: true, team: 'blue', x: 430, y: 280, width: 140, height: 140 },
+    ];
+    const wall = { shape: 'segment', x1: 300, y1: 300, x2: 500, y2: 300 };
+    match.map.objects = [wall];
+    match.map.corridors = [{
+      id: 'north-ingress',
+      a: 'blue-spawn',
+      b: 'north-room',
+      points: [{ x: 500, y: 300 }, { x: 500, y: 200 }],
+    }];
+    const defender = createPlayer('blue-corner-guard', 'blue', 500, 313);
+    defender.botBrain = createBotBrain(defender.id, 0);
+    match.players = [defender];
+
+    const decision = decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    const threat = defender.botBrain.defenseWatchTarget;
+    const coverPosition = decision.target;
+    const muzzle = getWeaponMuzzlePosition(
+      coverPosition, decision.input.visionAngle, decision.input.weaponLean, match.map.objects,
+    );
+
+    assert.equal(decision.action, 'hold-site');
+    assert.ok(decision.input.weaponLean === -1 || decision.input.weaponLean === 1);
+    assert.notEqual(segmentMapObjectEntryT(threat, coverPosition, wall, 0), null,
+      'the bot body stays behind the wall');
+    assert.equal(segmentMapObjectEntryT(muzzle, threat, wall, 0), null,
+      'the leaned muzzle can watch and shoot through the exposed corner');
+  });
+
+  it('slowly clears a blocked objective route from a peeking cover position', () => {
+    const match = createMatch();
+    const wall = { shape: 'segment', x1: 300, y1: 300, x2: 500, y2: 300 };
+    match.map.objects = [wall];
+    match.flag = { x: 500, y: 200, heldBy: null, dropped: false };
+    const bot = createPlayer('red-corner-clearer', 'red', 450, 350);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    match.players = [bot];
+
+    const approach = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+
+    assert.equal(approach.action, 'clear-cover');
+    assert.ok(Math.hypot(approach.target.x - match.flag.x, approach.target.y - match.flag.y) <
+      Math.hypot(bot.x - match.flag.x, bot.y - match.flag.y) - 32,
+    'the cover step advances toward the blocked room');
+    assert.ok(approach.input.speedScale < 0.7, 'the bot slows while approaching the corner');
+    assert.equal(approach.input.weaponLean, 0, 'the bot does not expose its weapon while moving');
+
+    Object.assign(bot, { x: approach.target.x, y: approach.target.y });
+    const sweep = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_050);
+    const muzzleAngle = getWeaponAimAngle(bot, match.flag, sweep.input.weaponLean, match.map.objects);
+    const muzzle = getWeaponMuzzlePosition(bot, muzzleAngle, sweep.input.weaponLean, match.map.objects);
+
+    assert.equal(sweep.action, 'clear-cover-hold');
+    assert.ok(sweep.input.weaponLean === -1 || sweep.input.weaponLean === 1);
+    assert.equal(sweep.input.up || sweep.input.down || sweep.input.left || sweep.input.right, false,
+      'the bot pauses to sweep the room from cover');
+    assert.notEqual(segmentMapObjectEntryT(bot, match.flag, wall, 0), null,
+      'the body remains concealed at the corner');
+    assert.equal(segmentMapObjectEntryT(muzzle, match.flag, wall, 0), null,
+      'the leaned muzzle can clear the wall');
+
+    const advance = decideBotAction(
+      bot, match, DEFAULT_BOT_PARAMETERS, bot.botBrain.clearanceCover.holdUntil + 1,
+    );
+    assert.equal(advance.action, 'capture', 'the bot resumes its objective after clearing the corner');
   });
 
   it('moves Blue defenders onto their assigned ingress route and watches outward', () => {
@@ -2037,6 +2984,76 @@ describe('bot AI', () => {
       'the defender watches outward into the incoming corridor');
   });
 
+  it('positions conservative Blue defenders near the site and aggressive defenders farther out', () => {
+    const createDefenseMatch = () => {
+      const match = createMatch();
+      match.map.rooms = [
+        { id: 'blue-spawn', isSpawn: true, team: 'blue', x: 40, y: 270, width: 140, height: 140 },
+        { id: 'approach', isSpawn: false, x: 500, y: 340, width: 140, height: 140 },
+      ];
+      match.map.corridors = [{
+        id: 'blue-approach', a: 'blue-spawn', b: 'approach',
+        points: [{ x: 180, y: 340 }, { x: 320, y: 340 }, { x: 460, y: 340 }, { x: 600, y: 340 }],
+      }];
+      return match;
+    };
+    const getPost = (id, parameters) => {
+      const match = createDefenseMatch();
+      const defender = createPlayer(id, 'blue', 110, 340);
+      defender.botBrain = createBotBrain(defender.id, 0);
+      match.players = [defender];
+      decideBotAction(defender, match, parameters, 1_000, { roleIndex: 0, roleCount: 1 });
+      return defender.botBrain.defensePost;
+    };
+    const conservativePost = getPost('conservative-blue', {
+      ...DEFAULT_BOT_PARAMETERS,
+      aggressiveness: 0,
+      objectiveFocus: 0,
+      defenseFocus: 1,
+    });
+    const aggressivePost = getPost('aggressive-blue', {
+      ...DEFAULT_BOT_PARAMETERS,
+      aggressiveness: 1,
+      objectiveFocus: 1,
+      defenseFocus: 0,
+    });
+
+    assert.ok(conservativePost.x < aggressivePost.x - 100,
+      'high defense focus keeps the post near the flag while offensive settings extend it outward');
+  });
+
+  it('repositions Blue defenders as a known Strike team threat advances toward the flag', () => {
+    const match = createMatch();
+    match.map.rooms = [
+      { id: 'blue-spawn', isSpawn: true, team: 'blue', x: 40, y: 270, width: 140, height: 140 },
+      { id: 'approach', isSpawn: false, x: 500, y: 340, width: 140, height: 140 },
+    ];
+    match.map.corridors = [{
+      id: 'blue-approach', a: 'blue-spawn', b: 'approach',
+      points: [{ x: 180, y: 340 }, { x: 320, y: 340 }, { x: 460, y: 340 }, { x: 600, y: 340 }],
+    }];
+    const defender = createPlayer('threatened-blue', 'blue', 110, 340);
+    defender.botBrain = createBotBrain(defender.id, 0);
+    const attacker = createPlayer('advancing-red', 'red', 600, 340);
+    attacker.visionAngle = Math.PI;
+    match.players = [defender, attacker];
+    const parameters = {
+      ...DEFAULT_BOT_PARAMETERS,
+      aggressiveness: 1,
+      objectiveFocus: 1,
+      defenseFocus: 0,
+      reflexMs: 0,
+    };
+
+    decideBotAction(defender, match, parameters, 1_000, { roleIndex: 0, roleCount: 1 });
+    const outerPost = { ...defender.botBrain.defensePost };
+    Object.assign(attacker, { x: 250, y: 340 });
+    decideBotAction(defender, match, parameters, 1_050, { roleIndex: 0, roleCount: 1 });
+
+    assert.ok(defender.botBrain.defensePost.x < outerPost.x - 100,
+      'the guard falls back toward the site as the attacker threatens to reach it');
+  });
+
   it('spreads Blue guards along a shared ingress instead of stacking them together', () => {
     const match = createMatch();
     match.map.spawnZones.blue = { x: 820, y: 270, width: 140, height: 140 };
@@ -2048,6 +3065,7 @@ describe('bot AI', () => {
       id: 'blue-door', a: 'blue-spawn', b: 'room-1',
       points: [{ x: 820, y: 340 }, { x: 700, y: 340 }, { x: 550, y: 340 }, { x: 400, y: 340 }],
     }];
+    match.map.objects = [{ shape: 'segment', x1: 760, y1: 250, x2: 760, y2: 430 }];
     const defenders = Array.from({ length: 5 }, (_, index) => {
       const defender = createPlayer(`blue-guard-${index}`, 'blue', 870, 300 + index * 15);
       defender.botBrain = createBotBrain(defender.id, 0);
@@ -2062,12 +3080,227 @@ describe('bot AI', () => {
       }));
 
     assert.ok(plans.every((plan) => plan.action === 'hold-site'));
-    for (let index = 1; index < plans.length; index += 1) {
-      assert.ok(Math.hypot(
-        plans[index].target.x - plans[index - 1].target.x,
-        plans[index].target.y - plans[index - 1].target.y,
-      ) >= 34, 'each guard receives a distinct position along the same ingress route');
+    for (let index = 0; index < plans.length; index += 1) {
+      assert.equal(defenders[index].botBrain.defenseRouteAssignment.routeId, 'blue-door');
+      assert.ok(defenders[index].botBrain.defenseWatchTarget.x < 820,
+        'each post watches outward along the contested ingress');
+      for (let otherIndex = 0; otherIndex < index; otherIndex += 1) {
+        assert.ok(Math.hypot(
+          plans[index].target.x - plans[otherIndex].target.x,
+          plans[index].target.y - plans[otherIndex].target.y,
+        ) >= 50, 'each guard receives a physically separated position along the same ingress route');
+        assert.ok(Math.hypot(
+          defenders[index].botBrain.defensePost.x - defenders[otherIndex].botBrain.defensePost.x,
+          defenders[index].botBrain.defensePost.y - defenders[otherIndex].botBrain.defensePost.y,
+        ) >= 50, 'each guard commits to a distinct route position');
+        assert.ok(Math.hypot(
+          defenders[index].botBrain.defenseWatchTarget.x - defenders[otherIndex].botBrain.defenseWatchTarget.x,
+          defenders[index].botBrain.defenseWatchTarget.y - defenders[otherIndex].botBrain.defenseWatchTarget.y,
+        ) >= 100, 'each guard watches a distinct section of the approach');
+      }
     }
+  });
+
+  it('assigns distinct posts and watch areas when an ingress is too short for the whole team', () => {
+    const match = createMatch();
+    match.map.spawnZones.blue = { x: 820, y: 270, width: 140, height: 140 };
+    match.map.rooms = [
+      { id: 'blue-spawn', isSpawn: true, team: 'blue', x: 890, y: 340, width: 140, height: 140 },
+      { id: 'short-approach', isSpawn: false, x: 640, y: 340, width: 140, height: 140 },
+    ];
+    match.map.corridors = [{
+      id: 'short-blue-door', a: 'blue-spawn', b: 'short-approach',
+      points: [{ x: 820, y: 340 }, { x: 760, y: 340 }, { x: 700, y: 340 }],
+    }];
+    const defenders = Array.from({ length: 5 }, (_, index) => {
+      const defender = createPlayer(`short-blue-guard-${index}`, 'blue', 870, 300 + index * 20);
+      defender.botBrain = createBotBrain(defender.id, 0);
+      return defender;
+    });
+    match.players = defenders;
+
+    defenders.forEach((defender, roleIndex) => {
+      const plan = decideBotAction(defender, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+        roleIndex,
+        roleCount: defenders.length,
+      });
+      assert.equal(plan.action, 'hold-site');
+      assert.equal(defender.botBrain.defenseRouteAssignment.routeId, 'short-blue-door');
+      assert.ok(defender.botBrain.defenseWatchTarget,
+        'even fallback positions retain a defined sightline');
+    });
+
+    for (let index = 0; index < defenders.length; index += 1) {
+      for (let otherIndex = 0; otherIndex < index; otherIndex += 1) {
+        const post = defenders[index].botBrain.defensePost;
+        const otherPost = defenders[otherIndex].botBrain.defensePost;
+        const watch = defenders[index].botBrain.defenseWatchTarget;
+        const otherWatch = defenders[otherIndex].botBrain.defenseWatchTarget;
+        assert.ok(Math.hypot(post.x - otherPost.x, post.y - otherPost.y) >= 50,
+          'posts remain physically separated when the corridor cannot hold all defenders');
+        assert.ok(Math.hypot(watch.x - otherWatch.x, watch.y - otherWatch.y) >= 100,
+          'fallback posts watch different approach segments');
+      }
+    }
+  });
+
+  it('clears corners more cautiously when the team lacks an advantage', () => {
+    const getClearance = (parameters, enemies, health = 100) => {
+      const match = createMatch();
+      match.map.objects = [{ shape: 'segment', x1: 300, y1: 300, x2: 500, y2: 300 }];
+      match.flag = { x: 500, y: 200, heldBy: null, dropped: false };
+      const bot = createPlayer('confidence-clearer', 'red', 450, 350, health);
+      bot.botBrain = createBotBrain(bot.id, 0);
+      match.players = [bot, ...enemies];
+
+      const approach = decideBotAction(bot, match, parameters, 1_000);
+      Object.assign(bot, { x: approach.target.x, y: approach.target.y });
+      decideBotAction(bot, match, parameters, 1_050);
+      return {
+        holdMs: bot.botBrain.clearanceCover.holdUntil - 1_050,
+        approachSpeed: approach.input.speedScale,
+      };
+    };
+    const confident = getClearance(
+      { ...DEFAULT_BOT_PARAMETERS, aggressiveness: 0.9, objectiveFocus: 0.9 },
+      [{ ...createPlayer('flashed-opponent', 'blue', 100, 650), flashUntil: 5_000 }],
+    );
+    const cautious = getClearance(
+      { ...DEFAULT_BOT_PARAMETERS, aggressiveness: 0.1, objectiveFocus: 0.3 },
+      [0, 1, 2].map((index) => createPlayer(`opponent-${index}`, 'blue', 100, 650)),
+      65,
+    );
+
+    assert.ok(confident.holdMs < cautious.holdMs,
+      'an advantaged, aggressive team sweeps briefly before advancing');
+    assert.ok(confident.approachSpeed > cautious.approachSpeed,
+      'a cautious bot approaches cover more slowly');
+  });
+
+  it('keeps full speed during spotted fights and sneak-walks while cautiously advancing', () => {
+    const getFightSpeed = ({ allyCount, enemyCount }) => {
+      const match = createMatch();
+      const bot = createPlayer('confidence-squad-bot', 'red', 300, 340);
+      bot.botBrain = createBotBrain(bot.id, 0);
+      const allies = Array.from({ length: allyCount }, (_, index) =>
+        createPlayer(`confidence-ally-${index}`, 'red', 330, 300 + index * 35));
+      const enemies = Array.from({ length: enemyCount }, (_, index) =>
+        createPlayer(`confidence-enemy-${index}`, 'blue', 450, 270 + index * 70));
+      for (const enemy of enemies) enemy.visionAngle = Math.PI;
+      match.players = [bot, ...allies, ...enemies];
+      return decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    };
+
+    const supportedFight = getFightSpeed({ allyCount: 3, enemyCount: 3 });
+    const outnumberedFight = getFightSpeed({ allyCount: 0, enemyCount: 3 });
+    assert.equal(supportedFight.action, 'fight');
+    assert.equal(outnumberedFight.action, 'fight');
+    assert.equal(supportedFight.input.speedScale, outnumberedFight.input.speedScale,
+      'low confidence does not reduce movement speed during a spotted fight');
+
+    const makeAdvance = (audioCues) => {
+      const match = createMatch();
+      const bot = createPlayer('quiet-advance-bot', 'red', 300, 340);
+      bot.botBrain = createBotBrain(bot.id, 0);
+      match.players = [bot];
+      return decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+        teamIntel: { audioCues },
+      });
+    };
+    const unwarnedAdvance = makeAdvance([]);
+    const cautiousAdvance = makeAdvance([170, 340, 510].map((y, index) => ({
+      id: `confidence-noise-${index}`,
+      kind: 'footstep',
+      team: 'red',
+      x: 600,
+      y,
+      radius: 20,
+      expiresAt: 5_000,
+    })));
+    assert.ok(unwarnedAdvance.input.speedScale > cautiousAdvance.input.speedScale,
+      'low-confidence movement near suspected threats uses a quiet walk');
+    assert.equal(cautiousAdvance.input.speedScale,
+      unwarnedAdvance.input.speedScale * SLOW_WALK_SPEED_SCALE);
+  });
+
+  it('uses cover and pauses fights until depleted regenerating armor recovers', () => {
+    const match = createMatch();
+    const bot = createPlayer('armor-recovery-bot', 'red', 300, 340);
+    bot.botBrain = createBotBrain(bot.id, 0);
+    bot.botBrain.targetEnemyId = 'remembered-threat';
+    bot.botBrain.rememberedEnemies['remembered-threat'] = {
+      x: 500, y: 340, seenAt: 900, firstSeenAt: 0,
+    };
+    Object.assign(bot, {
+      armor: 0,
+      maxArmor: 40,
+      inventory: { armor: { id: 'armor', name: 'Armor', level: 2 }, perks: [] },
+    });
+    match.players = [bot, createPlayer('remembered-threat', 'blue', 500, 340)];
+    match.map.objects = [{
+      shape: 'segment',
+      x1: 400,
+      y1: 280,
+      x2: 400,
+      y2: 400,
+    }];
+
+    const recovery = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000);
+    assert.equal(recovery.action, 'armor-recovery');
+    assert.notDeepEqual(recovery.target, { x: bot.x, y: bot.y },
+      'the bot moves into cover while its armor is empty');
+    assert.equal(recovery.fire, false, 'the bot does not take a fight while recovering');
+
+    Object.assign(bot, { x: recovery.target.x, y: recovery.target.y, armor: 20 });
+    assert.equal(decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 2_000).action,
+      'armor-recovery', 'the bot stays in cover while armor continues regenerating');
+
+    bot.armor = 26;
+    assert.equal(decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 3_000).action,
+      'armor-recovery', 'the bot waits for the remaining armor to regenerate');
+
+    bot.armor = 40;
+    const rejoined = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 4_000);
+    assert.notEqual(rejoined.action, 'armor-recovery',
+      `the bot can rejoin play after its armor is full (armor=${bot.armor}, max=${bot.maxArmor})`);
+  });
+
+  it('lowers confidence when locally outnumbered or hearing multiple threats', () => {
+    const getSpeed = ({ allyCount, enemyCount, audioCues = [] }) => {
+      const match = createMatch();
+      const bot = createPlayer('local-confidence-bot', 'red', 300, 340);
+      bot.botBrain = createBotBrain(bot.id, 0);
+      const allies = Array.from({ length: allyCount }, (_, index) =>
+        createPlayer(`nearby-ally-${index}`, 'red', 330, 300 + index * 35));
+      const enemies = Array.from({ length: enemyCount }, (_, index) =>
+        createPlayer(`nearby-enemy-${index}`, 'blue', 500, 270 + index * 70));
+      match.players = [bot, ...allies, ...enemies];
+      const decision = decideBotAction(bot, match, DEFAULT_BOT_PARAMETERS, 1_000, {
+        teamIntel: { audioCues },
+      });
+      return decision.input.speedScale;
+    };
+    const supported = getSpeed({ allyCount: 3, enemyCount: 3 });
+    const outnumbered = getSpeed({ allyCount: 0, enemyCount: 3 });
+    const unwarned = getSpeed({ allyCount: 0, enemyCount: 0 });
+    const heardSeveral = getSpeed({
+      allyCount: 0,
+      enemyCount: 0,
+      audioCues: [170, 340, 510].map((y, index) => ({
+        id: `threat-noise-${index}`,
+        kind: 'footstep',
+        team: 'red',
+        x: 600,
+        y,
+        radius: 20,
+        expiresAt: 5_000,
+      })),
+    });
+
+    assert.ok(supported > outnumbered,
+      'nearby allied numbers increase confidence and movement speed');
+    assert.ok(unwarned > heardSeveral,
+      'multiple distinct nearby audio cues lower confidence and movement speed');
   });
 
   it('weights a bot baseline loadout and keeps that weapon for the whole match', () => {

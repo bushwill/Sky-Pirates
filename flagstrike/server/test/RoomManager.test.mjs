@@ -5,9 +5,9 @@ import {
   MAP_WIDTH,
   MATCH_DURATION_MS,
   MATCH_COUNTDOWN_MS,
+  QUICK_PLAY_ROLE_SWAP_EVERY,
   LONG_PLAY_ROLE_SWAP_EVERY,
   LONG_PLAY_WINS_TO_WIN,
-  LONG_SERIES_ROLE_SWAP_EVERY,
   LONG_SERIES_WINS_TO_WIN,
   QUICK_PLAY_COUNTDOWN_MS,
   QUICK_PLAY_FINAL_REPORT_MS,
@@ -180,6 +180,20 @@ function assertTeamsOccupyTheirSites(match) {
 }
 
 describe('RoomManager', () => {
+  it('advances playlist room lifecycle without custom-game rules', async () => {
+    let now = 1_000;
+    const manager = new RoomManager({ now: () => now });
+    const host = createClient();
+    manager.quickPlay(host);
+    const room = host.room;
+
+    assert.equal(room.customGameRules, undefined);
+    assert.doesNotThrow(() => manager.advanceLobbyLifecycle(now));
+    await room.quickPlayMapPromise;
+    now += 1_000;
+    assert.doesNotThrow(() => manager.advanceLobbyLifecycle(now));
+  });
+
   it('initializes default gadget inventory for host-authoritative player and bot manifests', async () => {
     const manager = new BaseRoomManager({ simulationMode: 'host-authoritative', randomTeam: () => 0 });
     const host = createClient();
@@ -194,8 +208,9 @@ describe('RoomManager', () => {
     const bot = match.players.find((player) => player.isBot);
     assert.ok(Object.hasOwn(GADGET_DEFINITIONS, bot.selectedGadgetId),
       'bots receive one of the equally weighted gadgets instead of all defaulting to smoke');
-    assert.equal(bot.gadgetCounts[bot.selectedGadgetId], 1);
-    assert.equal(bot.gadgetCount, 1);
+    const expectedCharges = GADGET_DEFINITIONS[bot.selectedGadgetId].charges ?? 1;
+    assert.equal(bot.gadgetCounts[bot.selectedGadgetId], expectedCharges);
+    assert.equal(bot.gadgetCount, expectedCharges);
     assert.equal(getInventoryEffects(bot.inventory).armor, 25,
       'host-authoritative bot manifests include default Practice armor');
   });
@@ -213,8 +228,18 @@ describe('RoomManager', () => {
     assert.ok(activeRevision > staleRevision);
     assert.throws(() => manager.startMatch(host), /finish generating and submitting/);
     assert.throws(() => manager.acceptHostMap(host, { map, generationRevision: staleRevision }), /invalid or unauthorized/);
+    assert.equal(manager.updateHostMapGenerationProgress(host, {
+      generationRevision: staleRevision, mapsGenerated: 12,
+    }), false, 'progress from an earlier search cannot update the current counter');
+    assert.equal(manager.updateHostMapGenerationProgress(host, {
+      generationRevision: activeRevision, mapsGenerated: 3,
+    }), true);
+    assert.equal(manager.updateHostMapGenerationProgress(host, {
+      generationRevision: activeRevision, mapsGenerated: 2,
+    }), false, 'the generated-map counter cannot move backwards');
     assert.equal(manager.toRoomState(host.room).mapGenerationPending, true,
       'a stale result cannot make the current search look complete');
+    assert.equal(manager.toRoomState(host.room).mapGenerationCount, 3);
     manager.acceptHostMap(host, { map, generationRevision: activeRevision });
     const state = manager.toRoomState(host.room);
     assert.equal(state.mapReady, true);
@@ -634,13 +659,13 @@ describe('RoomManager', () => {
     assert.equal(owner.health, expectedOwnerHealth, 'a mine only deals damage once');
   });
 
-  it('lets only the opposite team shoot an armed mine and removes it before it can trigger', () => {
-    const manager = new RoomManager();
+  it('lets only the opposite team shoot an arming mine and removes it before it can trigger', () => {
+    const manager = new RoomManager({ now: () => 1_000 });
     const mine = {
       id: 'test-mine', type: 'mine', gadgetId: PROXIMITY_MINE_ID,
       triggerOnEnemyProximity: true, team: 'blue', x: 500, y: 350,
       hitRadius: PROXIMITY_MINE_HIT_RADIUS, triggerRadius: 50, explosionDamage: 150,
-      ownerId: 'blue-owner', expiresAt: 10_000,
+      ownerId: 'blue-owner', armedAt: 2_500, expiresAt: 10_000,
     };
     const match = { map: { objects: [] }, players: [], gadgetEffects: [mine] };
     const start = { x: 300, y: 350 };
@@ -735,7 +760,7 @@ describe('RoomManager', () => {
       'placing the Trophy while jammed still returns the owner to their weapon');
   });
 
-  it('lets an owner command a persistent Trophy and clears only visible enemy fields', async () => {
+  it('lets an owner command a persistent Trophy through vision blockers and clears enemy fields', async () => {
     let now = 25_000;
     const manager = new BaseRoomManager({ now: () => now, randomTeam: () => 0, simulationMode: 'server-authoritative' });
     const host = createClient();
@@ -820,14 +845,9 @@ describe('RoomManager', () => {
       target: { x: 700, y: 350 },
     }).accepted, false, 'a jammed Trophy cannot be commanded');
     delete trophy.jammedUntil;
-    assert.equal(manager.applyGadgetAction(host, {
-      action: 'use',
-      target: { x: 850, y: 350 },
-    }).accepted, false, 'targets behind walls are rejected without spending the command');
-
     const result = manager.applyGadgetAction(host, {
       action: 'use',
-      target: { x: 700, y: 350 },
+      target: { x: 850, y: 350 },
     });
     assert.equal(result.accepted, true);
     assert.equal(result.commandProjectile.type, TROPHY_SYSTEM_COMMAND_EFFECT_ID);
@@ -839,8 +859,8 @@ describe('RoomManager', () => {
     now = result.commandProjectile.detonatesAt + 1;
     manager.advanceGames(0.05);
     assert.equal(match.gadgetEffects.some((effect) => effect.id === cryo.id), false);
-    assert.equal(match.gadgetEffects.some((effect) => effect.id === blockedMolotov.id), true,
-      'the blast cannot clear an effect through a wall');
+    assert.equal(match.gadgetEffects.some((effect) => effect.id === blockedMolotov.id), false,
+      'a commanded pulse clears effects through vision blockers');
     assert.equal(match.gadgetEffects.some((effect) => effect.type === TROPHY_SYSTEM_COMMAND_EFFECT_ID), true);
     const pulse = match.gadgetEffects.find((effect) => effect.type === TROPHY_SYSTEM_COMMAND_EFFECT_ID);
     assert.equal(pulse.expiresAt, pulse.startedAt + TROPHY_SYSTEM_COMMAND_VISUAL_DURATION_MS);
@@ -854,13 +874,13 @@ describe('RoomManager', () => {
     assert.equal(player.equippedSlot, 'gadget');
     assert.equal(manager.applyGadgetAction(host, {
       action: 'use',
-      target: { x: 700, y: 350 },
+      target: { x: 850, y: 350 },
     }).accepted, false, 'the command cannot be fired again during its cooldown');
 
     now = player.trophyCommandReadyAt;
     const rechargedCommand = manager.applyGadgetAction(host, {
       action: 'use',
-      target: { x: 700, y: 350 },
+      target: { x: 850, y: 350 },
     });
     assert.equal(rechargedCommand.accepted, true, 'the command recharges after 30 seconds');
     assert.equal(player.equippedSlot, 'weapon');
@@ -882,6 +902,79 @@ describe('RoomManager', () => {
       'an opposing Trophy intercepts the owner command projectile');
     assert.equal(match.gadgetEffects.some((effect) =>
       effect.id === rechargedCommand.commandProjectile.id), false);
+  });
+
+  it('allows unlimited Trophy pulses and replacement placements in custom infinite-gadget matches', async () => {
+    let now = 25_000;
+    const manager = new BaseRoomManager({
+      now: () => now,
+      randomTeam: () => 0,
+      simulationMode: 'server-authoritative',
+    });
+    const host = createClient();
+    await manager.createAndJoin(host, { name: 'Infinite Trophy Gadgets' });
+    manager.setCustomGameRules(host, { infiniteGadgetUse: true });
+    manager.startMatch(host);
+
+    const match = host.room.match;
+    match.gameplayStartsAt = now;
+    match.endsAt = now + MATCH_DURATION_MS;
+    match.map.objects = [];
+    const player = match.players.find((entry) => entry.id === host.id);
+    Object.assign(player, {
+      x: 500,
+      y: 350,
+      selectedGadgetId: TROPHY_SYSTEM_ID,
+      gadgetCount: 1,
+      gadgetCounts: { [TROPHY_SYSTEM_ID]: 1 },
+      equippedSlot: 'gadget',
+    });
+    const trophy = {
+      id: 'infinite-trophy',
+      type: TROPHY_SYSTEM_ID,
+      gadgetId: TROPHY_SYSTEM_ID,
+      ownerId: player.id,
+      team: player.team,
+      x: 500,
+      y: 350,
+      health: TROPHY_SYSTEM_HEALTH,
+      startedAt: now,
+      expiresAt: match.endsAt,
+    };
+    match.gadgetEffects.push(trophy);
+
+    const firePulse = () => manager.applyGadgetAction(host, {
+      action: 'use',
+      target: { x: 700, y: 350 },
+    });
+    assert.equal(match.infiniteGadgetUse, true);
+    assert.equal(firePulse().accepted, true);
+    assert.equal(player.trophyCommandReadyAt, now);
+    player.equippedSlot = 'gadget';
+    assert.equal(firePulse().accepted, true, 'Trophy pulses have no cooldown');
+
+    match.gadgetEffects = match.gadgetEffects.filter((effect) => effect.id !== trophy.id);
+    player.gadgetCount = 0;
+    player.gadgetCounts[TROPHY_SYSTEM_ID] = 0;
+    player.equippedSlot = 'gadget';
+    const replacement = manager.applyGadgetAction(host, {
+      action: 'use',
+      target: { x: 600, y: 350 },
+    });
+    assert.equal(replacement.accepted, true, 'a destroyed Trophy can be replaced without a charge');
+    assert.equal(player.gadgetCounts[TROPHY_SYSTEM_ID], 1);
+
+    player.selectedGadgetId = SPY_CAMERA_ID;
+    player.gadgetCount = 0;
+    player.gadgetCounts[SPY_CAMERA_ID] = 0;
+    player.equippedSlot = 'gadget';
+    const placeCamera = () => manager.applyGadgetAction(host, {
+      action: 'use',
+      target: { x: 600, y: 350 },
+    });
+    assert.equal(placeCamera().accepted, true);
+    assert.equal(placeCamera().accepted, true, 'Spy Cameras have unlimited placements');
+    assert.equal(player.gadgetCounts[SPY_CAMERA_ID], 1);
   });
 
   it('lets enemy projectiles destroy an unarmed Vine Trap without granting a recharge', () => {
@@ -1990,6 +2083,13 @@ describe('RoomManager', () => {
     blue.room.match.players = blue.room.match.players.filter((player) => player.id !== blue.id);
     assert.equal(manager.createTeamPing(blue, { x: 400, y: 450 }).team, 'blue',
       'late spectators outside the round player array can still ping for their assigned team');
+    blue.room.match.gameplayStartsAt = Date.now() + 15_000;
+    assert.equal(manager.createTeamPing(red, { x: 125, y: 250 }).team, 'red',
+      'pings work during prephase');
+    blue.room.match.victory = { winner: 'red', at: Date.now() };
+    blue.room.match.endsAt = Date.now() - 1;
+    assert.equal(manager.createTeamPing(blue, { x: 400, y: 450 }).team, 'blue',
+      'pings work during postphase after victory or timeout');
   });
 
   it('keeps living players in the shared free-roam mode through a custom-match postgame', async () => {
@@ -2118,25 +2218,25 @@ describe('RoomManager', () => {
     const sameTeam = { id: 'red-near', team: 'red', alive: true, health: 100, x: 2, y: 0 };
     const map = { width: 1000, height: 1000, objects: [] };
     const match = { map, players: [shooter, closest, farther, deadClosest, sameTeam] };
-    const cue = manager.createEnemyShotAudioCue(match, shooter, { x: 0, y: 0 });
+    const [cue] = manager.createShotAudioCues(match, shooter, { x: 0, y: 0 });
 
     assert.equal(cue.team, 'blue', 'only the closest enemy team receives the cue');
     assert.equal(cue.radius, 150, 'a flashed closest listener cannot provide audio intel');
     assert.ok(cue.x > 0, 'the estimated center is deliberately displaced');
     assert.ok(Math.hypot(cue.x, cue.y) <= cue.radius, 'the true sound source remains inside the uncertainty circle');
     assert.equal(cue.expiresAt, 7_400);
-    assert.equal(manager.createEnemyShotAudioCue(match, shooter, { x: 1, y: 0 }), null,
+    assert.deepEqual(manager.createShotAudioCues(match, shooter, { x: 1, y: 0 }), [],
       'rapid repeat shots do not stack overlapping cues');
-    assert.equal(manager.createEnemyShotAudioCue({ map, players: [shooter] }, shooter, { x: 0, y: 0 }), null);
+    assert.deepEqual(manager.createShotAudioCues({ map, players: [shooter] }, shooter, { x: 0, y: 0 }), []);
 
     const sourceVisibleManager = new RoomManager({ now: () => 5000, random: () => 0 });
     const visibleListener = {
       id: 'blue-looking-at-source', team: 'blue', alive: true, health: 100,
       x: 100, y: 0, visionAngle: Math.PI, weaponLean: 0,
     };
-    assert.equal(sourceVisibleManager.createEnemyShotAudioCue({
+    assert.deepEqual(sourceVisibleManager.createShotAudioCues({
       map: { width: 1000, height: 1000, objects: [] }, players: [shooter, visibleListener],
-    }, shooter, { x: 0, y: 0 }), null, 'team-visible shots do not create redundant sound cues');
+    }, shooter, { x: 0, y: 0 }), [], 'team-visible shots do not create redundant sound cues');
   });
 
   it('attaches an audio cue to an enemy shot when the opposing team cannot see its source', async () => {
@@ -2160,6 +2260,49 @@ describe('RoomManager', () => {
     assert.equal(shot.audioCue.team, 'blue');
     assert.ok(Math.hypot(shot.audioCue.x - shot.projectile.start.x,
       shot.audioCue.y - shot.projectile.start.y) <= shot.audioCue.radius);
+  });
+
+  it('lets teammates hear unseen jammed gunfire while preserving team and personal cue scopes', async () => {
+    let now = 5_000;
+    const manager = new RoomManager({ now: () => now, random: () => 0 });
+    const shooterClient = createClient();
+    const teammateClient = createClient();
+    const enemyClient = createClient();
+    await manager.createAndJoin(shooterClient, { name: 'Jammed Teammate Gunfire' });
+    await manager.join(teammateClient, { name: 'Jammed Teammate Gunfire' });
+    await manager.join(enemyClient, { name: 'Jammed Teammate Gunfire' });
+    manager.setPlayerTeam(shooterClient, { team: 'red' });
+    manager.setPlayerTeam(teammateClient, { team: 'red' });
+    manager.setPlayerTeam(enemyClient, { team: 'blue' });
+    startGameplay(manager, shooterClient);
+    const match = shooterClient.room.match;
+    match.map.objects = [];
+    const shooter = match.players.find((player) => player.id === shooterClient.id);
+    const teammate = match.players.find((player) => player.id === teammateClient.id);
+    const enemy = match.players.find((player) => player.id === enemyClient.id);
+    Object.assign(shooter, { x: 200, y: 200, jammedUntil: now + 1_000 });
+    Object.assign(teammate, { x: 600, y: 600, visionAngle: 0 });
+    Object.assign(enemy, { x: 700, y: 600, visionAngle: 0 });
+
+    const shot = manager.fireProjectile(shooterClient, { direction: { x: 1, y: 0 } });
+
+    assert.deepEqual(shot.audioCues.map((cue) => cue.team), ['blue', 'red']);
+    const allyCue = shot.audioCues.find((cue) => cue.team === 'red');
+    assert.equal(allyCue.kind, 'gunshot');
+    assert.equal(allyCue.heardById, teammate.id);
+    assert.equal(allyCue.audiencePlayerId, undefined);
+    assert.equal(allyCue.sourceId, undefined);
+    assert.ok(Math.hypot(allyCue.x - shot.projectile.start.x,
+      allyCue.y - shot.projectile.start.y) <= allyCue.radius);
+
+    teammate.jammedUntil = now + 1_000;
+    delete enemy.jammedUntil;
+    now += 700;
+    const secondShot = manager.fireProjectile(shooterClient, { direction: { x: 1, y: 0 } });
+    assert.ok(secondShot.accepted);
+    const personalCue = match.botNoises.find((cue) =>
+      cue.kind === 'gunshot' && cue.team === 'red' && cue.audiencePlayerId === teammateClient.id);
+    assert.ok(personalCue, 'jammed listeners retain a personal cue for nearby teammate gunfire');
   });
 
   it('stores discovered cells as shared team intel and returns only newly revealed spans', async () => {
@@ -2545,6 +2688,8 @@ describe('RoomManager', () => {
     assert.equal(red.uniqueGadgetShopCount, 1, 'the first player shop opens at the one-percent unique-offer tier');
     assert.deepEqual(red.uniqueGadgetShopOfferIds, ['orbital-strike'],
       'the unique-offer chance can draw Orbital Strike in the Quick Play shop');
+    assert.ok(redPlayer.gadgetShopOfferIds.includes(red.uniqueGadgetShopOfferIds[0]),
+      'Long Play places a drawn unique gadget into the actual shop offer list');
     assert.ok(redPlayer.gadgetShopOfferIds.every((id) => Object.hasOwn(GADGET_DEFINITIONS, id)));
     assert.equal(new Set(redPlayer.weaponShopOfferIds).size, redPlayer.weaponShopOfferIds.length);
     assert.ok(redPlayer.weaponShopOfferIds.every((weaponId) =>
@@ -2601,6 +2746,8 @@ describe('RoomManager', () => {
     manager.skipWeaponShop(blue);
     assert.deepEqual(blue.inventoryWeaponIds, ['classic-pistol'], 'skipping does not add an offer');
     assert.equal(blue.weaponShopResolved, true);
+    assert.equal(blue.shopPicksRemaining, 2, 'skipping banks both unused picks');
+    assert.equal(bluePlayer.shopPicksRemaining, 2, 'the match snapshot retains the banked picks');
 
     botPurchases.clear();
     now = room.match.gameplayStartsAt;
@@ -2618,6 +2765,7 @@ describe('RoomManager', () => {
     assert.equal(nextRed.weaponShopOfferIds.length + nextRed.itemShopOfferIds.length + nextRed.gadgetShopOfferIds.length, 5);
     assert.equal(nextRed.gadgetShopOfferIds.length, 1, 'the next Long Play phase also guarantees a gadget offer');
     assert.equal(nextRed.shopPicksRemaining, 1);
+    assert.equal(nextBlue.shopPicksRemaining, 3, 'unused picks are added to the next round allowance');
     assert.ok(!nextRed.weaponShopOfferIds.includes('classic-pistol'));
     assert.ok(nextRed.weaponShopOfferIds.every((weaponId) => !nextRed.inventoryWeaponIds.includes(weaponId)),
       'later offers never repeat an owned weapon');
@@ -2989,7 +3137,7 @@ describe('RoomManager', () => {
     assert.ok(quick.match.players.every((player) => player.armor === 25 && player.inventory.armor.level === 1),
       'all Quick Play humans and bots start with 25 armor');
     assert.ok(quick.match.players.every((player) =>
-      getInventoryEffects(player.inventory).armorRegeneration === 10 &&
+      getInventoryEffects(player.inventory).armorRegeneration === 5 &&
       getInventoryEffects(player.inventory).regenerationDelayMs === 5_000),
     'all Practice armor regenerates after five seconds');
     assert.ok(quick.match.players.filter((player) => !player.isBot)
@@ -3686,8 +3834,8 @@ describe('RoomManager', () => {
     const manager = new BaseRoomManager({ simulationMode: 'host-authoritative' });
     const modes = [
       ['quickplay', 'Private Practice', null, 1],
-      ['longplay', 'Private Quick', LONG_PLAY_WINS_TO_WIN, LONG_PLAY_ROLE_SWAP_EVERY],
-      ['longseries', 'Private Long', LONG_SERIES_WINS_TO_WIN, LONG_SERIES_ROLE_SWAP_EVERY],
+      ['longplay', 'Private Quick', LONG_PLAY_WINS_TO_WIN, QUICK_PLAY_ROLE_SWAP_EVERY],
+      ['longseries', 'Private Long', LONG_SERIES_WINS_TO_WIN, LONG_PLAY_ROLE_SWAP_EVERY],
     ];
 
     for (const [gameMode, name, winsToWin, roleSwapEvery] of modes) {
@@ -5509,6 +5657,12 @@ describe('RoomManager', () => {
     const bot = room.match.players.find((player) => player.id === 'bot-1');
 
     assert.throws(() => manager.setBotController(red, { botId: bot.id }), /Living players cannot take over/);
+    human.isSpectator = true;
+    const spectatorTakeover = manager.setBotController(red, { botId: bot.id });
+    assert.equal(spectatorTakeover.match.players.find((player) => player.id === bot.id).controlledById, red.id,
+      'the authoritative spectator flag takes precedence over stale alive state');
+    manager.setBotController(red, { botId: bot.id, takeControl: false });
+    human.isSpectator = false;
     human.alive = false;
     human.health = 0;
     human.isSpectator = true;

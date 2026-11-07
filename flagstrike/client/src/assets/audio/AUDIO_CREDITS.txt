@@ -19,6 +19,9 @@ https://archive.org/details/SSE_Library_GUNS
 - gunshot-battle-rifle.wav: "30 30 rifle shots"
 - gunshot-smg.wav: "Tommy gun busts; machine gun"
 - gunshot-marksman-rifle.wav: "Very sharp small rifle fire"
+- gunshot-suppressed.ogg: "FN FNX .45 Tactical (SilencerCo Osprey)" by areniporgen
+  (Freesound 693855), recorded close outdoors; CC0 1.0.
+  https://freesound.org/people/areniporgen/sounds/693855/
 
 The excerpts were converted to mono 24 kHz PCM and trimmed to short gameplay shots.
 The battle pistol uses the classic pistol recording at a lower volume; the assault and

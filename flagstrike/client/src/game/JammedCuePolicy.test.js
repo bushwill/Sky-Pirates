@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  isHostBotCueEvent,
   isPersonalAudioCueForViewer,
   isPersonalDamageCueForViewer,
 } from './JammedCuePolicy.js';
@@ -18,5 +19,27 @@ describe('jammed cue access', () => {
     assert.equal(isPersonalDamageCueForViewer(cue, 'player', 'client'), true);
     assert.equal(isPersonalDamageCueForViewer({ ...cue, victimId: 'teammate' }, 'player', 'client'), false);
     assert.equal(isPersonalDamageCueForViewer({ ...cue, audiencePlayerId: 'other-client' }, 'player', 'client'), false);
+  });
+
+  it('forwards host bot cues across teams without exposing private cues to unrelated players', () => {
+    const teamCue = {
+      type: 'damage-cue',
+      audienceTeam: 'blue',
+      data: { victimId: 'blue-bot' },
+    };
+    assert.equal(isHostBotCueEvent(teamCue, 'host', 'host'), true);
+    assert.equal(isHostBotCueEvent(teamCue, 'host', 'guest'), false);
+
+    const privateBotCue = {
+      type: 'damage-cue',
+      audienceTeam: 'blue',
+      audiencePlayerId: 'blue-bot',
+      data: { victimId: 'blue-bot' },
+    };
+    assert.equal(isHostBotCueEvent(privateBotCue, 'host', 'host'), true);
+    assert.equal(isHostBotCueEvent({
+      ...privateBotCue,
+      audiencePlayerId: 'controller',
+    }, 'host', 'host'), false);
   });
 });

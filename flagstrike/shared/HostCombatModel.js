@@ -1,7 +1,6 @@
 import { segmentCircleEntryT, traceMapRay } from './ProjectileModel.js';
 import { PLAYER_RADIUS } from './MovementModel.js';
 import {
-  isProximityMineArmed,
   KATANA_DASH_HIT_RADIUS,
   PROXIMITY_MINE_HIT_RADIUS,
   SPY_CAMERA_BODY_RADIUS,
@@ -250,9 +249,9 @@ export function resolveHostShotCollision({
     }
     const isVineTrapBeforeActivation = effect.type === VINE_TRAP_ID &&
       effect.triggerOnEnemyProximity && !effect.latchedEnemyId && effect.expiresAt > now;
-    const isArmedMine = effect.type === 'mine' && effect.triggerOnEnemyProximity &&
-      isProximityMineArmed(effect, now);
-    if ((!isVineTrapBeforeActivation && !isArmedMine) ||
+    const isMine = effect.type === 'mine' && effect.triggerOnEnemyProximity &&
+      (!Number.isFinite(effect.expiresAt) || effect.expiresAt > now);
+    if ((!isVineTrapBeforeActivation && !isMine) ||
         !ownerTeam || ownerTeam === effect.team) continue;
     const hitRadius = Math.max(0, effect.hitRadius ?? 8) + radius;
     consider('gadget', effect, segmentCircleEntryT(start, trace.end, effect, hitRadius));

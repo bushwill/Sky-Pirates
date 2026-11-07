@@ -15,6 +15,14 @@ export function getUrgentTimerCue(match, now) {
     : null;
 }
 
+export function getUrgentCustomPostGameCue(match, roomState, now) {
+  if (!match?.victory || roomState?.quickPlay === true || !Number.isFinite(now)) return null;
+  const endsAt = match.postGame?.endsAt ?? roomState?.postGame?.endsAt;
+  if (!Number.isFinite(endsAt)) return null;
+  const seconds = Math.ceil((endsAt - now) / 1000);
+  return seconds > 0 && seconds <= 5 ? { phase: 'postgame', seconds } : null;
+}
+
 export function getFlagTransitionSound(previousHolderId, flag) {
   if (previousHolderId === undefined) return null;
   const nextHolderId = flag?.heldBy ?? null;

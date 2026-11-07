@@ -8,7 +8,6 @@ import {
   SMOKE_GRENADE_ID,
   SPY_CAMERA_ID,
   TROPHY_SYSTEM_ID,
-  SONAR_ID,
   VINE_TRAP_ID,
 } from './GadgetModel.js';
 import { isPointVisible } from './VisionModel.js';
@@ -22,7 +21,6 @@ const INTERCEPTABLE_PROJECTILE_IDS = new Set([
   VINE_TRAP_ID,
   JAMMER_GRENADE_ID,
   BIO_FIELD_ID,
-  SONAR_ID,
   TROPHY_SYSTEM_ID,
 ]);
 const INTERCEPTABLE_PLACED_TYPES = new Set([
@@ -30,7 +28,6 @@ const INTERCEPTABLE_PLACED_TYPES = new Set([
   'mine',
   VINE_TRAP_ID,
   TROPHY_SYSTEM_ID,
-  'sonar-projectile',
 ]);
 const PROJECTILE_SAMPLE_SPACING = 8;
 
@@ -123,6 +120,8 @@ export function findTrophyProjectileInterceptions(
           effectId: effect.id,
           gadgetId: effect.gadgetId,
           trophyId: trophy.id,
+          trophyPosition: { x: trophy.x, y: trophy.y },
+          team: trophy.team,
           position,
         });
         break;

@@ -61,6 +61,7 @@ export function collectFootstepAudioCues(match, now, {
   const cues = [];
   for (const source of players) {
     if (!source.alive || source.health <= 0) continue;
+    const sourceJammed = isPlayerJammed(source, now);
     const weapon = getWeaponDefinition(projectileDefinitions, source.selectedWeaponId);
     const normalSpeedCap = MAX_PLAYER_SPEED * getPlayerMovementScale(
       match.flag?.heldBy === source.id,
@@ -71,7 +72,8 @@ export function collectFootstepAudioCues(match, now, {
 
     const closestByTeam = new Map();
     for (const listener of players) {
-      if (!listener.alive || listener.health <= 0 || listener.team === source.team ||
+      if (!listener.alive || listener.health <= 0 ||
+          (listener.team === source.team && !sourceJammed) ||
           isPlayerJammed(listener, now) ||
           (Number.isFinite(listener.flashUntil) && listener.flashUntil > now)) continue;
       const dx = source.x - listener.x;
@@ -131,7 +133,8 @@ export function collectFootstepAudioCues(match, now, {
     }
 
     for (const listener of players) {
-      if (!listener.alive || listener.health <= 0 || listener.team === source.team ||
+      if (!listener.alive || listener.health <= 0 ||
+          (listener.team === source.team && !sourceJammed) ||
           !isPlayerJammed(listener, now) ||
           (Number.isFinite(listener.flashUntil) && listener.flashUntil > now)) continue;
       const dx = source.x - listener.x;

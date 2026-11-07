@@ -128,6 +128,40 @@ describe('host-side BotController', () => {
     assert.equal(typeof sent[0][1].commands[0].weaponId, 'string');
   });
 
+  it('assigns a team ping to the closest bot and sends only that responder to investigate', () => {
+    const controller = new BotController({ send: () => true });
+    const state = createRoomState();
+    const firstBot = state.match.players[0];
+    Object.assign(firstBot, { x: 500, y: 350 });
+    const secondBot = {
+      ...structuredClone(firstBot),
+      id: 'bot-2',
+      x: 900,
+    };
+    state.match.players.push(secondBot);
+    state.bots.roster.push({
+      id: secondBot.id,
+      team: secondBot.team,
+      parameters: { ...DEFAULT_BOT_PARAMETERS },
+    });
+    controller.update(state, 'host');
+    const ping = {
+      id: 'red-team-ping',
+      team: 'red',
+      x: 650,
+      y: 350,
+      expiresAt: Date.now() + 2_500,
+    };
+    controller.acceptPing(ping);
+    controller.lastAttemptAt = -Infinity;
+    controller.update(state, 'host');
+
+    assert.equal(controller.getTeamIntel('red', state.match, Date.now()).pings[0]?.responderId,
+      firstBot.id);
+    assert.equal(controller.brains.get(firstBot.id).decision.action, 'investigate-ping');
+    assert.notEqual(controller.brains.get(secondBot.id).decision.action, 'investigate-ping');
+  });
+
   it('resynchronizes the weapon decision after a human takeover changes the bot loadout', () => {
     const sent = [];
     const controller = new BotController({ send: (...args) => { sent.push(args); return true; } });
@@ -377,20 +411,29 @@ describe('host-side BotController', () => {
   });
 
   it('replans same-team bots when host-computed audio and damage cues arrive', () => {
-    const sent = [];
-    const controller = new BotController({ send: (...args) => { sent.push(args); return true; } });
-    const roomState = createRoomState();
-    controller.update(roomState, 'host');
-    const brain = controller.brains.get('bot-1');
-    assert.ok(brain);
-    brain.nextThinkAt = Date.now() + 60_000;
+    const originalNow = Date.now;
+    let now = 50_000;
+    Date.now = () => now;
+    try {
+      const sent = [];
+      const controller = new BotController({ send: (...args) => { sent.push(args); return true; } });
+      const roomState = createRoomState();
+      controller.update(roomState, 'host');
+      const brain = controller.brains.get('bot-1');
+      assert.ok(brain);
+      brain.nextThinkAt = now + 60_000;
 
-    controller.acceptAudioCue({ id: 'noise-1', team: 'red', x: 500, y: 350, expiresAt: Date.now() + 2_000 });
-    assert.ok(brain.nextThinkAt <= Date.now() + 120);
-    brain.nextThinkAt = Date.now() + 60_000;
-    controller.acceptDamageCue({ id: 'damage-1', victimId: 'bot-1', team: 'red', bearing: 0, expiresAt: Date.now() + 1_000 });
-    assert.equal(brain.nextThinkAt, Date.now());
-    assert.equal(controller.damageCues.has('bot-1'), true);
+      now += 25;
+      controller.acceptAudioCue({ id: 'noise-1', team: 'red', x: 500, y: 350, expiresAt: now + 2_000 });
+      assert.ok(brain.nextThinkAt <= now + 120);
+      brain.nextThinkAt = now + 60_000;
+      now += 25;
+      controller.acceptDamageCue({ id: 'damage-1', victimId: 'bot-1', team: 'red', bearing: 0, expiresAt: now + 1_000 });
+      assert.equal(brain.nextThinkAt, now);
+      assert.equal(controller.damageCues.has('bot-1'), true);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 
   it('does not turn a personal jammed-listener cue into pooled bot intel', () => {
@@ -592,29 +635,51 @@ describe('host-side BotController', () => {
     assert.equal(controller.teamSightings.has('red:enemy'), true);
   });
 
-  it('immediately replans the team when pooled vision finds an enemy near an ally', () => {
+  it('immediately replans nearby responders and staggers the rest after a close sighting', () => {
     const controller = new BotController({ send: () => true });
     const state = createRoomState();
-    const bot = state.match.players[0];
-    controller.brains.set(bot.id, {
+    const bots = [
+      state.match.players[0],
+      { ...structuredClone(state.match.players[0]), id: 'bot-2', x: 420 },
+      { ...structuredClone(state.match.players[0]), id: 'bot-3', x: 900 },
+    ];
+    state.match.players = bots;
+    state.bots.roster.push(...bots.slice(1).map((bot) => ({
       id: bot.id,
-      botTeam: bot.team,
-      decision: { action: 'capture' },
-      nextThinkAt: Date.now() + 5_000,
-    });
+      team: bot.team,
+      parameters: { ...DEFAULT_BOT_PARAMETERS },
+    })));
+    const now = Date.now();
+    const staleDecisions = new Map();
+    for (const bot of bots) {
+      const decision = { action: 'capture' };
+      staleDecisions.set(bot.id, decision);
+      controller.brains.set(bot.id, {
+        id: bot.id,
+        botTeam: bot.team,
+        decision,
+        nextThinkAt: now + 5_000,
+      });
+    }
     state.match.players.push({
-      ...structuredClone(bot),
+      ...structuredClone(bots[0]),
       id: 'enemy',
       team: 'blue',
-      x: bot.x + 100,
+      x: bots[0].x + 100,
       isBot: false,
     });
-    const now = Date.now();
 
     controller.updateTeamIntel(state.match, now);
 
-    assert.equal(controller.brains.get(bot.id).decision, null);
-    assert.equal(controller.brains.get(bot.id).nextThinkAt, now);
+    for (const bot of bots.slice(0, 2)) {
+      assert.equal(controller.brains.get(bot.id).decision, null,
+        `${bot.id} is among the two nearest response bots`);
+      assert.equal(controller.brains.get(bot.id).nextThinkAt, now);
+    }
+    assert.equal(controller.brains.get(bots[2].id).decision, staleDecisions.get(bots[2].id),
+      'a distant teammate keeps its cached command while waiting to replan');
+    assert.ok(controller.brains.get(bots[2].id).nextThinkAt > now,
+      'the non-responder is staggered instead of being forced to replan immediately');
   });
 
   it('shares active Spy Camera sightings through walls and omits disabled-camera intel', () => {
@@ -670,15 +735,26 @@ describe('host-side BotController', () => {
       'a disabled camera cannot report new sightings');
   });
 
-  it('immediately replans a bot when jamming removes access to shared intel', () => {
+  it('immediately replans a jammed bot while staggering its teammates', () => {
     const controller = new BotController({ send: () => true });
     const state = createRoomState();
+    const teammate = { ...structuredClone(state.match.players[0]), id: 'bot-2', x: 800 };
+    state.match.players.push(teammate);
+    state.bots.roster.push({
+      id: teammate.id,
+      team: teammate.team,
+      parameters: { ...DEFAULT_BOT_PARAMETERS },
+    });
     controller.update(state, 'host');
     const bot = state.match.players[0];
+    const teammateBrain = controller.brains.get(teammate.id);
     const brain = controller.brains.get(bot.id);
     const staleSharedIntelDecision = { action: 'investigate-team-sighting' };
+    const staleTeammateDecision = { action: 'capture' };
     brain.decision = staleSharedIntelDecision;
     brain.nextThinkAt = Date.now() + 5_000;
+    teammateBrain.decision = staleTeammateDecision;
+    teammateBrain.nextThinkAt = Date.now() + 5_000;
     bot.jammedUntil = Date.now() + 5_000;
     controller.lastAttemptAt = -Infinity;
 
@@ -686,6 +762,10 @@ describe('host-side BotController', () => {
 
     assert.notEqual(brain.decision, staleSharedIntelDecision,
       'a newly jammed bot does not keep acting on its previous shared-intel decision');
+    assert.equal(teammateBrain.decision, staleTeammateDecision,
+      'unaffected teammates keep their cached decision during the stagger window');
+    assert.ok(teammateBrain.nextThinkAt > Date.now(),
+      'only the bot whose perception changed must replan immediately');
   });
 
   it('does not add smoke as a projectile blocker to an already-authorized shot', () => {
@@ -740,6 +820,28 @@ describe('host-side BotController', () => {
     assert.ok(sent.length > 0, 'the host sends the replanned bot command');
   });
 
+  it('reacts to a personal damage cue while jammed without sharing it as team intel', () => {
+    const controller = new BotController({ send: () => true });
+    const state = createRoomState();
+    const bot = state.match.players[0];
+    bot.jammedUntil = Date.now() + 5_000;
+    controller.update(state, 'host');
+
+    controller.acceptDamageCue({
+      victimId: bot.id,
+      team: bot.team,
+      bearing: 0,
+      audiencePlayerId: bot.id,
+      expiresAt: Date.now() + 1_000,
+    });
+    controller.lastAttemptAt = -Infinity;
+    controller.update(state, 'host');
+
+    assert.equal(controller.brains.get(bot.id).decision.action, 'investigate-damage');
+    assert.equal(controller.teamIncidents.size, 0,
+      'a jammed bot uses only its own damage direction, not pooled team intel');
+  });
+
   it('sends an unseen teammate to an ally-threatened enemy while the observer fights', () => {
     const sent = [];
     const controller = new BotController({ send: (...args) => { sent.push(args); return true; } });
@@ -787,8 +889,52 @@ describe('host-side BotController', () => {
 
     const decision = controller.brains.get('bot-1').decision;
     assert.equal(decision.action, 'assist-damaged-teammate');
-    assert.deepEqual(decision.target, { x: ally.x, y: ally.y });
+    assert.ok(decision.target.x > ally.x + 50,
+      'the bot responds toward the likely threat instead of moving only to the victim');
+    assert.ok(decision.direction.x > 0.9, 'the responder watches the damage bearing');
     assert.equal(decision.enemyId, null, 'the victim-relative damage bearing does not identify an attacker');
+    assert.equal(decision.fire, true, 'the bot may suppressively fire at the inferred attacker position');
+  });
+
+  it('immediately replans only the nearest nearby bots after shared damage intel', () => {
+    const controller = new BotController({ send: () => true });
+    const state = createRoomState();
+    const victim = state.match.players[0];
+    Object.assign(victim, { x: 100, y: 100 });
+    const nearby = structuredClone(victim);
+    Object.assign(nearby, { id: 'bot-2', x: 180, y: 100 });
+    const distant = structuredClone(victim);
+    Object.assign(distant, { id: 'bot-3', x: 900, y: 650 });
+    state.match.players.push(nearby, distant);
+    state.bots.roster.push(
+      { ...state.bots.roster[0], id: nearby.id, name: nearby.name },
+      { ...state.bots.roster[0], id: distant.id, name: distant.name },
+    );
+    controller.update(state, 'host');
+    const victimBrain = controller.brains.get(victim.id);
+    const nearbyBrain = controller.brains.get(nearby.id);
+    const distantBrain = controller.brains.get(distant.id);
+    for (const brain of [victimBrain, nearbyBrain, distantBrain]) {
+      brain.decision = { action: 'keep-current-command' };
+      brain.nextThinkAt = Date.now() + 60_000;
+    }
+
+    controller.acceptDamageCue({
+      id: 'damage-nearby',
+      victimId: victim.id,
+      team: 'red',
+      bearing: 0,
+      expiresAt: Date.now() + 1_000,
+    });
+
+    assert.equal(victimBrain.decision, null,
+      'the victim immediately replans to handle its direct damage cue');
+    assert.equal(nearbyBrain.decision, null, 'the nearest nearby bot immediately replans to respond');
+    assert.equal(nearbyBrain.nextThinkAt <= Date.now(), true);
+    assert.equal(distantBrain.decision.action, 'keep-current-command',
+      'unrelated distant bots keep their current command');
+    assert.ok(distantBrain.nextThinkAt > Date.now(),
+      'distant teammates are staggered instead of being forced to replan immediately');
   });
 
   it('passes team gunshot audio cues to nearby bots as approximate investigation leads', () => {
@@ -811,7 +957,7 @@ describe('host-side BotController', () => {
     assert.equal(decision.action, 'investigate-audio');
     assert.deepEqual(decision.target, { x: 550, y: 350 });
     assert.equal(decision.enemyId, null, 'gunshot audio does not identify a visible enemy');
-    assert.equal(decision.fire, false, 'the bot cannot fire based only on an audio lead');
+    assert.equal(decision.fire, true, 'a clear shot lane lets the bot suppressively fire at an audio lead');
   });
 
   it('broadcasts footstep intel to the bot team and immediately replans the closest hearer', () => {
@@ -845,8 +991,8 @@ describe('host-side BotController', () => {
     assert.equal(controller.getTeamIntel('red', state.match, Date.now()).audioCues.length, 1);
     assert.equal(controller.brains.get(firstBot.id).decision.action, 'investigate-audio');
     assert.deepEqual(controller.brains.get(firstBot.id).decision.target, { x: 400, y: 350 });
-    assert.equal(controller.brains.get(firstBot.id).decision.fire, false,
-      'the bot investigates sound but does not shoot based on it');
+    assert.equal(controller.brains.get(firstBot.id).decision.fire, true,
+      'the closest hearer can suppressively fire at the reported position');
 
     controller.brains.get(secondBot.id).nextThinkAt = 0;
     controller.lastAttemptAt = -Infinity;

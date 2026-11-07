@@ -1,10 +1,11 @@
 import { segmentMapObjectBoundsOverlap, segmentMapObjectEntryT } from './ProjectileModel.js';
-import { forEachMapObjectAlongSegment } from './MapSpatialIndex.js';
+import { someMapObjectAlongSegment } from './MapSpatialIndex.js';
 import { getWeaponMuzzlePosition } from './WeaponGeometry.js';
 
 export const VISION_HALF_ANGLE = 40 * Math.PI / 180;
 export const VISION_MEMORY_CELL_SIZE = 4;
-const BASE_RAY_COUNT = 160;
+export const TEAMMATE_VISION_BASE_RAY_COUNT = 96;
+const BASE_RAY_COUNT = 128;
 const ANGLE_EPSILON = 1e-5;
 const VISION_CORNER_PADDING = 2.5;
 const WALL_MEMORY_FRAGMENT_LENGTH = 2;
@@ -27,11 +28,15 @@ export function createVision(
   halfAngle = VISION_HALF_ANGLE,
   maximumRange = Math.hypot(mapWidth, mapHeight) * 2,
   projectileRadius = 0,
+  baseRayCount = BASE_RAY_COUNT,
 ) {
+  if (!Number.isInteger(baseRayCount) || baseRayCount < 1) {
+    throw new RangeError('Vision base ray count must be a positive integer.');
+  }
   const visionObjects = getVisionCandidateObjects(origin, angle, halfAngle, maximumRange, projectileRadius, mapObjects);
   const angles = new Set();
-  for (let index = 0; index <= BASE_RAY_COUNT; index += 1) {
-    angles.add(angle - halfAngle + (2 * halfAngle * index) / BASE_RAY_COUNT);
+  for (let index = 0; index <= baseRayCount; index += 1) {
+    angles.add(angle - halfAngle + (2 * halfAngle * index) / baseRayCount);
   }
   for (const candidate of visionObjects) {
     for (const vertex of candidate.vertices) {
@@ -46,19 +51,9 @@ export function createVision(
 
   const points = [origin];
   const walls = new Map();
-  const rayObjects = [];
   for (const rayAngle of [...angles].sort((left, right) => left - right)) {
-    const rayX = Math.cos(rayAngle);
-    const rayY = Math.sin(rayAngle);
-    rayObjects.length = 0;
-    for (const candidate of visionObjects) {
-      if (candidate.fullCircle ||
-          candidate.unitX * rayX + candidate.unitY * rayY >= candidate.cosAngularRadius - ANGLE_EPSILON) {
-        rayObjects.push(candidate.object);
-      }
-    }
     const { end: endpoint, firstObject } = traceVisionRay(
-      origin, rayAngle, maximumRange, rayObjects, projectileRadius,
+      origin, rayAngle, maximumRange, visionObjects, projectileRadius,
     );
     points.push(endpoint);
     if (firstObject) {
@@ -141,7 +136,10 @@ function getVisiblePropSurfaceFragment(object, hitPoint) {
 
 function getVisionCandidateObjects(origin, angle, halfAngle, maximumRange, padding, mapObjects) {
   const candidates = [];
+  let objectIndex = 0;
   for (const object of mapObjects ?? []) {
+    const index = objectIndex;
+    objectIndex += 1;
     if (!object || typeof object !== 'object' || object.blocksVision === false) continue;
     const geometry = getVisionObjectGeometry(object);
     if (!geometry) continue;
@@ -165,7 +163,13 @@ function getVisionCandidateObjects(origin, angle, halfAngle, maximumRange, paddi
     const dy = centerY - origin.y;
     const distance = Math.hypot(dx, dy);
     if (distance <= radius) {
-      candidates.push({ object, vertices: geometry.vertices, fullCircle: true });
+      candidates.push({
+        object,
+        index,
+        vertices: geometry.vertices,
+        fullCircle: true,
+        minimumDistance: 0,
+      });
       continue;
     }
     const angularRadius = Math.asin(Math.min(1, radius / distance));
@@ -173,14 +177,17 @@ function getVisionCandidateObjects(origin, angle, halfAngle, maximumRange, paddi
         halfAngle + angularRadius + ANGLE_EPSILON) {
       candidates.push({
         object,
+        index,
         vertices: geometry.vertices,
         unitX: dx / distance,
         unitY: dy / distance,
         cosAngularRadius: Math.cos(angularRadius),
+        minimumDistance: Math.max(0, distance - radius),
       });
     }
   }
-  return candidates;
+  return candidates.sort((left, right) =>
+    left.minimumDistance - right.minimumDistance || left.index - right.index);
 }
 
 function getVisionObjectGeometry(object) {
@@ -269,31 +276,42 @@ export function isPointVisible(point, vision, mapObjects) {
   if (vision.xray === true) return true;
   if (distance <= 1e-9) return true;
 
-  let blocked = false;
-  forEachMapObjectAlongSegment(mapObjects, vision.origin, point, 0, (object) => {
+  return !someMapObjectAlongSegment(mapObjects, vision.origin, point, 0, (object) => {
     const padding = object.shape === 'segment' ? VISION_CORNER_PADDING : 0;
-    if (blocked || object.blocksVision === false ||
-        !segmentMapObjectBoundsOverlap(vision.origin, point, object, padding)) return;
+    if (object.blocksVision === false ||
+        !segmentMapObjectBoundsOverlap(vision.origin, point, object, padding)) return false;
     const hit = getVisionObjectEntryT(vision.origin, point, object, 0, mapObjects);
-    if (hit !== null && hit < 1 - 1e-10) blocked = true;
+    return hit !== null && hit < 1 - 1e-10;
   });
-  return !blocked;
+}
+
+function isCandidateOnRay(candidate, rayX, rayY) {
+  return candidate.fullCircle ||
+    candidate.unitX * rayX + candidate.unitY * rayY >= candidate.cosAngularRadius - ANGLE_EPSILON;
 }
 
 function traceVisionRay(origin, angle, range, objects, projectileRadius) {
-  const end = { x: origin.x + Math.cos(angle) * range, y: origin.y + Math.sin(angle) * range };
+  const rayX = Math.cos(angle);
+  const rayY = Math.sin(angle);
+  const end = { x: origin.x + rayX * range, y: origin.y + rayY * range };
   let firstHitT = 1;
+  let firstHitObjectIndex = Infinity;
   let firstObject = null;
-  for (const object of objects ?? []) {
+  for (const candidate of objects ?? []) {
+    if (candidate.minimumDistance > firstHitT * range + ANGLE_EPSILON) break;
+    if (!isCandidateOnRay(candidate, rayX, rayY)) continue;
+    const object = candidate.object;
     if (object.blocksVision === false) continue;
     const padding = Math.max(
       Number.isFinite(projectileRadius) ? projectileRadius : 0,
       object.shape === 'segment' ? VISION_CORNER_PADDING : 0,
     );
     if (!segmentMapObjectBoundsOverlap(origin, end, object, padding)) continue;
-    const hit = getVisionObjectEntryT(origin, end, object, projectileRadius, objects);
-    if (hit !== null && hit < firstHitT) {
+    const hit = getVisionObjectEntryT(origin, end, object, projectileRadius, objects, rayX, rayY);
+    if (hit !== null && (hit < firstHitT ||
+        (hit === firstHitT && candidate.index < firstHitObjectIndex))) {
       firstHitT = hit;
+      firstHitObjectIndex = candidate.index;
       firstObject = object;
     }
   }
@@ -306,7 +324,7 @@ function traceVisionRay(origin, angle, range, objects, projectileRadius) {
   };
 }
 
-function getVisionObjectEntryT(start, end, object, projectileRadius, mapObjects) {
+function getVisionObjectEntryT(start, end, object, projectileRadius, mapObjects, rayX, rayY) {
   const radius = Number.isFinite(projectileRadius) ? projectileRadius : 0;
   const exactHit = segmentMapObjectEntryT(start, end, object, radius, 'blocksVision');
   if (exactHit !== null || object.shape !== 'segment' || radius >= VISION_CORNER_PADDING) return exactHit;
@@ -327,13 +345,16 @@ function getVisionObjectEntryT(start, end, object, projectileRadius, mapObjects)
     : length - along <= VISION_CORNER_PADDING
       ? { x: object.x2, y: object.y2 }
       : null;
-  if (!endpoint || !hasNearbyWallEndpoint(object, endpoint, mapObjects)) return null;
+  if (!endpoint || !hasNearbyWallEndpoint(object, endpoint, mapObjects, rayX, rayY)) return null;
   return cornerHit;
 }
 
-function hasNearbyWallEndpoint(object, endpoint, mapObjects) {
+function hasNearbyWallEndpoint(object, endpoint, mapObjects, rayX, rayY) {
   const maximumDistanceSquared = (2 * VISION_CORNER_PADDING) ** 2;
-  for (const other of mapObjects ?? []) {
+  for (const candidate of mapObjects ?? []) {
+    // Polygon rays previously supplied only angularly overlapping candidates.
+    if (rayX !== undefined && !isCandidateOnRay(candidate, rayX, rayY)) continue;
+    const other = candidate.object ?? candidate;
     if (!other || other === object || other.shape !== 'segment' || other.blocksVision === false) continue;
     for (const candidate of [{ x: other.x1, y: other.y1 }, { x: other.x2, y: other.y2 }]) {
       const dx = endpoint.x - candidate.x;
@@ -400,6 +421,31 @@ export function pointInVisionPolygon(point, polygon) {
     if (crosses) inside = !inside;
   }
   return inside;
+}
+
+export function getVisionPolygonScanlineIntervals(vision, y) {
+  const points = vision?.points;
+  if (!Array.isArray(points) || points.length < 3 || !Number.isFinite(y)) return [];
+
+  const intersections = [];
+  for (let current = 0, previous = points.length - 1;
+    current < points.length;
+    previous = current, current += 1) {
+    const a = points[current];
+    const b = points[previous];
+    if ((a.y > y) !== (b.y > y)) {
+      intersections.push(((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x);
+    }
+  }
+  intersections.sort((left, right) => left - right);
+
+  const intervals = [];
+  for (let index = 0; index + 1 < intersections.length; index += 2) {
+    const left = intersections[index];
+    const right = intersections[index + 1];
+    if (right > left) intervals.push([left, right]);
+  }
+  return intervals;
 }
 
 export function isSegmentInVision(start, end, vision) {

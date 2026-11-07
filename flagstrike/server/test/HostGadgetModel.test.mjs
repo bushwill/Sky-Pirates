@@ -60,7 +60,6 @@ describe('host gadget simulation data', () => {
       width: 20,
       height: 200,
       blocksProjectiles: true,
-      blocksVision: true,
     };
     const owner = { id: 'owner', team: 'red' };
     const placementTrajectory = calculateGadgetTrajectory(
@@ -101,11 +100,16 @@ describe('host gadget simulation data', () => {
       id: 'away-pulse',
       target: { x: 500, y: 350 },
     }), 'a pulse can be launched away from the wall');
-    assert.equal(createHostTrophyCommandProjectile({
+    const stoppedAtWall = createHostTrophyCommandProjectile({
       ...commandOptions,
       id: 'through-wall-pulse',
       target: { x: 700, y: 350 },
-    }), null, 'the wall still blocks a pulse aimed through it');
+    });
+    assert.ok(stoppedAtWall, 'the command may launch toward a physical wall');
+    assert.ok(
+      stoppedAtWall.trajectoryPreview.endpoint.x < wall.x - wall.width / 2,
+      'projectile collision still stops the pulse before the physical wall',
+    );
   });
 
   it('creates a short-lived Katana dash effect with its endpoints and owner attribution', () => {
@@ -217,18 +221,39 @@ describe('host gadget simulation data', () => {
     assert.equal(created.effect.expiresAt, 180_000);
   });
 
-  it('fires a non-bouncing Trophy command projectile from the owned device with line of sight', () => {
+  it('fires a non-bouncing Trophy command projectile through vision blockers', () => {
     const trophy = {
       id: 'trophy-1', type: TROPHY_SYSTEM_ID, ownerId: player.id, team: player.team,
       x: 100, y: 100, startedAt: 0, expiresAt: 180_000, health: TROPHY_SYSTEM_HEALTH,
+    };
+    const smoke = {
+      id: 'command-smoke',
+      gadgetId: SMOKE_GRENADE_ID,
+      type: 'smoke',
+      role: 'vision-smoke',
+      shape: 'circle',
+      x: 200,
+      y: 100,
+      radius: 40,
+      blocksVision: true,
+    };
+    const visionWall = {
+      id: 'command-wall',
+      shape: 'segment',
+      x1: 250,
+      y1: 50,
+      x2: 250,
+      y2: 150,
+      blocksVision: true,
+      blocksProjectiles: true,
     };
     const created = createHostTrophyCommandProjectile({
       id: 'trophy-pulse-1',
       player,
       trophy,
       target: { x: 300, y: 100 },
-      mapObjects: [],
-      visionObjects: [],
+      mapObjects: [visionWall],
+      visionObjects: [smoke, visionWall],
       now: 1_000,
       matchEndsAt: 180_000,
       mapWidth: 1_000,
@@ -240,6 +265,8 @@ describe('host gadget simulation data', () => {
     assert.equal(created.projectileSpeed, TROPHY_SYSTEM_COMMAND_PROJECTILE_SPEED);
     assert.deepEqual(created.trajectory[0], { x: trophy.x, y: trophy.y });
     assert.deepEqual(created.trajectoryPreview.endpoint, { x: 300, y: 100 });
+    assert.equal(created.trajectoryPreview.endpoint.x, 300,
+      'the command passes through smoke and vision-blocking projectile geometry');
     assert.equal(created.effect.expiresAt, 180_000, 'the projectile survives until impact');
     assert.equal(createHostTrophyCommandProjectile({
       id: 'jammed-player-pulse',
@@ -265,21 +292,9 @@ describe('host gadget simulation data', () => {
       mapWidth: 1_000,
       mapHeight: 700,
     }), null, 'a jammed Trophy cannot fire its command');
-    assert.equal(createHostTrophyCommandProjectile({
-      id: 'blocked-pulse',
-      player,
-      trophy,
-      target: { x: 300, y: 100 },
-      mapObjects: [],
-      visionObjects: [{ shape: 'segment', x1: 200, y1: 50, x2: 200, y2: 150, blocksVision: true }],
-      now: 1_000,
-      matchEndsAt: 180_000,
-      mapWidth: 1_000,
-      mapHeight: 700,
-    }), null, 'the command cannot target through a wall');
   });
 
-  it('clears only visible enemy gadgets and fields within the command radius', () => {
+  it('clears enemy gadgets and fields only within command range and line of sight', () => {
     const pulse = {
       id: 'pulse', type: TROPHY_SYSTEM_COMMAND_EFFECT_ID, gadgetId: TROPHY_SYSTEM_ID,
       team: 'red', x: 0, y: 0, radius: TROPHY_SYSTEM_COMMAND_RADIUS,
@@ -303,18 +318,18 @@ describe('host gadget simulation data', () => {
     assert.deepEqual([...visible.gadgetEffectIds].sort(), ['bio', 'cryo', 'fire', 'mine']);
     assert.deepEqual([...visible.smokeIds], ['enemy-smoke']);
 
-    const blocked = findTrophyCommandClearedEffects({
+    const throughWall = findTrophyCommandClearedEffects({
       pulse,
       gadgetEffects,
       smokes,
       visionObjects: [{ shape: 'segment', x1: 60, y1: -20, x2: 60, y2: 20, blocksVision: true }],
       now: 10_000,
     });
-    assert.deepEqual([...blocked.gadgetEffectIds], ['mine']);
-    assert.deepEqual([...blocked.smokeIds], []);
+    assert.deepEqual([...throughWall.gadgetEffectIds], ['mine']);
+    assert.deepEqual([...throughWall.smokeIds], []);
   });
 
-  it('clears an effect zone when any part is visible and ignores smoke as a pulse blocker', () => {
+  it('clears fields when any in-range part is visible, but not when the whole field is occluded', () => {
     const pulse = {
       id: 'pulse-surface-los', type: TROPHY_SYSTEM_COMMAND_EFFECT_ID, gadgetId: TROPHY_SYSTEM_ID,
       team: 'red', x: 0, y: 0, radius: TROPHY_SYSTEM_COMMAND_RADIUS,
@@ -337,27 +352,41 @@ describe('host gadget simulation data', () => {
       id: 'pulse-smoke', gadgetId: SMOKE_GRENADE_ID, type: 'smoke', role: 'vision-smoke',
       team: 'blue', x: 60, y: 100, radius: 30, blocksVision: true, expiresAt: 30_000,
     };
-    const walls = [
-      {
-        id: 'partial-zone-wall', shape: 'segment',
-        x1: 50, y1: -20, x2: 50, y2: 20, blocksVision: true,
-      },
-      {
-        id: 'full-occlusion-wall', shape: 'segment',
-        x1: 50, y1: -60, x2: 50, y2: -40, blocksVision: true,
-      },
-    ];
+    const wall = {
+      id: 'pulse-wall', shape: 'segment',
+      x1: 50, y1: -60, x2: 50, y2: 20, blocksVision: true,
+    };
 
     const cleared = findTrophyCommandClearedEffects({
       pulse,
       gadgetEffects: effects,
       smokes: [smoke],
-      visionObjects: [...walls, smoke],
+      visionObjects: [wall, smoke],
       now: 10_000,
     });
 
     assert.deepEqual([...cleared.gadgetEffectIds].sort(), ['molotov-zone', 'smoke-hidden-mine']);
     assert.deepEqual([...cleared.smokeIds], ['pulse-smoke']);
+
+    const rangeAndSight = findTrophyCommandClearedEffects({
+      pulse: { ...pulse, x: 0, y: 0, radius: 100 },
+      gadgetEffects: [
+        { id: 'edge-in-range', gadgetId: MOLOTOV_ID, team: 'blue', x: 80, y: 0,
+          radius: 40, expiresAt: 30_000 },
+        { id: 'edge-out-of-range', gadgetId: MOLOTOV_ID, team: 'blue', x: 160, y: 0,
+          radius: 30, expiresAt: 30_000 },
+        { id: 'fully-occluded', gadgetId: MOLOTOV_ID, team: 'blue', x: 80, y: 200,
+          radius: 10, expiresAt: 30_000 },
+        { id: 'center-in-range', gadgetId: MOLOTOV_ID, team: 'blue', x: 80, y: 40,
+          expiresAt: 30_000 },
+      ],
+      visionObjects: [
+        { shape: 'segment', x1: 50, y1: -20, x2: 50, y2: 20, blocksVision: true },
+        { id: 'full-wall', shape: 'segment', x1: 50, y1: 100, x2: 50, y2: 300, blocksVision: true },
+      ],
+      now: 10_000,
+    });
+    assert.deepEqual([...rangeAndSight.gadgetEffectIds].sort(), ['center-in-range', 'edge-in-range']);
   });
 
   it('creates a Vine Trap with its configured arm, latch, and recharge durations', () => {

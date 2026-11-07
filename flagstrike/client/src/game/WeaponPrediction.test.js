@@ -72,6 +72,33 @@ describe('client weapon prediction', () => {
     }).accepted, false);
   });
 
+  it('uses the suppressed SMG definition for firing and reload timing', () => {
+    const weapon = definitions['suppressed-smg'];
+    const firedAt = 1_000;
+    const initial = createInitialWeaponState(weapon, firedAt);
+    const shot = applyWeaponAction(initial, weapon, {
+      sequence: 1,
+      kind: 'fire',
+      weaponId: weapon.id,
+      at: firedAt,
+      direction: { x: 1, y: 0 },
+    });
+
+    assert.equal(shot.accepted, true);
+    assert.equal(shot.state.ammo, initial.ammo - 1);
+    assert.equal(shot.state.cooldownEndsAt, firedAt + weapon.cooldownMs);
+
+    const reloadAt = shot.state.cooldownEndsAt;
+    const reload = applyWeaponAction(shot.state, weapon, {
+      sequence: 2,
+      kind: 'reload',
+      weaponId: weapon.id,
+      at: reloadAt,
+    });
+    assert.equal(reload.accepted, true);
+    assert.equal(reload.state.reloadEndsAt, reloadAt + weapon.reloadDurationMs);
+  });
+
   it('allows reloading a partially used heavy sniper magazine', () => {
     const weapon = definitions['heavy-sniper'];
     const initial = createInitialWeaponState(weapon, 1_000);

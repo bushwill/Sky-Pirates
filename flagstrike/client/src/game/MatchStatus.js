@@ -1,5 +1,12 @@
 import { getTeamGroup } from '../../../shared/GameRules.js';
 
+export function getPostGameCountdownLabel(roomState) {
+  const customSeriesContinuing = !roomState?.quickPlay &&
+    roomState?.customSeriesState &&
+    roomState.customSeriesState.phase !== 'complete';
+  return customSeriesContinuing ? 'Next match' : 'Returning to lobby';
+}
+
 export function formatVictoryText(victory, quickPlay) {
   if (!victory) return '';
   const seriesLabel = quickPlay?.gameMode === 'longseries' ? 'LONG PLAY'

@@ -24,6 +24,7 @@ import { RoomManager } from '../RoomManager.mjs';
 describe('Sonar gadget', () => {
   it('has two charges, per-charge cooldowns, and only recharges while alive', () => {
     const definition = GADGET_DEFINITIONS[SONAR_ID];
+    assert.equal(SONAR_CHARGE_COOLDOWN_MS, 30_000);
     assert.equal(definition.charges, SONAR_CHARGES);
     assert.equal(definition.cooldownMs, SONAR_CHARGE_COOLDOWN_MS);
     assert.equal(definition.maxBounces, Infinity);
@@ -38,24 +39,20 @@ describe('Sonar gadget', () => {
       gadgetCount: 0,
     };
     queueSonarChargeRecharge(player);
-    advanceSonarChargeRecharges(player, 30_000);
+    assert.equal(advanceSonarChargeRecharges(player, SONAR_CHARGE_COOLDOWN_MS), 1);
+    assert.equal(player.gadgetCounts[SONAR_ID], 1);
     queueSonarChargeRecharge(player);
-    assert.equal(getSonarRechargeRemainingMs(player), 30_000);
+    assert.equal(getSonarRechargeRemainingMs(player), SONAR_CHARGE_COOLDOWN_MS);
 
     player.alive = false;
-    assert.equal(advanceSonarChargeRecharges(player, 30_000), 0);
-    assert.equal(player.gadgetCounts[SONAR_ID], 0);
+    assert.equal(advanceSonarChargeRecharges(player, SONAR_CHARGE_COOLDOWN_MS), 0);
+    assert.equal(player.gadgetCounts[SONAR_ID], 1);
 
     player.alive = true;
-    assert.equal(advanceSonarChargeRecharges(player, 30_000), 1);
-    assert.equal(player.gadgetCounts[SONAR_ID], 1);
-    assert.equal(player.gadgetCount, 1);
-    assert.equal(getSonarRechargeRemainingMs(player), SONAR_CHARGE_COOLDOWN_MS);
-    assert.equal(advanceSonarChargeRecharges(player, 30_000), 0);
-    assert.equal(player.gadgetCounts[SONAR_ID], 1);
-    assert.equal(advanceSonarChargeRecharges(player, 30_000), 1);
+    assert.equal(advanceSonarChargeRecharges(player, SONAR_CHARGE_COOLDOWN_MS), 1);
     assert.equal(player.gadgetCounts[SONAR_ID], 2);
     assert.equal(player.gadgetCount, 2);
+    assert.equal(getSonarRechargeRemainingMs(player), 0);
   });
 
   it('starts a missing recharge timer whenever charges are below maximum', () => {
@@ -67,8 +64,8 @@ describe('Sonar gadget', () => {
       gadgetCount: 1,
     };
     assert.equal(advanceSonarChargeRecharges(player, 20_000), 0);
-    assert.equal(getSonarRechargeRemainingMs(player), 40_000);
-    assert.equal(advanceSonarChargeRecharges(player, 40_000), 1);
+    assert.equal(getSonarRechargeRemainingMs(player), 10_000);
+    assert.equal(advanceSonarChargeRecharges(player, 10_000), 1);
     assert.equal(player.gadgetCounts[SONAR_ID], SONAR_CHARGES);
     assert.equal(getSonarRechargeRemainingMs(player), 0);
   });

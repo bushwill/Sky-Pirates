@@ -1,4 +1,9 @@
-import { GADGET_SWITCH_DURATION_MS, KATANA_ID, VINE_TRAP_ID } from '../../../shared/GadgetModel.js';
+import {
+  consumeGadgetCharge,
+  GADGET_SWITCH_DURATION_MS,
+  KATANA_ID,
+  refillGadgetCharges,
+} from '../../../shared/GadgetModel.js';
 import { resumeQueuedManualAction, suspendWeaponActionsForSwitch } from '../../../shared/WeaponActionState.js';
 
 export function getEquippedSlot(player, now = Date.now()) {
@@ -66,14 +71,15 @@ export function preservePendingGadgetState(previous, incoming, pendingSequence, 
   };
 }
 
-export function consumeSelectedGadget(player, { keepEquippedWhenEmpty = false } = {}) {
+export function consumeSelectedGadget(player, {
+  keepEquippedWhenEmpty = false,
+  infiniteUse = false,
+} = {}) {
   const gadgetId = player?.selectedGadgetId;
   if (!gadgetId) return 0;
-  player.gadgetCounts ??= {};
-  const remaining = Math.max(0, (player.gadgetCounts[gadgetId] ?? player.gadgetCount ?? 0) - 1);
-  player.gadgetCounts[gadgetId] = remaining;
-  player.gadgetCount = remaining;
-  if (gadgetId === VINE_TRAP_ID) player.vineTrapRechargeAt = null;
+  const remaining = infiniteUse
+    ? refillGadgetCharges(player, gadgetId)
+    : consumeGadgetCharge(player, gadgetId);
   if (remaining === 0 && !(keepEquippedWhenEmpty && gadgetId === KATANA_ID)) {
     player.equippedSlot = 'weapon';
     player.gadgetSwitchStartedAt = null;

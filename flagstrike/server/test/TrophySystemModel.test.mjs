@@ -44,6 +44,8 @@ describe('Trophy System model', () => {
     assert.equal(intercepted.length, 1);
     assert.equal(intercepted[0].effectId, pending.effect.id);
     assert.equal(intercepted[0].trophyId, redTrophy.id);
+    assert.deepEqual(intercepted[0].trophyPosition, { x: redTrophy.x, y: redTrophy.y });
+    assert.equal(intercepted[0].team, redTrophy.team);
     assert.equal(intercepted[0].position.x, 40,
       'it intercepts at the first simulation sample when the Trophy already has line of sight');
 
@@ -58,7 +60,7 @@ describe('Trophy System model', () => {
     ), [], 'non-team projectiles are not intercepted');
     assert.equal(findTrophyProjectileInterceptions(
       [{ ...pending, effect: { ...pending.effect, gadgetId: SONAR_ID } }], [redTrophy], [], 400, 600,
-    ).length, 1, 'Sonar projectiles are intercepted');
+    ).length, 0, 'Sonar projectiles are not intercepted');
     assert.equal(findTrophyProjectileInterceptions(
       [pending, { ...pending, effect: { ...pending.effect, id: 'second-projectile' } }],
       [redTrophy], [], 400, 600,
@@ -108,13 +110,13 @@ describe('Trophy System model', () => {
     ];
     assert.deepEqual(
       [...findTrophyPlacedGadgetInterceptions(devices, [redTrophy], [], 1_000)].sort(),
-      ['camera', 'mine', 'sonar', 'trophy', 'vine'],
+      ['camera', 'mine', 'trophy', 'vine'],
     );
 
     const wall = { shape: 'segment', x1: 75, y1: -20, x2: 75, y2: 20, blocksVision: true };
     assert.deepEqual(
       [...findTrophyPlacedGadgetInterceptions(devices, [redTrophy], [wall], 1_000)].sort(),
-      ['camera', 'mine', 'sonar'],
+      ['camera', 'mine'],
     );
   });
 });

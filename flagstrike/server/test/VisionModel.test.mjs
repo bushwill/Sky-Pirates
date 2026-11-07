@@ -6,12 +6,14 @@ import {
   forgetRememberedObjectSurfaces,
   getPlayerVisionOrigin,
   getSegmentVisionIntervals,
+  getVisionPolygonScanlineIntervals,
   isCircleVisible,
   isSegmentInVision,
   getNewlyRevealedWalls,
   isPointVisible,
   pointInVisionPolygon,
   revealVisionCells,
+  TEAMMATE_VISION_BASE_RAY_COUNT,
   VISION_HALF_ANGLE,
   VISION_MEMORY_CELL_SIZE,
 } from '../../shared/VisionModel.js';
@@ -83,6 +85,23 @@ describe('VisionModel', () => {
     assert.ok(!isPointVisible({ x: 80, y: 0 }, vision, [wall]));
   });
 
+  it('matches polygon point tests with scanline intervals over the fog grid', () => {
+    const walls = [
+      { id: 'flash-wall', shape: 'segment', x1: 150, y1: 85, x2: 150, y2: 170 },
+      { id: 'flash-prop', shape: 'rect', x: 90, y: 180, width: 18, height: 34 },
+    ];
+    const vision = createVision({ x: 128, y: 128 }, 0, walls, 256, 256, Math.PI, 110);
+
+    for (let y = 2; y < 256; y += VISION_MEMORY_CELL_SIZE) {
+      const intervals = getVisionPolygonScanlineIntervals(vision, y);
+      for (let x = 2; x < 256; x += VISION_MEMORY_CELL_SIZE) {
+        const scanlineVisible = intervals.some(([left, right]) => x >= left && x < right);
+        assert.equal(scanlineVisible, pointInVisionPolygon({ x, y }, vision),
+          `scanline membership at (${x}, ${y}) matches polygon membership`);
+      }
+    }
+  });
+
   it('lets Spy Camera vision see through walls while respecting its range and cone angle', () => {
     const wall = { id: 'camera-wall', shape: 'segment', x1: 40, y1: -20, x2: 40, y2: 20 };
     const vision = createXrayVision({ x: 0, y: 0 }, 0, 200, 100, 0.2, 100);
@@ -105,6 +124,67 @@ describe('VisionModel', () => {
       'line of sight cannot thread the small gap between wall endpoints');
     assert.equal(pointInVisionPolygon(target, vision), false,
       'the rendered vision polygon also remains behind the joined corner');
+  });
+
+  it('preserves joined-wall visibility with distance-ordered candidates on larger maps', () => {
+    const walls = [
+      { id: 'front-wall', shape: 'segment', x1: 50, y1: -5, x2: 50, y2: 5 },
+      { id: 'angled-wall', shape: 'segment', x1: 50, y1: 5, x2: 90, y2: -15 },
+      ...Array.from({ length: 40 }, (_, index) => ({
+        id: `non-blocking-${index}`,
+        shape: 'circle',
+        x: 200 + index * 10,
+        y: 200,
+        radius: 3,
+        blocksVision: false,
+      })),
+    ];
+    const vision = createVision(
+      { x: 0, y: 0 }, 0, walls, 150, 100, 0.6, 300, 0, TEAMMATE_VISION_BASE_RAY_COUNT,
+    );
+    const angledFragments = vision.walls.filter((wall) => wall.id.startsWith('angled-wall:visible:'));
+
+    assert.ok(angledFragments.length > 0);
+    assert.ok(angledFragments.every((fragment) => (fragment.y1 + fragment.y2) / 2 < -6));
+  });
+
+  it('keeps map order when distance-ordered rays hit overlapping walls equally', () => {
+    const firstWall = { id: 'first-wall', shape: 'segment', x1: 50, y1: -30, x2: 50, y2: 30 };
+    const overlappingWall = { ...firstWall, id: 'overlapping-wall' };
+    const vision = createVision({ x: 0, y: 0 }, 0, [firstWall, overlappingWall], 200, 100);
+
+    assert.ok(vision.walls.some((wall) => wall.id.startsWith('first-wall:visible:')));
+    assert.equal(vision.walls.some((wall) => wall.id.startsWith('overlapping-wall:visible:')), false);
+  });
+
+  it('calculates each ray direction once without dropping joined-corner rays', () => {
+    const walls = [
+      { id: 'front', shape: 'segment', x1: 50, y1: -30, x2: 50, y2: 20 },
+      { id: 'joined', shape: 'segment', x1: 52, y1: 22, x2: 90, y2: 60 },
+    ];
+    const originalSin = Math.sin;
+    let sineCalls = 0;
+    let sparseSineCalls;
+    let sparseVision;
+    let vision;
+    try {
+      Math.sin = (angle) => {
+        sineCalls += 1;
+        return originalSin(angle);
+      };
+      sparseVision = createVision({ x: 0, y: 0 }, 0, walls, 200, 150,
+        VISION_HALF_ANGLE, 500, 0, 64);
+      sparseSineCalls = sineCalls;
+      sineCalls = 0;
+      vision = createVision({ x: 0, y: 0 }, 0, walls, 200, 150,
+        VISION_HALF_ANGLE, 500, 0, 128);
+    } finally {
+      Math.sin = originalSin;
+    }
+    assert.equal(sineCalls - sparseSineCalls, vision.points.length - sparseVision.points.length,
+      'each extra ray calculates its direction once, excluding fixed geometry-angle setup');
+    assert.ok(vision.points.length > 130, 'wall-vertex rays supplement the base fan');
+    assert.equal(pointInVisionPolygon({ x: 100, y: 21 }, vision), false);
   });
 
   it('anchors vision at the leaned weapon position while using the independent vision angle', () => {

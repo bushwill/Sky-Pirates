@@ -1,18 +1,21 @@
 import { getPlayerVisionOrigin, isPointVisible, VISION_HALF_ANGLE } from './VisionModel.js';
-import { MAX_PLAYER_SPEED, PLAYER_RADIUS } from './MovementModel.js';
+import { MAX_PLAYER_SPEED, PLAYER_RADIUS, SLOW_WALK_SPEED_SCALE } from './MovementModel.js';
 import { DEFAULT_PROJECTILE_DEFINITIONS, segmentCircleEntryTCoordinates, segmentMapObjectBoundsOverlap, segmentMapObjectEntryT } from './ProjectileModel.js';
-import { getWeaponMuzzlePosition } from './WeaponGeometry.js';
+import { getWeaponAimAngle, getWeaponMuzzlePosition } from './WeaponGeometry.js';
 import { getMaximumSpreadRadians } from './WeaponAccuracy.js';
 import { circleOverlapsMapObjects } from './MapGeometry.js';
+import { getInventoryEffects } from './InventoryModel.js';
 import {
   calculateGadgetTrajectory,
   BIO_FIELD_ID,
   BIO_FIELD_ENEMY_MOVEMENT_MULTIPLIER,
   CRYO_GRENADE_ID,
   CRYO_MOVEMENT_SPEED_MULTIPLIER,
+  DEFAULT_GADGET_THROW_COLLISION_RADIUS,
   FLASH_GRENADE_ID,
   GADGET_DEFINITIONS,
   getGadgetProjectileSpeed,
+  isPlayerFlashBlinded,
   JAMMER_GRENADE_ID,
   JAMMER_GRENADE_RADIUS,
   isGadgetJammed,
@@ -25,6 +28,7 @@ import {
   MOLOTOV_ID,
   ORBITAL_STRIKE_ID,
   PROXIMITY_MINE_BODY_RADIUS,
+  PROXIMITY_MINE_HIT_RADIUS,
   PROXIMITY_MINE_ARMING_DURATION_MS,
   PROXIMITY_MINE_ID,
   PROXIMITY_MINE_THROW_RANGE,
@@ -40,6 +44,10 @@ import {
   VINE_TRAP_ID,
 } from './GadgetModel.js';
 import { hasTrophyLineOfSight } from './TrophySystemModel.js';
+import { isTrophyCommandEffectInRangeAndSight } from './HostGadgetModel.js';
+import { getBotMapStrategy } from './BotMapStrategy.js';
+import { collectBotPerception } from './BotPerception.js';
+import { someMapObjectAlongSegment } from './MapSpatialIndex.js';
 
 const BOT_TRAVEL_SPEED = MAX_PLAYER_SPEED;
 const BOT_GADGETS = Object.values(GADGET_DEFINITIONS);
@@ -67,19 +75,28 @@ export const BOT_PARAMETER_LIMITS = Object.freeze({
 });
 
 export const BOT_PERSONALITIES = Object.freeze([
-  { id: 'bot-1', name: 'Obamna', parameters: { reflexMs: 230, accuracy: 0.86, thinkingComplexity: 3, thinkingTimeMs: 100, aggressiveness: 0.36, objectiveFocus: 0.94, defenseFocus: 0.72, retreatHealth: 25 } },
-  { id: 'bot-2', name: 'Hugh Jass', parameters: { reflexMs: 185, accuracy: 0.72, thinkingComplexity: 2, thinkingTimeMs: 65, aggressiveness: 0.91, objectiveFocus: 0.48, defenseFocus: 0.38, retreatHealth: 18 } },
-  { id: 'bot-3', name: 'Chris Handsome', parameters: { reflexMs: 310, accuracy: 0.82, thinkingComplexity: 4, thinkingTimeMs: 190, aggressiveness: 0.34, objectiveFocus: 0.82, defenseFocus: 0.96, retreatHealth: 48 } },
-  { id: 'bot-4', name: 'Guy Balls', parameters: { reflexMs: 175, accuracy: 0.58, thinkingComplexity: 1, thinkingTimeMs: 50, aggressiveness: 0.98, objectiveFocus: 0.42, defenseFocus: 0.3, retreatHealth: 15 } },
-  { id: 'bot-5', name: 'Indigenously', parameters: { reflexMs: 275, accuracy: 0.78, thinkingComplexity: 3, thinkingTimeMs: 120, aggressiveness: 0.58, objectiveFocus: 0.9, defenseFocus: 0.68, retreatHealth: 34 } },
-  { id: 'bot-6', name: 'oqo', parameters: { reflexMs: 225, accuracy: 0.64, thinkingComplexity: 3, thinkingTimeMs: 80, aggressiveness: 0.76, objectiveFocus: 0.64, defenseFocus: 0.52, retreatHealth: 28 } },
-  { id: 'bot-7', name: 'Fagalochini Faguchio', parameters: { reflexMs: 340, accuracy: 0.9, thinkingComplexity: 5, thinkingTimeMs: 200, aggressiveness: 0.22, objectiveFocus: 0.75, defenseFocus: 0.9, retreatHealth: 55 } },
-  { id: 'bot-8', name: 'Hugh Mungus', parameters: { reflexMs: 195, accuracy: 0.52, thinkingComplexity: 2, thinkingTimeMs: 60, aggressiveness: 0.88, objectiveFocus: 0.58, defenseFocus: 0.44, retreatHealth: 20 } },
-  { id: 'bot-9', name: 'Mike Caulkner', parameters: { reflexMs: 295, accuracy: 0.84, thinkingComplexity: 4, thinkingTimeMs: 175, aggressiveness: 0.48, objectiveFocus: 0.72, defenseFocus: 0.84, retreatHealth: 42 } },
+  { id: 'bot-1', name: 'Lee Kee Buhm', parameters: { reflexMs: 230, accuracy: 0.86, thinkingComplexity: 3, thinkingTimeMs: 100, aggressiveness: 0.36, objectiveFocus: 0.94, defenseFocus: 0.72, retreatHealth: 25 } },
+  { id: 'bot-2', name: 'Chris P. Bacon', parameters: { reflexMs: 185, accuracy: 0.72, thinkingComplexity: 2, thinkingTimeMs: 65, aggressiveness: 0.91, objectiveFocus: 0.48, defenseFocus: 0.38, retreatHealth: 18 } },
+  { id: 'bot-3', name: 'Brock Lee', parameters: { reflexMs: 310, accuracy: 0.82, thinkingComplexity: 4, thinkingTimeMs: 190, aggressiveness: 0.34, objectiveFocus: 0.82, defenseFocus: 0.96, retreatHealth: 48 } },
+  { id: 'bot-4', name: 'Ben Dover', parameters: { reflexMs: 175, accuracy: 0.58, thinkingComplexity: 1, thinkingTimeMs: 50, aggressiveness: 0.98, objectiveFocus: 0.42, defenseFocus: 0.3, retreatHealth: 15 } },
+  { id: 'bot-5', name: 'Phil McCracken', parameters: { reflexMs: 275, accuracy: 0.78, thinkingComplexity: 3, thinkingTimeMs: 120, aggressiveness: 0.58, objectiveFocus: 0.9, defenseFocus: 0.68, retreatHealth: 34 } },
+  { id: 'bot-6', name: 'Moe Zarella', parameters: { reflexMs: 225, accuracy: 0.64, thinkingComplexity: 3, thinkingTimeMs: 80, aggressiveness: 0.76, objectiveFocus: 0.64, defenseFocus: 0.52, retreatHealth: 28 } },
+  { id: 'bot-7', name: 'Hai Howie Yu', parameters: { reflexMs: 340, accuracy: 0.9, thinkingComplexity: 5, thinkingTimeMs: 200, aggressiveness: 0.22, objectiveFocus: 0.75, defenseFocus: 0.9, retreatHealth: 55 } },
+  { id: 'bot-8', name: 'Chip Munk', parameters: { reflexMs: 195, accuracy: 0.52, thinkingComplexity: 2, thinkingTimeMs: 60, aggressiveness: 0.88, objectiveFocus: 0.58, defenseFocus: 0.44, retreatHealth: 20 } },
+  { id: 'bot-9', name: 'Shay King', parameters: { reflexMs: 295, accuracy: 0.84, thinkingComplexity: 4, thinkingTimeMs: 175, aggressiveness: 0.48, objectiveFocus: 0.72, defenseFocus: 0.84, retreatHealth: 42 } },
   { id: 'bot-10', name: 'Anita Bath', parameters: { reflexMs: 250, accuracy: 0.7, thinkingComplexity: 3, thinkingTimeMs: 110, aggressiveness: 0.68, objectiveFocus: 0.86, defenseFocus: 0.58, retreatHealth: 30 } },
 ].map((bot) => Object.freeze({ ...bot, parameters: Object.freeze(bot.parameters) })));
 
 const TAU = Math.PI * 2;
+const COVER_RADIAL_DIRECTIONS = Array.from({ length: 16 }, (_, index) => {
+  const angle = index * TAU / 16;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+});
+const COVER_ENDPOINT_DIRECTIONS = Array.from({ length: 8 }, (_, index) => {
+  const angle = index * TAU / 8;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+});
+const COVER_SEGMENT_FRACTIONS = [0.12, 0.38, 0.64, 0.88];
 const SEEN_MEMORY_MS = 12_000;
 const COMBAT_TARGET_MEMORY_MS = 1_200;
 const STRIKE_SPY_CAMERA_MIN_PROGRESS = 0.35;
@@ -88,12 +105,27 @@ const STUCK_TIMEOUT_MS = 850;
 const RED_OBJECTIVE_DETOUR_MS = 1_400;
 const RED_OBJECTIVE_RECOVERY_MS = 2_500;
 const TEAMMATE_THREAT_RADIUS = 420;
-const TEAM_SIGHTING_RESPONSE_RANGE = 1_200;
+export const BOT_TEAM_SIGHTING_RESPONSE_RANGE = 1_200;
 const TEAM_SIGHTING_INVESTIGATION_RANGE = 1_000;
-const DAMAGE_RESPONSE_CLOSE_RANGE = 360;
+const ORBITAL_STRIKE_MAX_INTEL_AGE_MS = 350;
+const TACTICAL_COVER_SEARCH_RANGE = 190;
+const MIN_DEFENDER_COVER_SPACING = 54;
+const MIN_DEFENDER_POST_SPACING = 88;
+const MIN_DEFENDER_WATCH_SPACING = 110;
+const TACTICAL_COVER_REPLAN_MS = 350;
+export const BOT_TEAM_DAMAGE_RESPONSE_RANGE = 760;
+export const BOT_TEAM_INTEL_RESPONDER_COUNT = 2;
+const CLEARING_ACTIONS = new Set([
+  'leave-spawn', 'capture', 'recover-flag', 'escort', 'intercept', 'hunt', 'hunt-carrier',
+  'search-flag', 'support', 'respond-team-threat', 'respond-teammate-death',
+  'investigate-team-sighting', 'investigate-audio', 'investigate-ping',
+]);
 const RED_LOW_PRIORITY_ACTIONS = new Set([
-  'hunt', 'investigate-damage', 'respond-teammate-death', 'assist-damaged-teammate',
-  'investigate-audio', 'watch-entrance',
+  'hunt', 'respond-teammate-death', 'investigate-audio', 'watch-entrance',
+]);
+const PING_PROTECTED_ACTIONS = new Set([
+  'leave-spawn', 'recover-flag', 'escort', 'intercept', 'hunt-carrier',
+  'search-flag', 'armor-recovery',
 ]);
 const BOT_WEAPONS = Object.values(DEFAULT_PROJECTILE_DEFINITIONS);
 const BOT_WEAPONS_BY_ID = new Map(BOT_WEAPONS.map((weapon) => [weapon.id, weapon]));
@@ -109,14 +141,95 @@ export function normalizeBotParameters(parameters = {}) {
   return normalized;
 }
 
-function chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now) {
+const AREA_DENIAL_GADGET_IDS = new Set([
+  BIO_FIELD_ID,
+  CRYO_GRENADE_ID,
+  MOLOTOV_ID,
+  ORBITAL_STRIKE_ID,
+]);
+
+function getCurrentGadgetEffects(match, now) {
+  const effects = [];
+  const effectIds = new Set();
+  for (const effect of match.gadgetEffects ?? []) {
+    if ((effect.startedAt ?? 0) > now || effect.expiresAt <= now) continue;
+    effects.push(effect);
+    if (typeof effect.id === 'string') effectIds.add(effect.id);
+  }
+  for (const pending of match.pendingGadgetEffects ?? []) {
+    const effect = pending?.effect;
+    const startsAt = pending?.detonatesAt ?? pending?.landedAt ?? effect?.startedAt ?? now;
+    if (!effect || startsAt < now || effect.expiresAt <= startsAt ||
+        (typeof effect.id === 'string' && effectIds.has(effect.id))) continue;
+    effects.push({ ...effect, startedAt: startsAt });
+    if (typeof effect.id === 'string') effectIds.add(effect.id);
+  }
+  return effects;
+}
+
+function isAreaDenialEffect(effect) {
+  return AREA_DENIAL_GADGET_IDS.has(effect?.gadgetId) ||
+    [BIO_FIELD_ID, CRYO_GRENADE_ID, MOLOTOV_ID, 'orbital-strike-warning',
+      'orbital-strike-explosion'].includes(effect?.type);
+}
+
+function getEffectAreaRadius(effect) {
+  return effect?.radius ?? GADGET_DEFINITIONS[effect?.gadgetId]?.effectRadius ?? 0;
+}
+
+function overlapsEffectArea(point, radius, effect) {
+  return distance(point, effect) <= radius + getEffectAreaRadius(effect);
+}
+
+function getKnownEnemyTrophies(bot, gadgetEffects, now, context) {
+  const visionObjects = context.visionObjects ?? [];
+  const visionSources = [
+    ...(context.vision ? [context.vision] : []),
+    ...(context.teamIntel?.visionSources ?? []),
+  ];
+  return gadgetEffects.filter((effect) =>
+    effect.type === TROPHY_SYSTEM_ID && effect.team !== bot.team &&
+    (effect.startedAt ?? 0) <= now && effect.expiresAt > now &&
+    (effect.health ?? TROPHY_SYSTEM_HEALTH) > 0 &&
+    visionSources.some((vision) =>
+      isPointVisible(effect, vision, vision.xray ? [] : visionObjects)));
+}
+
+function isTrajectoryCoveredByTrophy(trajectory, trophies, visionObjects) {
+  if (!trophies.length || !Array.isArray(trajectory?.points)) return false;
+  for (let index = 1; index < trajectory.points.length; index += 1) {
+    const start = trajectory.points[index - 1];
+    const end = trajectory.points[index];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 8));
+    for (let step = 0; step <= steps; step += 1) {
+      const progress = step / steps;
+      const position = { x: start.x + dx * progress, y: start.y + dy * progress };
+      if (trophies.some((trophy) => hasTrophyLineOfSight(trophy, position, visionObjects))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isPointCoveredByTrophy(point, trophies, visionObjects) {
+  return trophies.some((trophy) => hasTrophyLineOfSight(trophy, point, visionObjects));
+}
+
+function chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now, context, gadgetEffects) {
   const gadget = GADGET_DEFINITIONS[BIO_FIELD_ID];
   const radius = gadget.effectRadius;
   const allies = [bot, ...teammates.filter((ally) => ally.id !== bot.id)].filter((ally) =>
     ally.alive !== false && (ally.health ?? 100) > 0 && ally.team === bot.team);
-  const activeFields = (match.gadgetEffects ?? []).filter((effect) =>
-    effect.type === BIO_FIELD_ID && effect.team === bot.team &&
-    effect.startedAt <= now && effect.expiresAt > now);
+  const activeFields = gadgetEffects.filter((effect) =>
+    effect.type === BIO_FIELD_ID && effect.team === bot.team);
+  const activeAreaDenial = gadgetEffects.filter(isAreaDenialEffect);
+  const enemyFields = gadgetEffects.filter((effect) =>
+    effect.type === BIO_FIELD_ID && effect.team !== bot.team &&
+    (!context.vision ||
+      isPointVisible(effect, context.vision, context.visionObjects ?? match.map.objects)));
   const candidates = allies.map((ally) => ({ x: ally.x, y: ally.y }));
   for (let first = 0; first < allies.length; first += 1) {
     for (let second = first + 1; second < allies.length; second += 1) {
@@ -128,6 +241,7 @@ function chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now) {
       }
     }
   }
+  candidates.push(...enemyFields.map((field) => ({ x: field.x, y: field.y })));
   let best = null;
   for (const target of candidates) {
     const origin = getGadgetThrowOrigin(bot, target, match.map.objects);
@@ -136,14 +250,26 @@ function chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now) {
       collisionRadius: gadget.throwCollisionRadius,
       maximumBounces: gadget.maxBounces,
     });
-    if (!trajectory) continue;
+    if (!trajectory || isTrajectoryCoveredByTrophy(
+      trajectory, context.knownEnemyTrophies ?? [], context.visionObjects ?? match.map.objects,
+    )) continue;
     const endpoint = trajectory.endpoint;
+    const overlappingEffects = activeAreaDenial.filter((effect) =>
+      overlapsEffectArea(endpoint, radius, effect));
+    const neutralizedEnemyFields = overlappingEffects.filter((effect) =>
+      effect.type === BIO_FIELD_ID && effect.team !== bot.team);
+    if (overlappingEffects.some((effect) =>
+      effect.type !== BIO_FIELD_ID || effect.team === bot.team) ||
+        (overlappingEffects.some((effect) => effect.type === BIO_FIELD_ID &&
+          effect.team === bot.team) && neutralizedEnemyFields.length === 0)) continue;
     const freshAllies = allies.filter((ally) =>
       distance(ally, endpoint) <= radius &&
-      !activeFields.some((field) => distance(ally, field) <= (field.radius ?? radius)));
+      !activeFields.some((field) => distance(ally, field) <= getEffectAreaRadius(field)));
     const affectedEnemies = visibleEnemies.filter((enemy) => distance(enemy, endpoint) <= radius);
-    if (freshAllies.length === 0 && affectedEnemies.length === 0) continue;
-    const score = freshAllies.length * 2 + affectedEnemies.length;
+    if (freshAllies.length === 0 && affectedEnemies.length === 0 &&
+        neutralizedEnemyFields.length === 0) continue;
+    const score = freshAllies.length * 2 + affectedEnemies.length +
+      neutralizedEnemyFields.length * 3;
     const range = distance(bot, endpoint);
     if (!best || score > best.score || (score === best.score && range < best.range)) {
       best = { target, score, range };
@@ -169,6 +295,10 @@ export function createBotBrain(id, now = 0, random = Math.random) {
     detourUntil: 0,
     explorationTarget: null,
     combatMode: 'approach',
+    tacticalCoverCache: null,
+    clearanceCover: null,
+    defenseRouteAssignment: null,
+    defensePost: null,
   };
 }
 
@@ -198,6 +328,18 @@ function chooseBotLoadoutByAppeal(definitions, random) {
 export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS, now = 0, teamContext = {}) {
   const settings = normalizeBotParameters(parameters);
   const brain = bot.botBrain ?? (bot.botBrain = createBotBrain(bot.id, now));
+  const worldState = teamContext?.worldState;
+  const livingPlayers = worldState?.livingPlayers ??
+    match.players.filter((player) => player.alive && player.health > 0);
+  const livingPlayersByTeam = worldState?.livingPlayersByTeam;
+  const teammates = livingPlayersByTeam?.get(bot.team) ??
+    livingPlayers.filter((player) => player.team === bot.team);
+  const opposingTeam = bot.team === 'red' ? 'blue' : bot.team === 'blue' ? 'red' : null;
+  const enemies = opposingTeam && livingPlayersByTeam?.has(opposingTeam)
+    ? livingPlayersByTeam.get(opposingTeam)
+    : livingPlayers.filter((player) => player.team !== bot.team);
+  const playersById = worldState?.playersById;
+  const mapStrategy = teamContext?.mapStrategy ?? getBotMapStrategy(match.map);
   brain.matchWeaponId = bot.selectedWeaponId ?? brain.loadoutWeaponId ?? DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle.id;
   const damageCue = teamContext?.damageCue;
   const activeDamageCue = damageCue && Number.isFinite(damageCue.bearing) &&
@@ -207,31 +349,15 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     const activeSmokes = (match.smokes ?? []).filter((smoke) => smoke.expiresAt > now);
     visionObjects = activeSmokes.length ? [...match.map.objects, ...activeSmokes] : match.map.objects;
   }
-  const teammates = match.players.filter((candidate) => candidate.alive && candidate.health > 0 && candidate.team === bot.team);
   const weapon = BOT_WEAPONS_BY_ID.get(brain.matchWeaponId) ?? DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle;
   const weaponState = bot.weaponStats?.[weapon.id] ?? {};
-  const visionAngle = bot.visionAngle ?? weaponState.aimAngle ?? 0;
-  const origin = getPlayerVisionOrigin(bot, match.map.objects);
-  const vision = { origin, angle: visionAngle, halfAngle: VISION_HALF_ANGLE };
-  const visibleEnemies = match.players.filter((candidate) => candidate.alive && candidate.health > 0 && candidate.team !== bot.team)
-    .filter((enemy) => isPointVisible(enemy, {
-      origin,
-      angle: visionAngle,
-      halfAngle: VISION_HALF_ANGLE,
-    }, visionObjects));
-  const visibleEnemyMines = (match.gadgetEffects ?? []).filter((effect) =>
-    (effect.type === 'mine' && isProximityMineArmed(effect, now) ||
-      effect.type === VINE_TRAP_ID && !effect.latchedEnemyId) &&
-    ['red', 'blue'].includes(effect.team) && effect.team !== bot.team &&
-    effect.expiresAt > now &&
-    isPointVisible(effect, vision, visionObjects))
-    .sort((a, b) => distance(bot, a) - distance(bot, b) || String(a.id).localeCompare(String(b.id)));
-  const visibleEnemyDeployables = (match.gadgetEffects ?? []).filter((effect) =>
-    [SPY_CAMERA_ID, TROPHY_SYSTEM_ID].includes(effect.type) &&
-    ['red', 'blue'].includes(effect.team) && effect.team !== bot.team &&
-    effect.expiresAt > now && effect.health > 0 &&
-    isPointVisible(effect, vision, visionObjects))
-    .sort((a, b) => distance(bot, a) - distance(bot, b) || String(a.id).localeCompare(String(b.id)));
+  const {
+    visionAngle,
+    vision,
+    visibleEnemies,
+    visibleEnemyMines,
+    visibleEnemyDeployables,
+  } = collectBotPerception(bot, match, weaponState, enemies, now, visionObjects);
 
   for (const enemy of visibleEnemies) {
     const previous = brain.rememberedEnemies[enemy.id];
@@ -259,7 +385,8 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     brain.targetEnemyId = targetEnemy.id;
   } else if (brain.targetEnemyId) {
     const remembered = brain.rememberedEnemies[brain.targetEnemyId];
-    const rememberedActor = match.players.find((player) => player.id === brain.targetEnemyId);
+    const rememberedActor = playersById?.get(brain.targetEnemyId) ??
+      match.players.find((player) => player.id === brain.targetEnemyId);
     if (remembered && rememberedActor?.alive && rememberedActor.health > 0 &&
         now - remembered.seenAt <= COMBAT_TARGET_MEMORY_MS) {
       targetEnemy = { id: rememberedActor.id, team: rememberedActor.team, x: remembered.x, y: remembered.y };
@@ -278,7 +405,8 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
   const enemiesNearby = visibleEnemies.filter((enemy) => distance(bot, enemy) < 280).length;
   const outnumbered = enemiesNearby > alliesNearby;
   const flag = match.flag;
-  const carrier = match.players.find((candidate) => candidate.id === flag.heldBy) ?? null;
+  const carrier = playersById?.get(flag.heldBy) ??
+    match.players.find((candidate) => candidate.id === flag.heldBy) ?? null;
   const isCarrier = flag.heldBy === bot.id;
   const friendlyCarrier = carrier?.team === bot.team ? carrier : null;
   const actualEnemyCarrier = carrier && carrier.team !== bot.team ? carrier : null;
@@ -290,36 +418,75 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     rememberedCarrier) ? actualEnemyCarrier : null;
   const lowHealth = bot.health <= settings.retreatHealth ||
     (outnumbered && bot.health <= settings.retreatHealth * 1.5);
+  const inventoryEffects = getInventoryEffects(bot.inventory);
+  const maximumArmor = Math.max(0, bot.maxArmor ?? inventoryEffects.armor);
+  const currentArmor = maximumArmor > 0
+    ? clamp(bot.armor ?? maximumArmor, 0, maximumArmor) : 0;
+  const armorConfidence = maximumArmor > 0 ? currentArmor / maximumArmor : 1;
+  const lowArmor = maximumArmor > 0 && currentArmor <= Math.max(1, maximumArmor * 0.15);
+  const teamIntel = teamContext?.teamIntel;
+  const teamPings = (teamIntel?.pings ?? []).filter((ping) =>
+    ping.team === bot.team && Number.isFinite(ping.expiresAt) && ping.expiresAt > now &&
+    Number.isFinite(ping.x) && Number.isFinite(ping.y));
+  const assignedPing = teamPings
+    .filter((ping) => ping.responderId === bot.id)
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))[0] ?? null;
   const gameplayStartsAt = Number.isFinite(match.gameplayStartsAt) ? match.gameplayStartsAt : 0;
   const endsAt = Number.isFinite(match.endsAt) ? match.endsAt : gameplayStartsAt + 180_000;
   const remaining = Math.max(0, endsAt - now);
   const redTimePressure = bot.team === 'red'
     ? clamp(1 - remaining / Math.max(1, endsAt - gameplayStartsAt), 0, 1) : 0;
   const smallRedSquad = bot.team === 'red' && teammates.length <= 3;
-  const effectiveAggression = clamp(settings.aggressiveness + redTimePressure * 0.45, 0, 1);
+  const baseEffectiveAggression = clamp(settings.aggressiveness + redTimePressure * 0.45, 0, 1);
+  const roomEntryConfidence = getRoomEntryConfidence(
+    bot, teammates, enemies, visibleEnemies, targetEnemy, enemyDistance, plannedWeapon,
+    settings, baseEffectiveAggression, now, match, teamIntel, maximumArmor, currentArmor,
+  );
+  const effectiveAggression = baseEffectiveAggression;
+  const roomClearanceHoldMs = 250 + (1 - roomEntryConfidence) * 900;
   const roleIndex = Number.isInteger(teamContext?.roleIndex) ? teamContext.roleIndex : hashString(bot.id) % Math.max(1, teammates.length);
   const roleCount = Math.max(1, Number.isInteger(teamContext?.roleCount)
     ? teamContext.roleCount : teammates.filter((ally) => ally.isBot).length);
-  const teamIntel = teamContext?.teamIntel;
   const sharedCarrierPosition = bot.team === 'blue'
-    ? getSharedFlagCarrierPosition(bot, match, teamIntel, now)
+    ? getSharedFlagCarrierPosition(bot, match, teamIntel, now, playersById)
     : null;
-  const teamSightingTarget = getTeamSightingTarget(bot, match, teamIntel, teammates, now);
-  const noise = (teamIntel?.audioCues ?? match.botNoises ?? [])
+  const teamSightingTarget = getTeamSightingTarget(bot, match, teamIntel, teammates, now, worldState);
+  const personalDamageThreat = activeDamageCue
+    ? getEstimatedDamageThreatPosition(bot, activeDamageCue.bearing, bot.team, teamIntel, match.map, now)
+    : null;
+  const localAudioCues = match.botNoises ?? [];
+  const audioCues = teamIntel?.audioCues
+    ? [...teamIntel.audioCues, ...localAudioCues.filter((cue) => cue.audiencePlayerId === bot.id)]
+    : localAudioCues;
+  const noise = audioCues
     .filter((cue) => cue.team === bot.team && (!cue.botId || cue.botId === bot.id) &&
+      (!cue.audiencePlayerId || cue.audiencePlayerId === bot.id) &&
       cue.expiresAt > now && Number.isFinite(cue.x) && Number.isFinite(cue.y))
-    .sort((a, b) => Number(b.kind === 'footstep') - Number(a.kind === 'footstep') ||
-      b.expiresAt - a.expiresAt || distance(bot, a) - distance(bot, b))[0] ?? null;
+    .filter((cue) => distance(bot, cue) <= Math.min(1_000, (cue.radius ?? 180) +
+      (cue.kind === 'footstep' ? 500 : 360)) &&
+      isOneOfNearestBotResponders(bot, teammates, cue, BOT_TEAM_INTEL_RESPONDER_COUNT))
+    .sort((left, right) =>
+      Number(right.kind === 'gunshot') - Number(left.kind === 'gunshot') ||
+      Number(right.kind === 'footstep') - Number(left.kind === 'footstep') ||
+      right.expiresAt - left.expiresAt || distance(bot, left) - distance(bot, right))[0] ?? null;
 
   markExploredCell(bot, brain, now);
   const objective = chooseObjective(bot, match, settings, brain, teammates, carrier,
     friendlyCarrier, targetEnemy?.id === enemyCarrier?.id ? targetEnemy : null,
     rememberedCarrier, now, { roleIndex, roleCount, timePressure: redTimePressure,
       aggression: effectiveAggression, perceivedThreat: targetEnemy, noise,
-      teamIntel, sharedCarrierPosition, visionObjects });
+      confidence: roomEntryConfidence,
+      defensiveThreats: bot.team === 'blue' ? [
+        ...visibleEnemies,
+        ...(teamSightingTarget ? [teamSightingTarget.position] : []),
+        ...(targetEnemy && !targetIsVisible ? [targetEnemy] : []),
+      ] : [],
+      teamIntel, sharedCarrierPosition, visionObjects,
+      teammateTacticalPositions: teamContext.teammateTacticalPositions ?? [] });
   let action = objective.action;
   let navigationTarget = objective.target;
   let intelLookTarget = null;
+  let blindFireIntel = null;
   const ammo = weaponState.ammo ?? weapon.magazineSize;
   const closeThreat = visibleEnemies.some((enemy) => distance(bot, enemy) < 360);
   const reload = Boolean(!weaponState.reloading && ammo < weapon.magazineSize &&
@@ -330,16 +497,27 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
   const defensiveSite = center(match.map.spawnZones[bot.team]);
   const enemyNearBlueSite = bot.team === 'blue' && targetEnemy &&
     distance(targetEnemy, defensiveSite) <= 470;
-  const redEngageRange = 190 + effectiveAggression * 75 - settings.objectiveFocus * 35;
-  const blueEngageRange = 250 + effectiveAggression * 100 - settings.defenseFocus * 30;
+  const confidenceEngagementScale = 0.55 + roomEntryConfidence * 0.45;
+  const redEngageRange = (190 + effectiveAggression * 75 - settings.objectiveFocus * 35) *
+    confidenceEngagementScale;
+  const blueEngageRange = (250 + effectiveAggression * 100 - settings.defenseFocus * 30) *
+    confidenceEngagementScale;
   const shouldFight = Boolean(targetEnemy && (enemyDistance <= (bot.team === 'blue' ? blueEngageRange : redEngageRange) ||
     (bot.team === 'blue' && enemyNearBlueSite && enemyDistance <= blueEngageRange + 100) ||
-    (plannedWeapon?.weaponClass === 'sniper' && enemyDistance <= (plannedWeapon.range ?? 760)) ||
+    (plannedWeapon?.weaponClass === 'sniper' &&
+      enemyDistance <= (plannedWeapon.range ?? 760) * confidenceEngagementScale) ||
     targetEnemy.id === flag.heldBy));
-  const rangedThreatNeedsCover = Boolean(activeDamageCue && targetEnemy && !shouldFight &&
-    enemyDistance > DAMAGE_RESPONSE_CLOSE_RANGE);
+  const visibleDamageThreat = activeDamageCue && targetIsVisible && targetEnemy &&
+    Math.abs(normalizeAngle(
+      Math.atan2(targetEnemy.y - bot.y, targetEnemy.x - bot.x) - activeDamageCue.bearing,
+    )) <= Math.PI / 3
+    ? targetEnemy : null;
+  const damageThreat = activeDamageCue
+    ? visibleDamageThreat ?? personalDamageThreat
+    : targetEnemy;
+  const rangedThreatNeedsCover = Boolean(activeDamageCue && damageThreat);
   const rangedCoverTarget = rangedThreatNeedsCover
-    ? findReloadCover(bot, [targetEnemy], match.map, targetEnemy)
+    ? findReloadCover(bot, [damageThreat], match.map, navigationTarget)
     : null;
   if (shouldFight) {
     action = 'fight';
@@ -352,7 +530,7 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
 
   const bluePressed = Boolean(bot.team === 'blue' && targetEnemy && enemyNearBlueSite &&
     targetEnemy.id !== enemyCarrier?.id && enemyDistance < 145 && distance(bot, defensiveSite) < 360);
-  const shouldRetreat = Boolean(bluePressed || (lowHealth && targetEnemy && enemyDistance < 330 &&
+  const shouldRetreat = Boolean(bluePressed || ((lowHealth || lowArmor) && targetEnemy && enemyDistance < 330 &&
     settings.aggressiveness < 0.96 && !isCarrier && !smallRedSquad));
   if (bluePressed) action = 'fall-back';
   else if (shouldRetreat) action = 'retreat';
@@ -381,35 +559,89 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     navigationTarget = rememberedEnemy;
   }
 
-  if (!targetEnemy && !activeDamageCue) {
-    const nearbyIncident = (teamContext?.teamIntel?.incidents ?? [])
-      .filter((incident) => incident.team === bot.team && ['damage', 'death'].includes(incident.kind) &&
+  if (!activeDamageCue && !shouldFight) {
+    const nearbyDamageIncident = (teamIntel?.incidents ?? [])
+      .filter((incident) => incident.team === bot.team && incident.kind === 'damage' &&
+        incident.victimId !== bot.id && Number.isFinite(incident.bearing) &&
         Number.isFinite(incident.x) && Number.isFinite(incident.y) && incident.expiresAt > now &&
-        distance(bot, incident) <= (incident.kind === 'death' ? 400 : 520))
-      .sort((a, b) => distance(bot, a) - distance(bot, b) || b.expiresAt - a.expiresAt)[0];
+        distance(bot, incident) <= BOT_TEAM_DAMAGE_RESPONSE_RANGE &&
+        isOneOfNearestBotResponders(bot, teammates, incident, BOT_TEAM_INTEL_RESPONDER_COUNT))
+      .sort((left, right) =>
+        distance(bot, left) + Math.max(0, now - (left.observedAt ?? now)) * 0.04 -
+        distance(bot, right) - Math.max(0, now - (right.observedAt ?? now)) * 0.04)[0] ?? null;
+    if (nearbyDamageIncident) {
+      const threatPosition = getEstimatedDamageThreatPosition(
+        nearbyDamageIncident, nearbyDamageIncident.bearing, bot.team, teamIntel, match.map, now,
+      );
+      blindFireIntel = {
+        position: threatPosition,
+        targetRadius: PLAYER_RADIUS * 2,
+        source: 'damage',
+      };
+      const threatCovered = getTeamCoverageCount(
+        threatPosition, match.map, teamIntel, visionObjects, bot.id,
+      ) > 0;
+      const entrance = threatCovered ? null : getNearbyIntelEntrance(
+        bot, match.map, threatPosition, teamIntel, visionObjects,
+      );
+      const responseAnchor = entrance ?? threatPosition;
+      const spreadTarget = getTeamSpreadTarget(
+        bot, teammates, responseAnchor, threatCovered ? 110 : 150,
+        brain, 'damage-response', roleIndex,
+      );
+      const cover = findReloadCover(bot, [threatPosition], match.map, spreadTarget);
+      action = 'assist-damaged-teammate';
+      intelLookTarget = threatPosition;
+      navigationTarget = cover ?? spreadTarget;
+    } else if (!targetEnemy) {
+      const nearbyIncident = (teamIntel?.incidents ?? [])
+        .filter((incident) => incident.team === bot.team && incident.kind === 'death' &&
+          Number.isFinite(incident.x) && Number.isFinite(incident.y) && incident.expiresAt > now &&
+          distance(bot, incident) <= 400)
+        .sort((left, right) => distance(bot, left) - distance(bot, right) ||
+          right.expiresAt - left.expiresAt)[0];
     if (teamSightingTarget?.urgent) {
       action = 'respond-team-threat';
       intelLookTarget = teamSightingTarget.position;
+      if (teamSightingTarget.ageMs <= COMBAT_TARGET_MEMORY_MS) {
+        blindFireIntel = {
+          position: teamSightingTarget.position,
+          targetRadius: PLAYER_RADIUS + Math.min(72, teamSightingTarget.ageMs * 0.06),
+          source: 'sighting',
+        };
+      }
       navigationTarget = getTeamSpreadTarget(
         bot, teammates, teamSightingTarget.position, 95, brain, 'intel-response', roleIndex,
       );
     } else if (nearbyIncident) {
-      action = nearbyIncident.kind === 'death' ? 'respond-teammate-death' : 'assist-damaged-teammate';
+      action = 'respond-teammate-death';
       navigationTarget = { x: nearbyIncident.x, y: nearbyIncident.y };
       intelLookTarget = navigationTarget;
     } else if (teamSightingTarget &&
         distance(bot, teamSightingTarget.position) <= TEAM_SIGHTING_INVESTIGATION_RANGE) {
       action = 'investigate-team-sighting';
       intelLookTarget = teamSightingTarget.position;
-      navigationTarget = getNearbyIntelEntrance(bot, match.map, intelLookTarget) ?? intelLookTarget;
-    } else if (noise && (noise.kind === 'footstep' || settings.thinkingComplexity >= 2) &&
-        distance(bot, noise) <= Math.min(1_000, (noise.radius ?? 180) +
-          (noise.kind === 'footstep' ? 500 : 360)) &&
-        isOneOfNearestBotResponders(bot, teammates, noise, 2)) {
+      if (teamSightingTarget.ageMs <= COMBAT_TARGET_MEMORY_MS) {
+        blindFireIntel = {
+          position: teamSightingTarget.position,
+          targetRadius: PLAYER_RADIUS + Math.min(72, teamSightingTarget.ageMs * 0.06),
+          source: 'sighting',
+        };
+      }
+      navigationTarget = getNearbyIntelEntrance(
+        bot, match.map, intelLookTarget, teamIntel, visionObjects,
+      ) ?? intelLookTarget;
+    } else if (noise) {
       intelLookTarget = { x: noise.x, y: noise.y };
-      const entrance = getNearbyIntelEntrance(bot, match.map, intelLookTarget);
+      blindFireIntel = {
+        position: intelLookTarget,
+        targetRadius: PLAYER_RADIUS + Math.min(96, Math.max(0, noise.radius ?? 0) * 0.5),
+        source: 'audio',
+      };
+      const entrance = getNearbyIntelEntrance(bot, match.map, intelLookTarget, teamIntel, visionObjects);
       action = entrance ? 'watch-entrance' : 'investigate-audio';
       navigationTarget = entrance ?? intelLookTarget;
+    }
     }
   }
 
@@ -439,11 +671,24 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     brain.redObjectiveDetourStartedAt = null;
   }
 
+  if (assignedPing && !shouldFight && !shouldRetreat && !activeDamageCue && !isCarrier &&
+      !friendlyCarrier && !enemyCarrier && !sharedCarrierPosition &&
+      !PING_PROTECTED_ACTIONS.has(action) && !(targetEnemy && enemyDistance < 300)) {
+    intelLookTarget = { x: assignedPing.x, y: assignedPing.y };
+    if (distance(bot, assignedPing) <= 130) {
+      action = 'watch-ping';
+      navigationTarget = { x: bot.x, y: bot.y };
+    } else {
+      action = 'investigate-ping';
+      navigationTarget = { x: assignedPing.x, y: assignedPing.y };
+    }
+  }
+
   const storedCover = brain.reloadCoverTarget;
   const shouldSeekReloadCover = (reload || weaponState.reloading) && visibleEnemies.length > 0;
   if (shouldSeekReloadCover) {
     const cover = storedCover && distance(bot, storedCover) > 36 &&
-      isSafeCoverPoint(bot, storedCover, visibleEnemies, match.map)
+      isSafeCoverPoint(bot, storedCover, match.map)
       ? storedCover : findReloadCover(bot, visibleEnemies, match.map, navigationTarget);
     if (cover) {
       brain.reloadCoverTarget = { ...cover };
@@ -471,29 +716,24 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
   // engagement range or currently visible. Face and search along the incoming
   // bearing instead of allowing site defense, intel, or reload cover to ignore it.
   if (activeDamageCue && !rangedCoverTarget) {
-    if (targetEnemy && !shouldRetreat &&
-        (shouldFight || enemyDistance <= DAMAGE_RESPONSE_CLOSE_RANGE)) {
-      action = 'fight';
-      navigationTarget = combatMovementTarget(bot, targetEnemy, brain, match.map, roleIndex, plannedWeaponId);
-    } else {
-      action = shouldRetreat ? 'retreat' : 'investigate-damage';
-      const reportedThreat = targetEnemy ?? {
-        x: bot.x + Math.cos(activeDamageCue.bearing) * 100,
-        y: bot.y + Math.sin(activeDamageCue.bearing) * 100,
-      };
-      navigationTarget = retreatPoint(bot, reportedThreat, match.map, brain.strafeSign);
-    }
+    action = shouldRetreat ? 'retreat' : 'investigate-damage';
+    const reportedThreat = damageThreat ?? {
+      x: bot.x + Math.cos(activeDamageCue.bearing) * 100,
+      y: bot.y + Math.sin(activeDamageCue.bearing) * 100,
+    };
+    navigationTarget = retreatPoint(bot, reportedThreat, match.map, brain.strafeSign);
   }
 
-  if (bot.team === 'red' && objective.action === 'leave-spawn' &&
-      action !== 'investigate-audio' && action !== 'damage-cover') {
+  if (!activeDamageCue && bot.team === 'red' && objective.action === 'leave-spawn' &&
+      !['investigate-audio', 'damage-cover', 'assist-damaged-teammate', 'respond-team-threat'].includes(action)) {
     action = 'leave-spawn';
     navigationTarget = objective.target;
     brain.reloadCoverTarget = null;
     brain.redObjectiveDetourStartedAt = null;
   }
 
-  if (bot.team === 'blue' && !isCarrier && !enemyCarrier &&
+  if (!activeDamageCue && bot.team === 'blue' && !['investigate-damage', 'damage-cover', 'assist-damaged-teammate']
+      .includes(action) && !isCarrier && !enemyCarrier &&
       !(sharedCarrierPosition && action === 'hunt-carrier' && !targetEnemy)) {
     const site = center(match.map.spawnZones.blue);
     const leash = 250 + (1 - settings.defenseFocus) * 70;
@@ -508,45 +748,208 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
     }
   }
 
+  let armorRecoveryActive = false;
+  const canRegenerateArmor = maximumArmor > 0 && inventoryEffects.armorRegeneration > 0;
+  const armorRecoveryNeeded = canRegenerateArmor && !isCarrier &&
+    currentArmor < maximumArmor - 0.01;
+  if (!armorRecoveryNeeded) {
+    brain.armorRecovery = false;
+    brain.armorRecoveryCoverTarget = null;
+  } else if (lowArmor) {
+    brain.armorRecovery = true;
+  }
+  const immediateArmorThreat = visibleEnemies.some((enemy) => distance(bot, enemy) < 155);
+  if (brain.armorRecovery && armorRecoveryNeeded && !activeDamageCue &&
+      !immediateArmorThreat && !bluePressed) {
+    const armorThreats = [];
+    const addArmorThreat = (threat) => {
+      if (![threat?.x, threat?.y].every(Number.isFinite) ||
+          armorThreats.some((known) => distance(known, threat) < 90)) return;
+      armorThreats.push({ x: threat.x, y: threat.y });
+    };
+    for (const enemy of visibleEnemies) addArmorThreat(enemy);
+    for (const memory of Object.values(brain.rememberedEnemies)
+      .filter((entry) => now - entry.seenAt <= 6_000)
+      .sort((left, right) => distance(bot, left) - distance(bot, right))
+      .slice(0, 4)) addArmorThreat(memory);
+    if (teamSightingTarget) addArmorThreat(teamSightingTarget.position);
+    if (noise) addArmorThreat(noise);
+    if (personalDamageThreat) addArmorThreat(personalDamageThreat);
+
+    const storedArmorCover = brain.armorRecoveryCoverTarget;
+    const storedCoverStillWorks = storedArmorCover && isSafeCoverPoint(bot, storedArmorCover, match.map) &&
+      armorThreats.length > 0 &&
+      armorThreats.every((threat) => !hasClearLine(threat, storedArmorCover, match.map.objects ?? []));
+    const cover = storedCoverStillWorks
+      ? storedArmorCover
+      : armorThreats.length > 0
+        ? findReloadCover(bot, armorThreats, match.map, navigationTarget)
+        : null;
+    const alreadySheltered = armorThreats.length > 0 &&
+      armorThreats.every((threat) => !hasClearLine(threat, bot, match.map.objects ?? []));
+    if (cover || alreadySheltered) {
+      armorRecoveryActive = true;
+      action = 'armor-recovery';
+      if (cover) {
+        brain.armorRecoveryCoverTarget = { ...cover };
+        navigationTarget = cover;
+      } else {
+        navigationTarget = { x: bot.x, y: bot.y };
+      }
+    }
+  }
+
+  let tacticalLean = 0;
+  let approachingCover = false;
+  let clearanceSweepTarget = null;
+  const coverThreat = targetEnemy ?? personalDamageThreat ?? teamSightingTarget?.position ??
+    intelLookTarget ?? (action === 'hold-site' ? brain.defenseWatchTarget : null);
+  if (coverThreat && ['hold-site', 'defend', 'fight', 'watch-entrance', 'assist-damaged-teammate'].includes(action)) {
+    const holdsBluePost = bot.team === 'blue' && brain.defensePost &&
+      ['hold-site', 'defend', 'fight'].includes(action);
+    const coverPlan = getCachedTacticalCoverPlan(
+      bot, coverThreat, holdsBluePost ? brain.defensePost : navigationTarget, match.map, brain, now,
+      action === 'fight' && !holdsBluePost ? 'combat' : 'hold',
+      action === 'hold-site' || action === 'defend',
+      teammates,
+      teamContext.teammateTacticalPositions ?? [],
+    );
+    if (coverPlan) {
+      navigationTarget = coverPlan.point;
+      if (distance(bot, coverPlan.point) <= PLAYER_RADIUS * 2.5) tacticalLean = coverPlan.lean;
+      else approachingCover = true;
+    }
+  }
+
   const previousStuckCount = brain.stuckCount ?? 0;
   const activeHazards = (match.gadgetEffects ?? []).filter((effect) =>
     (['molotov', 'cryo'].includes(effect.type) ||
       (effect.type === BIO_FIELD_ID && effect.team !== bot.team)) &&
     effect.startedAt <= now && effect.expiresAt > now);
+  activeHazards.push(...visibleEnemyMines
+    .filter((effect) => ['mine', VINE_TRAP_ID].includes(effect.type))
+    .map((effect) => ({
+      ...effect,
+      radius: effect.triggerRadius ?? effect.radius ?? PROXIMITY_MINE_TRIGGER_RADIUS,
+    })));
   const reactedOrbitalWarnings = getReactedOrbitalStrikeWarnings(match, bot, brain, now, settings.reflexMs);
   activeHazards.push(...reactedOrbitalWarnings);
   const escapingHazard = activeHazards.some((effect) =>
-    ['molotov', 'orbital-strike-warning'].includes(effect.type) &&
+    ['molotov', 'mine', 'orbital-strike-warning'].includes(effect.type) &&
     distance(bot, effect) <= (effect.radius ?? 60) + PLAYER_RADIUS);
+  let routeTarget = null;
+  if (CLEARING_ACTIONS.has(action)) {
+    routeTarget = getNavigationTarget(bot, navigationTarget, match.map, brain, now, mapStrategy);
+    const sweepTarget = targetEnemy ?? teamSightingTarget?.position ?? intelLookTarget ?? navigationTarget;
+    const routeKey = `${Math.round(navigationTarget.x / 48)}:${Math.round(navigationTarget.y / 48)}`;
+    const continuingClearance = brain.clearanceCover?.routeKey === routeKey;
+    if ((distance(bot, navigationTarget) > 125 || continuingClearance) &&
+        !hasClearLine(bot, sweepTarget, match.map.objects ?? [])) {
+      const clearance = getClearanceCoverPlan(
+        bot, sweepTarget, routeTarget, navigationTarget, match.map, brain, now,
+        roomClearanceHoldMs,
+      );
+      if (clearance) {
+        clearanceSweepTarget = sweepTarget;
+        if (clearance.stage === 'hold') {
+          action = 'clear-cover-hold';
+          navigationTarget = { x: bot.x, y: bot.y };
+          tacticalLean = clearance.lean;
+          routeTarget = navigationTarget;
+        } else {
+          action = 'clear-cover';
+          navigationTarget = clearance.point;
+          approachingCover = true;
+          routeTarget = clearance.point;
+        }
+      }
+    } else {
+      brain.clearanceCover = null;
+    }
+  }
   let waypoint = chooseHazardAwareWaypoint(bot,
-    getNavigationTarget(bot, navigationTarget, match.map, brain, now), match.map, activeHazards, now);
+    routeTarget ?? getNavigationTarget(bot, navigationTarget, match.map, brain, now, mapStrategy),
+    match.map, activeHazards, now);
   updateNavigationProgress(bot, brain, now, navigationTarget, action, waypoint);
   if ((brain.stuckCount ?? 0) > previousStuckCount) {
     waypoint = chooseHazardAwareWaypoint(bot,
-      getNavigationTarget(bot, navigationTarget, match.map, brain, now), match.map, activeHazards, now);
+      getNavigationTarget(bot, navigationTarget, match.map, brain, now, mapStrategy),
+      match.map, activeHazards, now);
     updateNavigationProgress(bot, brain, now, navigationTarget, action, waypoint);
   }
   const move = directionInput(bot, waypoint);
   brain.lastWasMoving = move.up || move.down || move.left || move.right;
+  const isSpottedByEnemy = visibleEnemies.some((enemy) =>
+    isBotSpottedByEnemy(bot, enemy, match.map, visionObjects, now));
+  const nearbyKnownThreat = visibleEnemies.some((enemy) => distance(bot, enemy) <= 650) ||
+    Object.values(brain.rememberedEnemies).some((memory) =>
+      now - memory.seenAt <= 4_000 && distance(bot, memory) <= 650) ||
+    (teamSightingTarget && distance(bot, teamSightingTarget.position) <= 650) ||
+    (noise && distance(bot, noise) <= 700) ||
+    teamPings.some((ping) => distance(bot, ping) <= 650);
+  const canHideFootsteps = roomEntryConfidence < 0.5 && brain.lastWasMoving &&
+    nearbyKnownThreat && !isSpottedByEnemy && action !== 'fight' && !activeDamageCue;
+  const movementSpeedScale = clamp(
+    0.68 + baseEffectiveAggression * 0.22 + settings.objectiveFocus * 0.1, 0.68, 1,
+  ) * (canHideFootsteps ? SLOW_WALK_SPEED_SCALE : 1) *
+    (approachingCover && distance(bot, navigationTarget) <= 96 &&
+      !isSpottedByEnemy && action !== 'fight' && !activeDamageCue
+      ? SLOW_WALK_SPEED_SCALE : 1);
 
-  const damageBearingTarget = activeDamageCue
-    ? { x: bot.x + Math.cos(activeDamageCue.bearing) * 100, y: bot.y + Math.sin(activeDamageCue.bearing) * 100 }
-    : null;
+  const damageBearingTarget = personalDamageThreat;
   const enemyLaneIsClear = Boolean(targetIsVisible && targetEnemy &&
-    isShotLaneClear(bot, targetEnemy, unitVector(bot, targetEnemy), match.map, weapon, teammates));
-  const mineTarget = visibleEnemyMines.find((mine) => isShotLaneClear(
+    getVisibleEnemyAimPoint(
+      bot, targetEnemy, vision, visionObjects, match.map, weapon, teammates, tacticalLean,
+    ));
+  const canShootMine = (mine) => isShotLaneClear(
     bot, mine, unitVector(bot, mine), match.map, weapon, teammates,
-    mine.hitRadius ?? PROXIMITY_MINE_BODY_RADIUS,
-  )) ?? null;
+    mine.hitRadius ?? (mine.type === VINE_TRAP_ID ? PROXIMITY_MINE_HIT_RADIUS : PROXIMITY_MINE_BODY_RADIUS),
+  );
+  const vineTrapOnPath = visibleEnemyMines.find((mine) =>
+    mine.type === VINE_TRAP_ID &&
+    getSegmentCircleLength(bot, waypoint, mine,
+      (mine.triggerRadius ?? PROXIMITY_MINE_TRIGGER_RADIUS) + PLAYER_RADIUS) > 0 &&
+    canShootMine(mine));
+  const mineTarget = vineTrapOnPath ?? visibleEnemyMines.find(canShootMine) ?? null;
   const deployableTarget = visibleEnemyDeployables.find((deployable) => isShotLaneClear(
     bot, deployable, unitVector(bot, deployable), match.map, weapon, teammates,
     deployable.radius ?? (deployable.type === TROPHY_SYSTEM_ID
       ? TROPHY_SYSTEM_BODY_RADIUS : SPY_CAMERA_BODY_RADIUS),
   )) ?? null;
-  const aimAtMine = Boolean(mineTarget && !enemyLaneIsClear);
+  const aimAtMine = Boolean(mineTarget && (!enemyLaneIsClear || mineTarget === vineTrapOnPath));
   const aimAtDeployable = Boolean(!aimAtMine && deployableTarget && !enemyLaneIsClear);
-  const aimTarget = aimAtMine ? mineTarget : aimAtDeployable ? deployableTarget : targetEnemy ?? damageBearingTarget ?? intelLookTarget ?? (bot.team === 'blue' && action === 'hold-site' && brain.defenseWatchTarget
-    ? brain.defenseWatchTarget : action === 'hunt' ? navigationTarget : waypoint);
+  const shotLean = aimAtMine || aimAtDeployable ? 0 : tacticalLean;
+  const visibleEnemyAimPoint = targetIsVisible && targetEnemy
+    ? getVisibleEnemyAimPoint(
+      bot, targetEnemy, vision, visionObjects, match.map, weapon, teammates, shotLean,
+    )
+    : null;
+  const rememberedTargetAge = targetEnemy && !targetIsVisible
+    ? now - (brain.rememberedEnemies[targetEnemy.id]?.seenAt ?? -Infinity)
+    : Infinity;
+  const blindFireCandidate = !targetIsVisible
+    ? activeDamageCue && personalDamageThreat
+      ? { position: personalDamageThreat, targetRadius: PLAYER_RADIUS * 2, source: 'damage' }
+      : blindFireIntel?.source === 'damage' || blindFireIntel?.source === 'sighting'
+        ? blindFireIntel
+        : targetEnemy && rememberedTargetAge <= COMBAT_TARGET_MEMORY_MS
+          ? {
+            position: targetEnemy,
+            targetRadius: PLAYER_RADIUS + Math.min(36, rememberedTargetAge * 0.04),
+            source: 'memory',
+          }
+          : blindFireIntel
+    : null;
+  if (!intelLookTarget && !targetEnemy && !activeDamageCue) {
+    const watchPing = teamPings
+      .filter((ping) => distance(bot, ping) <= 700)
+      .sort((left, right) => distance(bot, left) - distance(bot, right) ||
+        (right.createdAt ?? 0) - (left.createdAt ?? 0))[0];
+    if (watchPing) intelLookTarget = { x: watchPing.x, y: watchPing.y };
+  }
+  const aimTarget = aimAtMine ? mineTarget : aimAtDeployable ? deployableTarget :
+    blindFireCandidate?.position ?? visibleEnemyAimPoint ?? targetEnemy ?? damageBearingTarget ?? intelLookTarget ?? (bot.team === 'blue' && action === 'hold-site' && brain.defenseWatchTarget
+    ? brain.defenseWatchTarget : clearanceSweepTarget ?? (action === 'hunt' ? navigationTarget : waypoint));
   const dx = aimTarget.x - bot.x;
   const dy = aimTarget.y - bot.y;
   const aimBearing = Math.atan2(dy || Math.sin(visionAngle), dx || Math.cos(visionAngle));
@@ -557,30 +960,42 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
   const aimErrorTarget = aimAtMine ? mineTarget : aimAtDeployable ? deployableTarget : targetEnemy;
   const aimError = aimErrorTarget ? (1 - settings.accuracy) * 0.12 *
     (hashString(`${bot.id}:${aimErrorTarget.id}`) % 2 ? 1 : -1) : 0;
-  const aimAngle = aimErrorTarget ? aimBearing + aimError : aimBearing + (activeDamageCue ? 0 : scanWave);
+  const aimBaseAngle = shotLean === 0
+    ? aimBearing
+    : getWeaponAimAngle(bot, aimTarget, shotLean, match.map.objects);
+  const aimScanOffset = clearanceSweepTarget ? scanWave * 0.55
+    : tacticalLean !== 0 || activeDamageCue || intelLookTarget ? 0 : scanWave;
+  const aimAngle = aimErrorTarget ? aimBaseAngle + aimError : aimBaseAngle + aimScanOffset;
   const direction = { x: Math.cos(aimAngle), y: Math.sin(aimAngle) };
   const inReflexWindow = !aimAtMine && targetEnemy &&
     now - (brain.rememberedEnemies[targetEnemy.id]?.firstSeenAt ?? now) < settings.reflexMs;
   const currentAim = weaponState.aimAngle ?? visionAngle;
   const aimReady = Math.abs(normalizeAngle(aimAngle - currentAim)) <= 0.12;
   const safeShot = targetIsVisible && !aimAtMine &&
-    isShotLaneClear(bot, targetEnemy, direction, match.map, weapon, teammates);
+    isShotLaneClear(bot, targetEnemy, direction, match.map, weapon, teammates,
+      PLAYER_RADIUS, shotLean);
+  const safeBlindShot = Boolean(blindFireCandidate && !aimAtMine && !aimAtDeployable &&
+    isShotLaneClear(bot, blindFireCandidate.position, direction, match.map, weapon, teammates,
+      blindFireCandidate.targetRadius, shotLean));
   const safeMineShot = aimAtMine && isShotLaneClear(bot, mineTarget, direction, match.map, weapon, teammates,
-    mineTarget.hitRadius ?? PROXIMITY_MINE_BODY_RADIUS);
+    mineTarget.hitRadius ?? (mineTarget.type === VINE_TRAP_ID
+      ? PROXIMITY_MINE_HIT_RADIUS : PROXIMITY_MINE_BODY_RADIUS), shotLean);
   const safeDeployableShot = aimAtDeployable && isShotLaneClear(
     bot, deployableTarget, direction, match.map, weapon, teammates,
     deployableTarget.radius ?? (deployableTarget.type === TROPHY_SYSTEM_ID
-      ? TROPHY_SYSTEM_BODY_RADIUS : SPY_CAMERA_BODY_RADIUS),
+      ? TROPHY_SYSTEM_BODY_RADIUS : SPY_CAMERA_BODY_RADIUS), shotLean,
   );
   const canInterruptRoundReload = Boolean(weapon.reloadPerRound && weaponState.reloading && ammo > 0);
   const gadgetAction = chooseBotGadgetAction(bot, match, visibleEnemies, teammates, now, {
     visionObjects,
     vision,
+    armorRecovery: armorRecoveryActive,
     lowHealth,
     isCarrier,
     action,
     activeDamageCue,
     teamIntel: teamContext?.teamIntel,
+    worldState,
     retreating: action === 'retreat' || action === 'fall-back',
     moving: brain.lastWasMoving,
     waypoint,
@@ -596,14 +1011,16 @@ export function decideBotAction(bot, match, parameters = DEFAULT_BOT_PARAMETERS,
       ...move,
       visionAngle: normalizeAngle(aimAngle),
       drop: false,
-      weaponLean: 0,
-      speedScale: clamp(0.68 + effectiveAggression * 0.22 + settings.objectiveFocus * 0.1, 0.68, 1),
+      weaponLean: shotLean,
+      speedScale: movementSpeedScale,
     },
     direction,
     enemyId: targetEnemy?.id ?? null,
     ...(gadgetAction ? { gadgetAction } : {}),
-    fire: Boolean(weaponSlotEquipped && !gadgetAction &&
-      ((targetEnemy && !inReflexWindow && safeShot) || safeMineShot || safeDeployableShot) && aimReady && !reload &&
+    fire: Boolean(weaponSlotEquipped && !armorRecoveryActive && !gadgetAction &&
+      ((targetIsVisible && !inReflexWindow && safeShot) ||
+        (!inReflexWindow || blindFireCandidate?.source !== 'memory') && safeBlindShot ||
+        safeMineShot || safeDeployableShot) && aimReady && !reload &&
       (!weaponState.reloading || canInterruptRoundReload)),
     reload: Boolean(weaponSlotEquipped && !gadgetAction && reload),
     weaponId: plannedWeaponId,
@@ -689,7 +1106,10 @@ function chooseObjective(player, match, settings, brain, teammates, carrier, fri
 
   const site = center(match.map.spawnZones.blue);
   const post = getBlueDefensePost(player, match.map, teamContext.roleIndex,
-    teamContext.roleCount, false, null, settings, brain);
+    teamContext.roleCount, false, null, settings, brain,
+    teamContext.teamIntel, teamContext.visionObjects, teammates,
+    teamContext.teammateTacticalPositions, teamContext.confidence,
+    teamContext.defensiveThreats);
   if (enemyCarrier) return { action: 'defend', target: rememberedCarrier ?? enemyCarrier };
   if (teamContext.sharedCarrierPosition) {
     return { action: 'hunt-carrier', target: teamContext.sharedCarrierPosition };
@@ -701,9 +1121,65 @@ function chooseObjective(player, match, settings, brain, teammates, carrier, fri
   return { action: 'hold-site', target: post };
 }
 
-function getSharedFlagCarrierPosition(bot, match, teamIntel, now) {
+function getRoomEntryConfidence(
+  bot, teammates, enemies, visibleEnemies, targetEnemy, enemyDistance, weapon,
+  settings, effectiveAggression, now, match, teamIntel, maximumArmor, currentArmor,
+) {
+  const nearbyAllies = teammates.filter((ally) =>
+    ally.alive !== false && (ally.health ?? 100) > 0 && distance(bot, ally) <= 420).length;
+  const nearbyEnemies = visibleEnemies.filter((enemy) => distance(bot, enemy) <= 520);
+  const nearbyAudioThreats = [];
+  for (const cue of [...(teamIntel?.audioCues ?? []), ...(match.botNoises ?? [])]) {
+    if (cue.team !== bot.team || cue.expiresAt <= now ||
+        !['footstep', 'gunshot'].includes(cue.kind) ||
+        (cue.audiencePlayerId && cue.audiencePlayerId !== bot.id) ||
+        ![cue.x, cue.y].every(Number.isFinite) ||
+        distance(bot, cue) > Math.min(850, (cue.radius ?? 180) + 480) ||
+        nearbyEnemies.some((enemy) => distance(enemy, cue) <= 120) ||
+        nearbyAudioThreats.some((position) => distance(position, cue) <= 150)) continue;
+    nearbyAudioThreats.push({ x: cue.x, y: cue.y });
+    if (nearbyAudioThreats.length >= 4) break;
+  }
+  for (const ping of teamIntel?.pings ?? []) {
+    if (nearbyAudioThreats.length >= 4) break;
+    if (ping.team !== bot.team || !Number.isFinite(ping.expiresAt) || ping.expiresAt <= now ||
+        ![ping.x, ping.y].every(Number.isFinite) || distance(bot, ping) > 850 ||
+        nearbyEnemies.some((enemy) => distance(enemy, ping) <= 120) ||
+        nearbyAudioThreats.some((position) => distance(position, ping) <= 150)) continue;
+    nearbyAudioThreats.push({ x: ping.x, y: ping.y });
+  }
+  const sensedEnemies = nearbyEnemies.length + nearbyAudioThreats.length;
+  const localAdvantage = (nearbyAllies - sensedEnemies) /
+    Math.max(1, nearbyAllies + sensedEnemies);
+  const knownEnemyCount = Math.max(enemies.length, sensedEnemies);
+  const teamAdvantage = (teammates.length - knownEnemyCount) /
+    Math.max(1, teammates.length + knownEnemyCount);
+  const impairedEnemies = nearbyEnemies.filter((enemy) =>
+    isPlayerFlashBlinded(enemy, now) || isPlayerJammed(enemy, now)).length;
+  const utilityAdvantage = impairedEnemies / Math.max(1, nearbyEnemies.length);
+  const preferredRange = (weapon.damageFalloffStartRange ?? weapon.range * 0.5) * 0.65;
+  const weaponRangeFit = targetEnemy
+    ? clamp(1 - Math.abs(enemyDistance - preferredRange) / Math.max(preferredRange, 120), 0, 1)
+    : 0;
+  const healthConfidence = clamp((bot.health ?? 100) / 100, 0, 1);
+  const armorConfidence = maximumArmor > 0 ? clamp(currentArmor / maximumArmor, 0, 1) : 1;
+  const resilienceConfidence = healthConfidence * 0.65 + armorConfidence * 0.35;
+  const tacticalConfidence = clamp(
+    0.5 + localAdvantage * 0.5 + teamAdvantage * 0.1 +
+      utilityAdvantage * 0.18 + weaponRangeFit * 0.12 +
+      (resilienceConfidence - 0.7) * 0.4,
+    0, 1,
+  );
+  return clamp(
+    tacticalConfidence * 0.55 + effectiveAggression * 0.25 +
+      (settings.objectiveFocus + settings.defenseFocus) * 0.1,
+    0, 1,
+  );
+}
+
+function getSharedFlagCarrierPosition(bot, match, teamIntel, now, playersById = null) {
   const carrierId = match.flag?.heldBy;
-  const carrier = match.players.find((player) => player.id === carrierId);
+  const carrier = playersById?.get(carrierId) ?? match.players.find((player) => player.id === carrierId);
   if (!carrier || carrier.team === bot.team || !carrier.alive || carrier.health <= 0) return null;
 
   const sighting = (teamIntel?.sightings ?? [])
@@ -735,39 +1211,60 @@ function pointInsideRect(point, rect, margin = 0) {
     point.y >= rect.y - margin && point.y <= rect.y + rect.height + margin;
 }
 
-function chooseProtectedDefensePost(player, map, roleIndex, roleCount, brain) {
+function chooseProtectedDefensePost(player, map, roleIndex, roleCount, brain, teamIntel,
+  visionObjects, teammates, teammateTacticalPositions, settings, confidence, threatPositions) {
   const zone = map.spawnZones?.blue;
   if (!zone) return null;
   const blueRoom = (map.rooms ?? []).find((room) => room.id === 'blue-spawn' || (room.isSpawn && room.team === 'blue'));
   const ingresses = (map.corridors ?? []).filter((corridor) =>
     corridor.a === blueRoom?.id || corridor.b === blueRoom?.id)
     .map((corridor) => {
-      const points = corridor.points ?? [];
-      const fromStart = corridor.a === blueRoom.id;
-      const doorway = fromStart ? points[0] : points.at(-1);
-      const inside = fromStart ? points[1] : points.at(-2);
-      if (!doorway || !inside) return null;
-      const outward = unitVector(doorway, inside);
+      const points = corridor.a === blueRoom.id ? corridor.points ?? [] : [...(corridor.points ?? [])].reverse();
+      const doorway = points[0];
+      if (!doorway || !points[1]) return null;
       return {
         id: corridor.id,
+        points,
         doorway,
-        watch: { x: doorway.x + outward.x * 120, y: doorway.y + outward.y * 120 },
       };
     }).filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id)));
   if (!ingresses.length) return null;
 
-  const ingress = ingresses[roleIndex % ingresses.length];
-  if (brain) brain.defenseWatchTarget = { ...ingress.watch };
+  const defaultIngress = ingresses[roleIndex % ingresses.length];
+  const threatenedIngress = ingresses
+    .map((candidate) => getDefenseThreatPressure(candidate, threatPositions, map))
+    .sort((left, right) => right.pressure - left.pressure)[0];
+  const ingress = threatenedIngress?.pressure >= 0.2
+    ? threatenedIngress.route : defaultIngress;
   const laneIndex = Math.floor(roleIndex / ingresses.length);
   const laneCount = Math.ceil(Math.max(1, roleCount) / ingresses.length);
-  const laneOffset = (laneIndex - (laneCount - 1) / 2) * 28;
-  const lateral = { x: -(ingress.watch.y - ingress.doorway.y), y: ingress.watch.x - ingress.doorway.x };
+  const reservations = getReservedDefensePositions(player.id, teammates, teammateTacticalPositions);
+  const watchTarget = chooseDistinctIngressWatchTarget(
+    ingress.points, 180 + laneIndex * 130, map, reservations,
+  );
+  if (brain) brain.defenseWatchTarget = { ...watchTarget };
+  const direction = unitVector(ingress.points[0], ingress.points[1]);
+  const laneOffset = (laneIndex - (laneCount - 1) / 2) * 72;
+  const lateral = { x: -direction.y, y: direction.x };
   const lateralLength = Math.hypot(lateral.x, lateral.y) || 1;
   const laneAnchor = {
     x: ingress.doorway.x + lateral.x / lateralLength * laneOffset,
     y: ingress.doorway.y + lateral.y / lateralLength * laneOffset,
   };
   const site = center(zone);
+  const defensePosture = getBlueDefensePosture(settings, confidence);
+  const preferred = {
+    x: site.x + (laneAnchor.x - site.x) * defensePosture,
+    y: site.y + (laneAnchor.y - site.y) * defensePosture,
+  };
+  const threat = (threatPositions ?? [])
+    .filter((position) => getStrikeMineProgress(position, map) >= 0.55)
+    .sort((left, right) =>
+      distance(left, site) - distance(right, site))[0];
+  if (threat && defensePosture > 0.5) {
+    preferred.x = site.x + (preferred.x - site.x) * 0.65 + (threat.x - site.x) * 0.35;
+    preferred.y = site.y + (preferred.y - site.y) * 0.65 + (threat.y - site.y) * 0.35;
+  }
   const candidates = [];
   const steps = 6;
   for (let xIndex = 0; xIndex < steps; xIndex += 1) {
@@ -777,88 +1274,277 @@ function chooseProtectedDefensePost(player, map, roleIndex, roleCount, brain) {
         y: zone.y + PLAYER_RADIUS + 8 + (zone.height - (PLAYER_RADIUS + 8) * 2) * yIndex / (steps - 1),
       };
       if (circleOverlapsMapObjects(candidate, map.objects ?? [], PLAYER_RADIUS) ||
-          !hasClearLine(candidate, ingress.watch, map.objects ?? [])) continue;
+          !hasClearLine(candidate, watchTarget, map.objects ?? [])) continue;
       const protectedRoutes = ingresses.filter((route) => route.id !== ingress.id &&
-        !hasClearLine(candidate, route.watch, map.objects ?? [])).length;
+        !hasClearLine(candidate, pointAlongPolylineExtended(route.points, 130, map), map.objects ?? [])).length;
       const interiorDepth = Math.min(candidate.x - zone.x, zone.x + zone.width - candidate.x,
         candidate.y - zone.y, zone.y + zone.height - candidate.y);
-      const score = distance(candidate, laneAnchor) * 0.22 + distance(candidate, site) * 0.08 -
+      const score = distance(candidate, preferred) * 0.55 + distance(candidate, site) *
+        (0.25 - defensePosture * 0.17) -
         protectedRoutes * 115 - Math.min(interiorDepth, 48) * 0.25 +
+        getDefenseSpacingPenalty(candidate, watchTarget, reservations) +
+        getTeamCoverageCount(watchTarget, map, teamIntel, visionObjects, player.id) * 100 +
         ((hashString(`${player.id}:${ingress.id}:${xIndex}:${yIndex}`) % 11) * 0.1);
-      candidates.push({ point: candidate, score });
+      candidates.push({ point: candidate, watchTarget, score });
     }
   }
   candidates.sort((a, b) => a.score - b.score);
-  return candidates[0]?.point ?? null;
+  if (!candidates.length) return null;
+  if (brain) brain.defenseWatchTarget = { ...candidates[0].watchTarget };
+  return candidates[0].point;
 }
 
 function findReloadCover(player, enemies, map, objective) {
   const objects = map.objects ?? [];
+  const candidates = getCoverCandidates(player, map, 285, PLAYER_RADIUS + 12);
+
+  const scoredCandidates = candidates.map((point, index) => ({
+    point,
+    index,
+    baseScore: distance(player, point) + (objective ? distance(point, objective) * 0.12 : 0),
+  })).sort((left, right) => left.baseScore - right.baseScore || left.index - right.index);
+  let best = null;
+  let bestScore = Infinity;
+  let bestIndex = Infinity;
+  for (const candidate of scoredCandidates) {
+    if (candidate.baseScore - enemies.length * 170 > bestScore) break;
+    if (!isSafeCoverPoint(player, candidate.point, map)) continue;
+    let hiddenCount = 0;
+    for (const enemy of enemies) {
+      if (!hasClearLine(enemy, candidate.point, objects)) hiddenCount += 1;
+    }
+    if (hiddenCount === 0) continue;
+    const score = candidate.baseScore - hiddenCount * 170;
+    if (score < bestScore || (score === bestScore && candidate.index < bestIndex)) {
+      best = candidate.point;
+      bestScore = score;
+      bestIndex = candidate.index;
+    }
+    if (hiddenCount === enemies.length) break;
+  }
+  return best;
+}
+
+function getCoverCandidates(player, map, maximumDistance, offset, includeCurrent = false) {
   const candidates = [];
-  for (const object of objects) {
+  const candidateKeys = new Set();
+  const maximumDistanceSquared = maximumDistance * maximumDistance;
+  const addCandidate = (candidate) => {
+    const dx = candidate.x - player.x;
+    const dy = candidate.y - player.y;
+    if (dx * dx + dy * dy > maximumDistanceSquared ||
+        candidate.x < PLAYER_RADIUS + 8 || candidate.y < PLAYER_RADIUS + 8 ||
+        candidate.x > map.width - PLAYER_RADIUS - 8 || candidate.y > map.height - PLAYER_RADIUS - 8) return;
+    const key = `${candidate.x},${candidate.y}`;
+    if (candidateKeys.has(key)) return;
+    candidateKeys.add(key);
+    candidates.push(candidate);
+  };
+  if (includeCurrent) addCandidate({ x: player.x, y: player.y });
+  for (const object of map.objects ?? []) {
+    if (object.blocksVision === false || object.blocksProjectiles === false) continue;
     const point = object.shape === 'segment'
       ? { x: (object.x1 + object.x2) / 2, y: (object.y1 + object.y2) / 2 }
       : object;
     const extent = object.shape === 'circle' ? object.radius
       : object.shape === 'rect' ? Math.hypot(object.width, object.height) / 2
         : Math.hypot(object.x2 - object.x1, object.y2 - object.y1) / 2;
-    if (distance(player, point) > 300 + extent) continue;
+    const objectReach = maximumDistance + 15 + extent;
+    const dx = point.x - player.x;
+    const dy = point.y - player.y;
+    if (dx * dx + dy * dy > objectReach * objectReach) continue;
     if (object.shape === 'segment') {
       const length = Math.hypot(object.x2 - object.x1, object.y2 - object.y1) || 1;
       const normal = { x: -(object.y2 - object.y1) / length, y: (object.x2 - object.x1) / length };
-      for (const t of [0.12, 0.38, 0.64, 0.88]) {
+      for (const t of COVER_SEGMENT_FRACTIONS) {
         const along = { x: object.x1 + (object.x2 - object.x1) * t, y: object.y1 + (object.y2 - object.y1) * t };
-        for (const sign of [-1, 1]) candidates.push({
-          x: along.x + normal.x * (PLAYER_RADIUS + 12) * sign,
-          y: along.y + normal.y * (PLAYER_RADIUS + 12) * sign,
+        for (const sign of [-1, 1]) addCandidate({
+          x: along.x + normal.x * offset * sign,
+          y: along.y + normal.y * offset * sign,
         });
       }
       for (const endpoint of [{ x: object.x1, y: object.y1 }, { x: object.x2, y: object.y2 }]) {
-        for (let index = 0; index < 8; index += 1) {
-          const angle = index * TAU / 8;
-          candidates.push({
-            x: endpoint.x + Math.cos(angle) * (PLAYER_RADIUS + 14),
-            y: endpoint.y + Math.sin(angle) * (PLAYER_RADIUS + 14),
+        for (const direction of COVER_ENDPOINT_DIRECTIONS) {
+          const endpointOffset = offset + 2;
+          addCandidate({
+            x: endpoint.x + direction.x * endpointOffset,
+            y: endpoint.y + direction.y * endpointOffset,
           });
         }
       }
     } else {
-      const radius = (object.shape === 'circle' ? object.radius
-        : Math.hypot(object.width, object.height) / 2) + PLAYER_RADIUS + 12;
-      for (let index = 0; index < 16; index += 1) {
-        const angle = index * TAU / 16;
-        candidates.push({ x: point.x + Math.cos(angle) * radius, y: point.y + Math.sin(angle) * radius });
+      const radius = extent + offset;
+      for (const direction of COVER_RADIAL_DIRECTIONS) {
+        addCandidate({ x: point.x + direction.x * radius, y: point.y + direction.y * radius });
+      }
+    }
+  }
+  return candidates;
+}
+
+function getCachedTacticalCoverPlan(player, threat, preferredPoint, map, brain, now, mode, allowFallback,
+  teammates, teammateTacticalPositions) {
+  const threatKey = threat.id ?? `${Math.round(threat.x / 48)}:${Math.round(threat.y / 48)}`;
+  const preferredKey = `${Math.round(preferredPoint.x / 32)}:${Math.round(preferredPoint.y / 32)}`;
+  const key = `${mode}:${threatKey}:${preferredKey}`;
+  const cache = brain.tacticalCoverCache;
+  if (cache?.key === key && now < cache.retryAt) {
+    if (!cache.point) return null;
+    if (isSafeCoverPoint(player, cache.point, map) &&
+        !isOccupiedDefensivePosition(cache.point, player.id, teammates, teammateTacticalPositions)) {
+      if (cache.requiresPeek) {
+        const lean = getPeekLeanAtPosition(cache.point, threat, map, brain.strafeSign);
+        if (lean !== null) return { point: cache.point, lean };
+      } else if (!hasClearLine(threat, cache.point, map.objects ?? [])) {
+        return { point: cache.point, lean: 0 };
       }
     }
   }
 
-  let best = null;
-  let bestScore = Infinity;
+  const candidates = getCoverCandidates(
+    player, map, TACTICAL_COVER_SEARCH_RANGE, PLAYER_RADIUS + 2, true,
+  ).filter((point) => mode !== 'hold' ||
+    !isOccupiedDefensivePosition(point, player.id, teammates, teammateTacticalPositions))
+    .map((point, index) => ({
+      point,
+      index,
+      score: distance(player, point) + distance(point, preferredPoint) * (mode === 'hold' ? 1.6 : 0.45) +
+        (mode === 'hold'
+          ? getDefensivePositionSpacingPenalty(point, player.id, teammates, teammateTacticalPositions)
+          : 0),
+    })).sort((left, right) => left.score - right.score || left.index - right.index);
+  let plan = null;
   for (const candidate of candidates) {
-    if (distance(player, candidate) > 285 || !isSafeCoverPoint(player, candidate, enemies, map)) continue;
-    const hiddenCount = enemies.filter((enemy) => !hasClearLine(enemy, candidate, objects)).length;
-    const objectiveCost = objective ? distance(candidate, objective) * 0.12 : 0;
-    const score = distance(player, candidate) + objectiveCost - hiddenCount * 170;
-    if (score < bestScore) { best = candidate; bestScore = score; }
+    if (!isSafeCoverPoint(player, candidate.point, map)) continue;
+    const lean = getPeekLeanAtPosition(candidate.point, threat, map, brain.strafeSign);
+    if (lean !== null) {
+      plan = { point: candidate.point, lean };
+      break;
+    }
   }
-  return best;
+  if (!plan && allowFallback) {
+    const point = findReloadCover(player, [threat], map, preferredPoint);
+    if (point && (mode !== 'hold' ||
+        !isOccupiedDefensivePosition(point, player.id, teammates, teammateTacticalPositions))) {
+      plan = { point, lean: 0 };
+    }
+  }
+  brain.tacticalCoverCache = {
+    key,
+    point: plan?.point ?? null,
+    requiresPeek: Boolean(plan && plan.lean !== 0),
+    retryAt: now + TACTICAL_COVER_REPLAN_MS,
+  };
+  return plan;
 }
 
-function isSafeCoverPoint(player, point, enemies, map) {
+function getDefensivePositionSpacingPenalty(point, playerId, teammates, teammateTacticalPositions) {
+  let penalty = 0;
+  for (const ally of teammates) {
+    if (ally.id === playerId || ally.alive === false || (ally.health ?? 100) <= 0) continue;
+    penalty += Math.max(0, 84 - distance(point, ally)) * 1.5;
+    const coverPoint = ally.botBrain?.tacticalCoverCache?.point;
+    if (coverPoint) penalty += Math.max(0, 110 - distance(point, coverPoint)) * 3;
+    const defensePost = ally.botBrain?.defensePost;
+    if (defensePost) penalty += Math.max(0, 72 - distance(point, defensePost)) * 1.5;
+  }
+  for (const assignment of teammateTacticalPositions) {
+    if (assignment.id === playerId) continue;
+    if (assignment.coverPoint) {
+      penalty += Math.max(0, 110 - distance(point, assignment.coverPoint)) * 3;
+    }
+    if (assignment.defensePost) {
+      penalty += Math.max(0, 72 - distance(point, assignment.defensePost)) * 1.5;
+    }
+  }
+  return penalty;
+}
+
+function isOccupiedDefensivePosition(point, playerId, teammates, teammateTacticalPositions) {
+  return teammates.some((ally) => {
+    if (ally.id === playerId || ally.alive === false || (ally.health ?? 100) <= 0) return false;
+    const coverPoint = ally.botBrain?.tacticalCoverCache?.point;
+    const defensePost = ally.botBrain?.defensePost;
+    return (coverPoint && distance(point, coverPoint) < MIN_DEFENDER_COVER_SPACING) ||
+      (defensePost && distance(point, defensePost) < MIN_DEFENDER_POST_SPACING);
+  }) ||
+    teammateTacticalPositions.some((assignment) => assignment.id !== playerId &&
+      ((assignment.coverPoint && distance(point, assignment.coverPoint) < MIN_DEFENDER_COVER_SPACING) ||
+        (assignment.defensePost && distance(point, assignment.defensePost) < MIN_DEFENDER_POST_SPACING)));
+}
+
+function getPeekLeanAtPosition(position, target, map, preferredLean = 1) {
+  const objects = map.objects ?? [];
+  if (hasClearLine(target, position, objects)) return null;
+  const angle = Math.atan2(target.y - position.y, target.x - position.x);
+  const firstLean = preferredLean === -1 ? -1 : 1;
+  for (const lean of [firstLean, -firstLean]) {
+    const muzzle = getWeaponMuzzlePosition(position, angle, lean, objects);
+    if (hasClearLine(muzzle, target, objects)) return lean;
+  }
+  return null;
+}
+
+function getClearanceCoverPlan(player, threat, routeTarget, routeIdentity, map, brain, now, holdDurationMs) {
+  const routeKey = `${Math.round(routeIdentity.x / 48)}:${Math.round(routeIdentity.y / 48)}`;
+  const existing = brain.clearanceCover;
+  if (existing?.routeKey === routeKey) {
+    const lean = isSafeCoverPoint(player, existing.point, map)
+      ? getPeekLeanAtPosition(existing.point, threat, map, brain.strafeSign)
+      : null;
+    if (lean !== null) {
+      if (distance(player, existing.point) > PLAYER_RADIUS * 2.5) {
+        return { point: existing.point, lean: 0, stage: 'approach' };
+      }
+      existing.holdUntil ??= now + holdDurationMs;
+      if (now < existing.holdUntil) return { point: existing.point, lean, stage: 'hold' };
+    }
+    brain.clearanceCover = null;
+  } else {
+    brain.clearanceCover = null;
+  }
+
+  const plan = findLeanCoverPlan(
+    player, threat, routeTarget, map, TACTICAL_COVER_SEARCH_RANGE, true, brain.strafeSign,
+  );
+  if (!plan) return null;
+  brain.clearanceCover = { routeKey, point: plan.point, holdUntil: null };
+  return { point: plan.point, lean: 0, stage: 'approach' };
+}
+
+function findLeanCoverPlan(player, threat, preferredPoint, map, maximumDistance, mustAdvance, preferredLean) {
+  const candidates = getCoverCandidates(
+    player, map, maximumDistance, PLAYER_RADIUS + 2, true,
+  ).map((point, index) => ({
+    point,
+    index,
+    score: distance(player, point) + distance(point, preferredPoint) * 0.45,
+  })).sort((left, right) => left.score - right.score || left.index - right.index);
+  const currentGoalDistance = distance(player, preferredPoint);
+  for (const candidate of candidates) {
+    if (mustAdvance && distance(candidate.point, preferredPoint) > currentGoalDistance - 32) continue;
+    if (!isSafeCoverPoint(player, candidate.point, map)) continue;
+    const lean = getPeekLeanAtPosition(candidate.point, threat, map, preferredLean);
+    if (lean !== null) return { point: candidate.point, lean };
+  }
+  return null;
+}
+
+function isSafeCoverPoint(player, point, map) {
   if (point.x < PLAYER_RADIUS + 8 || point.y < PLAYER_RADIUS + 8 ||
       point.x > map.width - PLAYER_RADIUS - 8 || point.y > map.height - PLAYER_RADIUS - 8) return false;
   const objects = map.objects ?? [];
-  if (circleOverlapsMapObjects(point, objects, PLAYER_RADIUS) ||
-      objects.some((object) => {
-        const hit = segmentMapObjectEntryT(player, point, object, PLAYER_RADIUS * 0.35);
-        return hit !== null && hit < 0.98;
-      })) return false;
-  return enemies.some((enemy) => !hasClearLine(enemy, point, objects));
+  if (circleOverlapsMapObjects(point, objects, PLAYER_RADIUS)) return false;
+  return !someMapObjectAlongSegment(objects, player, point, PLAYER_RADIUS * 0.35, (object) => {
+    if (!segmentMapObjectBoundsOverlap(player, point, object, PLAYER_RADIUS * 0.35)) return false;
+    const hit = segmentMapObjectEntryT(player, point, object, PLAYER_RADIUS * 0.35);
+    return hit !== null && hit < 0.98;
+  });
 }
 
 function hasClearLine(start, end, objects) {
-  return !objects.some((object) => {
-    if (object.blocksVision === false) return false;
+  return !someMapObjectAlongSegment(objects, start, end, 0, (object) => {
+    if (object.blocksVision === false || !segmentMapObjectBoundsOverlap(start, end, object)) return false;
     const hit = segmentMapObjectEntryT(start, end, object, 0);
     return hit !== null && hit < 1 - 1e-4;
   });
@@ -1003,7 +1689,13 @@ function getSpawnCorridorExit(map, team, roleIndex, objective) {
 }
 
 function getBlueDefensePost(player, map, roleIndex = 0, roleCount = 1, retreating = false,
-  threat = null, settings = DEFAULT_BOT_PARAMETERS, brain = null) {
+  threat = null, settings = DEFAULT_BOT_PARAMETERS, brain = null, teamIntel = null,
+  visionObjects = null, teammates = [], teammateTacticalPositions = [],
+  confidence = 0.5, threatPositions = []) {
+  const rememberPost = (post) => {
+    if (brain) brain.defensePost = { ...post };
+    return post;
+  };
   const zone = map.spawnZones.blue;
   const exit = getSpawnExit(map, 'blue', roleIndex, roleCount, [], center(map.spawnZones.red), player.id);
   const site = center(zone);
@@ -1017,21 +1709,54 @@ function getBlueDefensePost(player, map, roleIndex = 0, roleCount = 1, retreatin
     };
   }
   if (!retreating) {
-    const routePost = getBlueRouteGuardPost(map, roleIndex, roleCount, settings, brain);
-    if (routePost) return routePost;
-    const post = chooseProtectedDefensePost(player, map, roleIndex, roleCount, brain);
-    if (post) return post;
+    const routePost = getBlueRouteGuardPost(
+      player, map, roleIndex, roleCount, settings, brain, teamIntel, visionObjects,
+      teammates, teammateTacticalPositions, confidence, threatPositions,
+    );
+    if (routePost) return rememberPost(routePost);
+    const post = chooseProtectedDefensePost(player, map, roleIndex, roleCount, brain,
+      teamIntel, visionObjects, teammates, teammateTacticalPositions,
+      settings, confidence, threatPositions);
+    if (post) return rememberPost(post);
+    const fallbackPost = getFallbackBlueDefensePost(player, map, roleIndex, roleCount,
+      brain, teamIntel, visionObjects, teammates, teammateTacticalPositions,
+      settings, confidence, threatPositions);
+    if (fallbackPost) return rememberPost(fallbackPost);
   }
-  if (!exit) return site;
+  if (!exit) return rememberPost(site);
   const innerDepth = retreating ? 0.34 : 0.16;
   const depth = Math.min(zone.width, zone.height) * innerDepth;
-  return {
+  return rememberPost({
     x: clamp(exit.doorway.x - exit.direction.x * depth, zone.x + PLAYER_RADIUS + 4, zone.x + zone.width - PLAYER_RADIUS - 4),
     y: clamp(exit.doorway.y - exit.direction.y * depth, zone.y + PLAYER_RADIUS + 4, zone.y + zone.height - PLAYER_RADIUS - 4),
-  };
+  });
 }
 
-function getBlueRouteGuardPost(map, roleIndex, roleCount, settings, brain) {
+function getBlueDefensePosture(settings, confidence) {
+  return clamp(
+    settings.aggressiveness * 0.35 + (1 - settings.defenseFocus) * 0.4 +
+      settings.objectiveFocus * 0.15 + confidence * 0.1,
+    0, 1,
+  );
+}
+
+function getDefenseThreatPressure(route, threatPositions, map) {
+  let best = { route, pressure: 0, projection: null };
+  for (const threat of threatPositions ?? []) {
+    if (![threat?.x, threat?.y].every(Number.isFinite)) continue;
+    const progress = getStrikeMineProgress(threat, map);
+    if (progress === null || progress < 0.25) continue;
+    const projection = getPolylineProjection(threat, route.points);
+    if (projection.distance > 450) continue;
+    const pressure = clamp((progress - 0.25) / 0.6, 0, 1) *
+      clamp(1 - projection.distance / 450, 0, 1);
+    if (pressure > best.pressure) best = { route, pressure, projection };
+  }
+  return best;
+}
+
+function getBlueRouteGuardPost(player, map, roleIndex, roleCount, settings, brain,
+  teamIntel, visionObjects, teammates, teammateTacticalPositions, confidence, threatPositions) {
   const blueRoom = (map.rooms ?? []).find((room) => room.id === 'blue-spawn' || (room.isSpawn && room.team === 'blue'));
   if (!blueRoom) return null;
   const routes = (map.corridors ?? []).filter((corridor) => corridor.a === blueRoom.id || corridor.b === blueRoom.id)
@@ -1042,17 +1767,307 @@ function getBlueRouteGuardPost(map, roleIndex, roleCount, settings, brain) {
     }).filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id)));
   if (!routes.length) return null;
 
-  const routeIndex = ((roleIndex % routes.length) + routes.length) % routes.length;
-  const route = routes[routeIndex];
-  const routeSlot = Math.floor(roleIndex / routes.length);
-  const routeSlotCount = Math.ceil(Math.max(1, roleCount) / routes.length);
-  const baseDistance = 50 + (1 - settings.defenseFocus) * 30;
-  const spreadDistance = routeSlotCount > 1 ? routeSlot * (140 / (routeSlotCount - 1)) : 0;
-  const guardDistance = baseDistance + spreadDistance;
-  const guardPost = pointAlongPolyline(route.points, guardDistance);
-  if (!guardPost) return null;
-  if (brain) brain.defenseWatchTarget = pointAlongPolyline(route.points, guardDistance + 120) ?? route.points.at(-1);
-  return guardPost;
+  const defensePosture = getBlueDefensePosture(settings, confidence);
+  const baseDistance = 35 + defensePosture * 265;
+  const routeMapKey = `${blueRoom.id}:${blueRoom.x}:${blueRoom.y}:${blueRoom.width}:${blueRoom.height}:` +
+    routes.map((route) => `${route.id}:${route.points.map((point) => `${point.x},${point.y}`).join(';')}`).join('|');
+  let assignment = brain?.defenseRouteAssignment;
+  let route = assignment?.mapKey === routeMapKey &&
+    assignment.roleIndex === roleIndex && assignment.roleCount === roleCount
+    ? routes.find((candidate) => candidate.id === assignment.routeId)
+    : null;
+  if (!route) {
+    const rankedRoutes = routes.map((candidate) => {
+      const watchTarget = pointAlongPolyline(candidate.points, baseDistance + 120) ?? candidate.points.at(-1);
+      return {
+        route: candidate,
+        coverage: getTeamCoverageCount(watchTarget, map, teamIntel, visionObjects, brain?.id),
+      };
+    }).sort((left, right) =>
+      left.coverage - right.coverage || String(left.route.id).localeCompare(String(right.route.id)));
+    route = rankedRoutes[((roleIndex % rankedRoutes.length) + rankedRoutes.length) % rankedRoutes.length].route;
+    assignment = {
+      mapKey: routeMapKey,
+      routeId: route.id,
+      roleIndex,
+      roleCount,
+      laneIndex: Math.floor(roleIndex / routes.length),
+      laneCount: Math.ceil(Math.max(1, roleCount) / routes.length),
+    };
+    if (brain) brain.defenseRouteAssignment = assignment;
+  }
+  const threatenedRoutes = routes.map((candidate) =>
+    getDefenseThreatPressure(candidate, threatPositions, map))
+    .filter((entry) => entry.pressure > 0)
+    .sort((left, right) => right.pressure - left.pressure);
+  const strongestThreatRoute = threatenedRoutes[0];
+  if (strongestThreatRoute && strongestThreatRoute.pressure >= 0.2) {
+    const currentThreatPressure = getDefenseThreatPressure(route, threatPositions, map).pressure;
+    if (strongestThreatRoute.route.id !== route.id &&
+        strongestThreatRoute.pressure > currentThreatPressure + 0.15) {
+      route = strongestThreatRoute.route;
+      assignment = {
+        ...(assignment ?? {}),
+        mapKey: routeMapKey,
+        routeId: route.id,
+        roleIndex,
+        roleCount,
+        laneIndex: Math.floor(roleIndex / routes.length),
+        laneCount: Math.ceil(Math.max(1, roleCount) / routes.length),
+      };
+      if (brain) brain.defenseRouteAssignment = assignment;
+    }
+  }
+  const laneIndex = Math.floor(roleIndex / routes.length);
+  const laneCount = Math.ceil(Math.max(1, roleCount) / routes.length);
+  const routeLength = polylineLength(route.points);
+  const maximumPostDistance = Math.max(0, routeLength - PLAYER_RADIUS);
+  let desiredPostDistance = Math.min(baseDistance, maximumPostDistance);
+  const threatPressure = getDefenseThreatPressure(route, threatPositions, map);
+  if (threatPressure.pressure > 0) {
+    const standOff = clamp(
+      40 + settings.defenseFocus * 80 + (1 - confidence) * 60 -
+        (settings.aggressiveness + settings.objectiveFocus) * 30,
+      20,
+      190,
+    );
+    const responseDistance = clamp(
+      threatPressure.projection.distanceAlong - standOff,
+      0,
+      maximumPostDistance,
+    );
+    desiredPostDistance = baseDistance * (1 - threatPressure.pressure) +
+      responseDistance * threatPressure.pressure;
+  }
+  desiredPostDistance = clamp(desiredPostDistance, 0, maximumPostDistance);
+  const laneSpread = Math.min(
+    MIN_DEFENDER_POST_SPACING * Math.max(0, laneCount - 1),
+    maximumPostDistance,
+  );
+  const firstDistance = clamp(desiredPostDistance - laneSpread / 2, 0,
+    Math.max(0, maximumPostDistance - laneSpread));
+  const lastDistance = firstDistance + laneSpread;
+  const idealDistance = laneCount > 1
+    ? firstDistance + (lastDistance - firstDistance) * laneIndex / (laneCount - 1)
+    : desiredPostDistance;
+  const reservations = getReservedDefensePositions(player.id, teammates, teammateTacticalPositions);
+  const defaultWatchTarget = pointAlongPolylineExtended(route.points, idealDistance + 130, map);
+  if (brain) brain.defenseWatchTarget = { ...defaultWatchTarget };
+  const candidateDistances = new Set([firstDistance, lastDistance, idealDistance]);
+  for (let distanceAlongRoute = firstDistance + MIN_DEFENDER_POST_SPACING;
+    distanceAlongRoute < lastDistance; distanceAlongRoute += MIN_DEFENDER_POST_SPACING) {
+    candidateDistances.add(distanceAlongRoute);
+  }
+  const candidates = [];
+  for (const distanceAlongRoute of candidateDistances) {
+    const post = pointAlongPolyline(route.points, distanceAlongRoute);
+    if (!post || circleOverlapsMapObjects(post, map.objects ?? [], PLAYER_RADIUS)) continue;
+    const watchTarget = pointAlongPolylineExtended(route.points, distanceAlongRoute + 130, map);
+    const postDistance = minimumReservedDistance(post, reservations, 'post');
+    const watchDistance = minimumReservedDistance(watchTarget, reservations, 'watch');
+    if (postDistance < MIN_DEFENDER_POST_SPACING ||
+        watchDistance < MIN_DEFENDER_WATCH_SPACING) continue;
+    const coverage = getTeamCoverageCount(watchTarget, map, teamIntel, visionObjects, player.id);
+    candidates.push({
+      post,
+      watchTarget,
+      score: Math.abs(distanceAlongRoute - idealDistance) +
+        distance(player, post) * 0.08 + coverage * 100,
+    });
+  }
+  candidates.sort((left, right) => left.score - right.score);
+  const best = candidates[0];
+  if (!best) return null;
+  if (brain) brain.defenseWatchTarget = { ...best.watchTarget };
+  return best.post;
+}
+
+function getFallbackBlueDefensePost(player, map, roleIndex, roleCount, brain, teamIntel,
+  visionObjects, teammates, teammateTacticalPositions, settings, confidence, threatPositions) {
+  const zone = map.spawnZones?.blue;
+  if (!zone) return null;
+  const site = center(zone);
+  const opposingSite = map.spawnZones?.red ? center(map.spawnZones.red) : {
+    x: map.width / 2,
+    y: map.height / 2,
+  };
+  const blueRoom = (map.rooms ?? []).find((room) =>
+    room.id === 'blue-spawn' || (room.isSpawn && room.team === 'blue'));
+  const ingresses = blueRoom
+    ? (map.corridors ?? []).filter((corridor) =>
+      corridor.a === blueRoom.id || corridor.b === blueRoom.id)
+    .map((corridor) => ({
+      id: corridor.id,
+      points: corridor.a === blueRoom.id
+        ? corridor.points : [...(corridor.points ?? [])].reverse(),
+    }))
+    .filter((entry) => entry.points?.length > 1)
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    : [];
+  const route = ingresses.length ? ingresses[roleIndex % ingresses.length] : null;
+  const forward = route
+    ? unitVector(route.points[0], route.points.at(-1))
+    : unitVector(site, opposingSite);
+  const lateral = { x: -forward.y, y: forward.x };
+  const defensePosture = getBlueDefensePosture(settings, confidence);
+  const laneIndex = Math.floor(roleIndex / Math.max(1, ingresses.length));
+  const laneOffset = (roleIndex - (roleCount - 1) / 2) * 140;
+  const reservations = getReservedDefensePositions(player.id, teammates, teammateTacticalPositions);
+  const watchTarget = route
+    ? chooseDistinctIngressWatchTarget(
+      route.points, 150 + defensePosture * 170 + laneIndex * 130, map, reservations,
+    )
+    : {
+      x: clamp(site.x + forward.x * (150 + defensePosture * 170) + lateral.x * laneOffset,
+        PLAYER_RADIUS, map.width - PLAYER_RADIUS),
+      y: clamp(site.y + forward.y * (150 + defensePosture * 170) + lateral.y * laneOffset,
+        PLAYER_RADIUS, map.height - PLAYER_RADIUS),
+    };
+  if (brain) brain.defenseWatchTarget = watchTarget;
+  const advancingThreat = (threatPositions ?? [])
+    .filter((position) => getStrikeMineProgress(position, map) >= 0.55)
+    .sort((left, right) =>
+      distance(left, site) - distance(right, site))[0];
+  const threatShift = advancingThreat && defensePosture > 0.5 ? 0.35 : 0;
+  const depth = 15 + defensePosture * (Math.min(zone.width, zone.height) * 0.35);
+  const preferred = {
+    x: clamp(site.x + forward.x * depth +
+      (advancingThreat ? (advancingThreat.x - site.x) * threatShift : 0) +
+      lateral.x * laneOffset * 0.3,
+      zone.x + PLAYER_RADIUS + 4, zone.x + zone.width - PLAYER_RADIUS - 4),
+    y: clamp(site.y + forward.y * depth +
+      (advancingThreat ? (advancingThreat.y - site.y) * threatShift : 0) +
+      lateral.y * laneOffset * 0.3,
+      zone.y + PLAYER_RADIUS + 4, zone.y + zone.height - PLAYER_RADIUS - 4),
+  };
+  let best = null;
+  for (let xIndex = 0; xIndex < 7; xIndex += 1) {
+    for (let yIndex = 0; yIndex < 7; yIndex += 1) {
+      const point = {
+        x: zone.x + PLAYER_RADIUS + 4 +
+          (zone.width - (PLAYER_RADIUS + 4) * 2) * xIndex / 6,
+        y: zone.y + PLAYER_RADIUS + 4 +
+          (zone.height - (PLAYER_RADIUS + 4) * 2) * yIndex / 6,
+      };
+      if (circleOverlapsMapObjects(point, map.objects ?? [], PLAYER_RADIUS)) continue;
+      const score = distance(point, preferred) * 0.4 +
+        getDefenseSpacingPenalty(point, watchTarget, reservations) +
+        getTeamCoverageCount(watchTarget, map, teamIntel, visionObjects, player.id) * 80 +
+        (hashString(`${player.id}:${xIndex}:${yIndex}`) % 13) * 0.05;
+      if (!best || score < best.score) best = { point, score };
+    }
+  }
+  return best?.point ?? null;
+}
+
+function getReservedDefensePositions(playerId, teammates, teammateTacticalPositions = []) {
+  const byId = new Map();
+  const add = (id, post, watch, cover) => {
+    if (!id || id === playerId) return;
+    const reservation = byId.get(id) ?? { id };
+    if (post) reservation.post = post;
+    if (watch) reservation.watch = watch;
+    if (cover) reservation.cover = cover;
+    byId.set(id, reservation);
+  };
+  for (const teammate of teammates) {
+    if (teammate.alive === false || (teammate.health ?? 100) <= 0) continue;
+    add(teammate.id, teammate.botBrain?.defensePost,
+      teammate.botBrain?.defenseWatchTarget, teammate.botBrain?.tacticalCoverCache?.point);
+  }
+  for (const assignment of teammateTacticalPositions) {
+    add(assignment.id, assignment.defensePost, assignment.defenseWatchTarget, assignment.coverPoint);
+  }
+  return [...byId.values()];
+}
+
+function minimumReservedDistance(point, reservations, key) {
+  let minimum = Infinity;
+  for (const reservation of reservations) {
+    const reservedPoint = key === 'post'
+      ? reservation.post ?? reservation.cover
+      : reservation.watch;
+    if (reservedPoint) minimum = Math.min(minimum, distance(point, reservedPoint));
+  }
+  return minimum;
+}
+
+function getPolylineProjection(point, points) {
+  let distanceAlong = 0;
+  let bestDistance = Infinity;
+  let bestDistanceAlong = 0;
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    const length = Math.sqrt(lengthSquared);
+    if (lengthSquared <= 1e-9) continue;
+    const fraction = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) /
+      lengthSquared, 0, 1);
+    const projection = {
+      x: start.x + dx * fraction,
+      y: start.y + dy * fraction,
+    };
+    const projectionDistance = distance(point, projection);
+    if (projectionDistance < bestDistance) {
+      bestDistance = projectionDistance;
+      bestDistanceAlong = distanceAlong + length * fraction;
+    }
+    distanceAlong += length;
+  }
+  return { distance: bestDistance, distanceAlong: bestDistanceAlong };
+}
+
+function chooseDistinctIngressWatchTarget(points, preferredDistance, map, reservations) {
+  let best = pointAlongPolylineExtended(points, preferredDistance, map);
+  let bestSpacing = minimumReservedDistance(best, reservations, 'watch');
+  if (bestSpacing >= MIN_DEFENDER_WATCH_SPACING) return best;
+  for (let offset = 1; offset <= 12; offset += 1) {
+    for (const sign of [1, -1]) {
+      const candidate = pointAlongPolylineExtended(
+        points,
+        preferredDistance + offset * MIN_DEFENDER_WATCH_SPACING * sign,
+        map,
+      );
+      const spacing = minimumReservedDistance(candidate, reservations, 'watch');
+      if (spacing >= MIN_DEFENDER_WATCH_SPACING) return candidate;
+      if (spacing > bestSpacing) {
+        best = candidate;
+        bestSpacing = spacing;
+      }
+    }
+  }
+  return best;
+}
+
+function getDefenseSpacingPenalty(post, watchTarget, reservations) {
+  let penalty = 0;
+  for (const reservation of reservations) {
+    const reservedPost = reservation.post ?? reservation.cover;
+    if (reservedPost) {
+      penalty += Math.max(0, MIN_DEFENDER_POST_SPACING - distance(post, reservedPost)) * 12;
+    }
+    if (reservation.watch) {
+      penalty += Math.max(0, MIN_DEFENDER_WATCH_SPACING - distance(watchTarget, reservation.watch)) * 8;
+    }
+  }
+  return penalty;
+}
+
+function pointAlongPolylineExtended(points, requestedDistance, map) {
+  const routeLength = polylineLength(points);
+  const point = pointAlongPolyline(points, Math.min(requestedDistance, routeLength));
+  if (!point || requestedDistance <= routeLength || points.length < 2) return point;
+  const previous = points.at(-2);
+  const end = points.at(-1);
+  const direction = unitVector(previous, end);
+  const extension = requestedDistance - routeLength;
+  return {
+    x: clamp(end.x + direction.x * extension, PLAYER_RADIUS, map.width - PLAYER_RADIUS),
+    y: clamp(end.y + direction.y * extension, PLAYER_RADIUS, map.height - PLAYER_RADIUS),
+  };
 }
 
 function pointAlongPolyline(points, requestedDistance) {
@@ -1140,7 +2155,7 @@ function updateNavigationProgress(player, brain, now, goal, action, waypoint = g
   }
 }
 
-function getNavigationTarget(player, goal, map, brain, now) {
+function getNavigationTarget(player, goal, map, brain, now, mapStrategy = getBotMapStrategy(map)) {
   if (brain.detourTarget && distance(player, brain.detourTarget) <= 32) {
     brain.detourTarget = null;
     brain.detourUntil = 0;
@@ -1163,7 +2178,7 @@ function getNavigationTarget(player, goal, map, brain, now) {
     }
   }
 
-  const graphWaypoint = getRoomGraphWaypoint(player, goal, map, brain);
+  const graphWaypoint = getRoomGraphWaypoint(player, goal, map, brain, mapStrategy);
   if (graphWaypoint) {
     const blocked = (map.objects ?? []).some((object) =>
       segmentMapObjectEntryT(player, graphWaypoint, object, PLAYER_RADIUS) !== null);
@@ -1317,12 +2332,13 @@ function chooseHazardAwareWaypoint(player, waypoint, map, hazards, now) {
       }
     }
   }
-  return bestPoint;
+  return Number.isFinite(bestCost) ? bestPoint :
+    getHardHazardStopPoint(player, waypoint, map, activeHazards) ?? bestPoint;
 }
 
 function getImmediateHazardEscapeWaypoint(player, waypoint, map, hazards) {
   const dangerousZones = hazards.filter((effect) =>
-    ['molotov', 'orbital-strike-warning'].includes(effect.type) &&
+    ['molotov', 'mine', 'orbital-strike-warning'].includes(effect.type) &&
     distance(player, effect) <= (effect.radius ?? 60) + PLAYER_RADIUS);
   if (!dangerousZones.length) return null;
 
@@ -1342,7 +2358,7 @@ function getImmediateHazardEscapeWaypoint(player, waypoint, map, hazards) {
           !isMovementPathClear(player, candidate, map.objects)) continue;
 
       const remainsInDanger = hazards.some((effect) =>
-        ['molotov', 'orbital-strike-warning'].includes(effect.type) &&
+        ['molotov', 'mine', 'orbital-strike-warning'].includes(effect.type) &&
         distance(candidate, effect) <= (effect.radius ?? 60) + PLAYER_RADIUS);
       const score = distance(player, candidate) + distance(candidate, waypoint) * 0.08 +
         (remainsInDanger ? 10_000 : 0);
@@ -1355,6 +2371,33 @@ function getImmediateHazardEscapeWaypoint(player, waypoint, map, hazards) {
   return bestPoint;
 }
 
+function getHardHazardStopPoint(player, waypoint, map, hazards) {
+  const pathLength = distance(player, waypoint);
+  if (pathLength <= 1) return { x: player.x, y: player.y };
+  const firstHazard = hazards
+    .filter((hazard) => ['molotov', 'mine'].includes(hazard.type))
+    .map((hazard) => ({
+      entryT: segmentCircleEntryTCoordinates(
+        player.x, player.y, waypoint.x, waypoint.y,
+        hazard.x, hazard.y, (hazard.radius ?? 60) + PLAYER_RADIUS,
+      ),
+    }))
+    .filter(({ entryT }) => entryT !== null)
+    .sort((left, right) => left.entryT - right.entryT)[0];
+  if (!firstHazard) return null;
+
+  const stopT = Math.max(0, firstHazard.entryT - (PLAYER_RADIUS + 8) / pathLength);
+  const candidate = {
+    x: player.x + (waypoint.x - player.x) * stopT,
+    y: player.y + (waypoint.y - player.y) * stopT,
+  };
+  if (circleOverlapsMapObjects(candidate, map.objects ?? [], PLAYER_RADIUS) ||
+      !isMovementPathClear(player, candidate, map.objects)) {
+    return { x: player.x, y: player.y };
+  }
+  return candidate;
+}
+
 function getHazardRouteCost(points, hazards, health, now) {
   let cost = 0;
   for (const hazard of hazards) {
@@ -1362,13 +2405,16 @@ function getHazardRouteCost(points, hazards, health, now) {
     const insideLength = points.slice(1).reduce((sum, point, index) =>
       sum + getSegmentCircleLength(points[index], point, hazard, radius), 0);
     if (insideLength <= 0) continue;
+    if (hazard.type === 'molotov' || hazard.type === 'mine') return Infinity;
     const remainingSeconds = (hazard.expiresAt - now) / 1_000;
     const exposureSeconds = Math.min(remainingSeconds, insideLength / BOT_TRAVEL_SPEED);
     if (hazard.type === 'cryo') {
       cost += exposureSeconds * BOT_TRAVEL_SPEED * (1 / CRYO_MOVEMENT_SPEED_MULTIPLIER - 1);
     } else if (hazard.type === BIO_FIELD_ID) {
       cost += exposureSeconds * BOT_TRAVEL_SPEED * (1 / BIO_FIELD_ENEMY_MOVEMENT_MULTIPLIER - 1);
-    } else if (hazard.type === 'molotov' || hazard.type === 'orbital-strike-warning') {
+    } else if (hazard.type === VINE_TRAP_ID) {
+      cost += 2_000 + insideLength * 8;
+    } else if (hazard.type === 'orbital-strike-warning') {
       const predictedDamage = exposureSeconds * (hazard.damagePerSecond ?? 50);
       cost += 100_000 + predictedDamage * 1.5 + (predictedDamage >= health ? 2_000 : 0);
     }
@@ -1395,13 +2441,13 @@ function getSegmentCircleLength(start, end, center, radius) {
 }
 
 function isMovementPathClear(start, end, objects = []) {
-  return !(objects ?? []).some((object) => object.blocksMovement !== false &&
-    segmentMapObjectEntryT(start, end, { ...object, blocksProjectiles: true }, PLAYER_RADIUS) !== null);
+  return !someMapObjectAlongSegment(objects, start, end, PLAYER_RADIUS, (object) =>
+    segmentMapObjectBoundsOverlap(start, end, object, PLAYER_RADIUS) &&
+    segmentMapObjectEntryT(start, end, object, PLAYER_RADIUS, 'blocksMovement') !== null);
 }
 
-function getRoomGraphWaypoint(player, goal, map, brain) {
-  const rooms = map.rooms ?? [];
-  const corridors = map.corridors ?? [];
+function getRoomGraphWaypoint(player, goal, map, brain, mapStrategy) {
+  const { rooms, corridors, roomsById, findRoomPath } = mapStrategy;
   if (rooms.length < 2 || corridors.length === 0) return null;
   const goalRoom = nearestRoom(goal, rooms);
   if (!goalRoom) return null;
@@ -1420,12 +2466,11 @@ function getRoomGraphWaypoint(player, goal, map, brain) {
     return distance(player, next) <= 42 ? goal : next;
   }
 
-  const roomsById = new Map(rooms.map((room) => [room.id, room]));
   let route = null;
   let routeScore = Infinity;
   const currentRoom = nearestRoom(player, rooms);
   if (currentRoom) {
-    const graphPath = findRoomPath(currentRoom.id, goalRoom.id, rooms, corridors);
+    const graphPath = findRoomPath(currentRoom.id, goalRoom.id);
     if (graphPath) {
       route = buildRoomRoute(graphPath, roomsById, goal);
       routeScore = pointRectDistance(player, currentRoom) + graphPath.distance;
@@ -1443,7 +2488,7 @@ function getRoomGraphWaypoint(player, goal, map, brain) {
   if (closestCorridor) {
     for (const endpoint of ['a', 'b']) {
       const roomId = closestCorridor.corridor[endpoint];
-      const graphPath = findRoomPath(roomId, goalRoom.id, rooms, corridors);
+      const graphPath = findRoomPath(roomId, goalRoom.id);
       if (!graphPath) continue;
       const towardStart = endpoint === 'a';
       const along = polylineRemainder(closestCorridor.corridor.points, closestCorridor.projection, towardStart);
@@ -1485,45 +2530,6 @@ function nearestRoom(point, rooms) {
     }
   }
   return nearest;
-}
-
-function findRoomPath(startId, goalId, rooms, corridors) {
-  if (startId === goalId) return { nodes: [startId], edges: [], distance: 0 };
-  const distances = new Map([[startId, 0]]);
-  const previous = new Map();
-  const unvisited = new Set(rooms.map((room) => room.id));
-  while (unvisited.size > 0) {
-    let current = null;
-    let best = Infinity;
-    for (const id of unvisited) {
-      const candidate = distances.get(id) ?? Infinity;
-      if (candidate < best) { current = id; best = candidate; }
-    }
-    if (current === null || current === goalId) break;
-    unvisited.delete(current);
-    for (const corridor of corridors) {
-      const next = corridor.a === current ? corridor.b : corridor.b === current ? corridor.a : null;
-      if (!next || !unvisited.has(next)) continue;
-      const cost = polylineLength(corridor.points) || distance(
-        rooms.find((room) => room.id === current), rooms.find((room) => room.id === next));
-      const alternate = best + cost;
-      if (alternate >= (distances.get(next) ?? Infinity)) continue;
-      distances.set(next, alternate);
-      previous.set(next, { id: current, corridor });
-    }
-  }
-  if (!distances.has(goalId)) return null;
-  const nodes = [goalId];
-  const edges = [];
-  let cursor = goalId;
-  while (cursor !== startId) {
-    const step = previous.get(cursor);
-    if (!step) return null;
-    edges.unshift(step.corridor);
-    cursor = step.id;
-    nodes.unshift(cursor);
-  }
-  return { nodes, edges, distance: distances.get(goalId) };
 }
 
 function buildRoomRoute(path, roomsById, goal) {
@@ -1647,11 +2653,20 @@ function getTeamSpreadTarget(player, teammates, anchor, radius, brain, role, rol
 }
 
 function isCoveredByTeamIntel(point, map, teamIntel, visionObjects) {
-  return (teamIntel?.visionSources ?? []).some((source) =>
-    isPointVisible(point, source, source.xray ? [] : visionObjects ?? map.objects ?? []));
+  return getTeamCoverageCount(point, map, teamIntel, visionObjects) > 0;
 }
 
-function getNearbyIntelEntrance(player, map, intelPosition) {
+function getTeamCoverageCount(point, map, teamIntel, visionObjects, excludedObserverId = null) {
+  let coverage = 0;
+  const objects = visionObjects ?? map.objects ?? [];
+  for (const source of teamIntel?.visionSources ?? []) {
+    if (source.observerId === excludedObserverId) continue;
+    if (isPointVisible(point, source, source.xray ? [] : objects)) coverage += 1;
+  }
+  return coverage;
+}
+
+function getNearbyIntelEntrance(player, map, intelPosition, teamIntel = null, visionObjects = null) {
   let best = null;
   let bestScore = Infinity;
   for (const corridor of map.corridors ?? []) {
@@ -1659,7 +2674,10 @@ function getNearbyIntelEntrance(player, map, intelPosition) {
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y) ||
           distance(point, intelPosition) > 260 || distance(player, point) > 1_000 ||
           !hasClearLine(point, intelPosition, map.objects ?? [])) continue;
-      const score = distance(player, point) + distance(point, intelPosition) * 0.45;
+      const coveragePenalty = getTeamCoverageCount(
+        point, map, teamIntel, visionObjects, player.id,
+      ) * 220;
+      const score = distance(player, point) + distance(point, intelPosition) * 0.45 + coveragePenalty;
       if (score < bestScore) {
         best = { x: point.x, y: point.y };
         bestScore = score;
@@ -1682,11 +2700,12 @@ function explorationCellKey(point) {
   return `${Math.floor(point.x / EXPLORE_CELL_SIZE)}:${Math.floor(point.y / EXPLORE_CELL_SIZE)}`;
 }
 
-function isShotLaneClear(shooter, enemy, direction, map, weapon, teammates, targetRadius = PLAYER_RADIUS) {
+function isShotLaneClear(shooter, enemy, direction, map, weapon, teammates,
+  targetRadius = PLAYER_RADIUS, lean = shooter.weaponLean ?? 0) {
   const targetDistance = distance(shooter, enemy);
   if (targetDistance <= 1 || targetDistance > weapon.range) return false;
   const angle = Math.atan2(direction.y, direction.x);
-  const start = getWeaponMuzzlePosition(shooter, angle, shooter.weaponLean ?? 0, map.objects);
+  const start = getWeaponMuzzlePosition(shooter, angle, lean, map.objects);
   const length = Math.min(weapon.range, targetDistance + PLAYER_RADIUS * 3);
   const end = { x: start.x + direction.x * length, y: start.y + direction.y * length };
   const targetHit = segmentCircleEntryTCoordinates(start.x, start.y, end.x, end.y, enemy.x, enemy.y,
@@ -1714,15 +2733,56 @@ function isShotLaneClear(shooter, enemy, direction, map, weapon, teammates, targ
   return true;
 }
 
+function isBotSpottedByEnemy(bot, enemy, map, visionObjects, now) {
+  if (isPlayerFlashBlinded(enemy, now) || isPlayerJammed(enemy, now)) return false;
+  const weaponId = enemy.selectedWeaponId ?? DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle.id;
+  const enemyVision = {
+    origin: getPlayerVisionOrigin(enemy, map.objects ?? []),
+    angle: enemy.visionAngle ?? enemy.weaponStats?.[weaponId]?.aimAngle ?? 0,
+    halfAngle: VISION_HALF_ANGLE,
+  };
+  return isPointVisible(bot, enemyVision, visionObjects);
+}
+
+function getVisibleEnemyAimPoint(shooter, enemy, vision, visionObjects, map, weapon, teammates, lean) {
+  const isClearAimPoint = (point) => isPointVisible(point, vision, visionObjects) &&
+    isShotLaneClear(
+      shooter,
+      enemy,
+      unitVector(shooter, point),
+      map,
+      weapon,
+      teammates,
+      enemy.radius ?? PLAYER_RADIUS,
+      lean,
+    );
+  if (isClearAimPoint(enemy)) return { x: enemy.x, y: enemy.y };
+
+  const radius = enemy.radius ?? PLAYER_RADIUS;
+  const sampleCount = Math.max(24, Math.ceil(TAU * radius / 1.25));
+  for (const fraction of [0.55, 0.98]) {
+    for (let index = 0; index < sampleCount; index += 1) {
+      const angle = index * TAU / sampleCount;
+      const point = {
+        x: enemy.x + Math.cos(angle) * radius * fraction,
+        y: enemy.y + Math.sin(angle) * radius * fraction,
+      };
+      if (isClearAimPoint(point)) return point;
+    }
+  }
+  return { x: enemy.x, y: enemy.y };
+}
+
 function combatMovementTarget(player, enemy, brain, map, roleIndex, weaponId = 'assault-rifle') {
   const distanceToEnemy = distance(player, enemy);
   const weapon = BOT_WEAPONS_BY_ID.get(weaponId);
   if (weapon?.weaponClass === 'sniper' && distanceToEnemy > 360) {
     return getSniperOverwatchTarget(player, enemy, map) ?? enemy;
   }
-  const preferredRange = weaponId === 'shotgun' ? 145 : weaponId === 'smg' ? 245 : 255;
-  const enterStrafe = weaponId === 'shotgun' ? 175 : weaponId === 'smg' ? 250 : 255;
-  const resumeApproach = weaponId === 'shotgun' ? 230 : weaponId === 'smg' ? 330 : 335;
+  const isSmg = weaponId === 'smg' || weaponId === 'suppressed-smg';
+  const preferredRange = weaponId === 'shotgun' ? 145 : isSmg ? 245 : 255;
+  const enterStrafe = weaponId === 'shotgun' ? 175 : isSmg ? 250 : 255;
+  const resumeApproach = weaponId === 'shotgun' ? 230 : isSmg ? 330 : 335;
   const retreatRange = weaponId === 'shotgun' ? 72 : 112;
   const resumeStrafe = weaponId === 'shotgun' ? 108 : 155;
   if (brain.combatMode === 'approach' && distanceToEnemy < enterStrafe) brain.combatMode = 'strafe';
@@ -1783,17 +2843,27 @@ function chooseBotGadgetAction(bot, match, visibleEnemies, teammates, now, conte
   if (Number.isFinite(bot.gadgetSwitchEndsAt) && bot.gadgetSwitchEndsAt > now) return null;
 
   const equippedSlot = getBotEquippedSlot(bot, now);
+  if (context.armorRecovery) return equippedSlot === 'gadget' ? { action: 'switch' } : null;
   const gadgetId = bot.selectedGadgetId;
   const gadget = GADGET_DEFINITIONS[gadgetId];
   const count = bot.gadgetCounts?.[gadgetId] ?? bot.gadgetCount ?? 0;
+  const gadgetEffects = getCurrentGadgetEffects(match, now);
+  const gadgetContext = {
+    ...context,
+    gadgetEffects,
+    knownEnemyTrophies: getKnownEnemyTrophies(bot, gadgetEffects, now, context),
+  };
+  const infiniteGadgetUse = match.infiniteGadgetUse === true;
   const ownedTrophy = gadgetId === TROPHY_SYSTEM_ID
     ? (match.gadgetEffects ?? []).find((effect) => effect.ownerId === bot.id &&
       effect.type === TROPHY_SYSTEM_ID && effect.team === bot.team &&
       effect.startedAt <= now && effect.expiresAt > now &&
       (effect.health ?? TROPHY_SYSTEM_HEALTH) > 0)
     : null;
-  const trophyCommandReady = ownedTrophy && now >= (bot.trophyCommandReadyAt ?? 0);
-  const canUse = now >= (match.gameplayStartsAt ?? 0) && (count > 0 || trophyCommandReady);
+  const trophyCommandReady = ownedTrophy &&
+    (infiniteGadgetUse || now >= (bot.trophyCommandReadyAt ?? 0));
+  const canUse = now >= (match.gameplayStartsAt ?? 0) &&
+    (count > 0 || infiniteGadgetUse || trophyCommandReady);
   let target = null;
   if (canUse) {
     switch (gadgetId) {
@@ -1804,25 +2874,25 @@ function chooseBotGadgetAction(bot, match, visibleEnemies, teammates, now, conte
         target = chooseFlashTarget(bot, match, visibleEnemies, teammates, now, context);
         break;
       case JAMMER_GRENADE_ID:
-        target = chooseJammerTarget(bot, match, visibleEnemies, now);
+        target = chooseJammerTarget(bot, match, visibleEnemies, now, gadgetContext);
         break;
       case BIO_FIELD_ID:
-        target = chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now);
+        target = chooseBioFieldTarget(bot, match, teammates, visibleEnemies, now, gadgetContext, gadgetEffects);
         break;
       case PROXIMITY_MINE_ID:
       case VINE_TRAP_ID:
-        target = chooseProximityMineTarget(bot, match, visibleEnemies, teammates, now, context);
+        target = chooseProximityMineTarget(bot, match, visibleEnemies, teammates, now, gadgetContext);
         break;
       case ORBITAL_STRIKE_ID:
         target = chooseOrbitalStrikeTarget(bot, match, visibleEnemies, teammates, now, context);
         break;
       case SPY_CAMERA_ID:
-        target = chooseSpyCameraTarget(bot, match, visibleEnemies, now, context);
+        target = chooseSpyCameraTarget(bot, match, visibleEnemies, now, gadgetContext);
         break;
       case TROPHY_SYSTEM_ID:
         target = ownedTrophy
-          ? chooseTrophyCommandTarget(bot, match, ownedTrophy, now, context)
-          : chooseTrophySystemTarget(bot, match, visibleEnemies, now, context);
+          ? chooseTrophyCommandTarget(bot, match, ownedTrophy, now, gadgetContext)
+          : chooseTrophySystemTarget(bot, match, visibleEnemies, now, gadgetContext);
         break;
       case SONAR_ID:
         target = chooseSonarTarget(bot, match, visibleEnemies, now, context);
@@ -1832,7 +2902,12 @@ function chooseBotGadgetAction(bot, match, visibleEnemies, teammates, now, conte
         break;
       default:
         if (gadgetId === MOLOTOV_ID || gadgetId === CRYO_GRENADE_ID) {
-          target = chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now);
+          target = gadgetId === CRYO_GRENADE_ID
+            ? chooseMolotovCounterTarget(bot, match, teammates, now, gadgetContext, gadgetEffects) ??
+              chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now,
+                gadgetEffects, gadgetContext)
+            : chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now,
+              gadgetEffects, gadgetContext);
         }
     }
   }
@@ -1852,19 +2927,30 @@ function getBotEquippedSlot(bot, now) {
   return bot.equippedSlot ?? 'weapon';
 }
 
-function chooseJammerTarget(bot, match, visibleEnemies, now) {
+function chooseJammerTarget(bot, match, visibleEnemies, now, context) {
   const gadget = GADGET_DEFINITIONS[JAMMER_GRENADE_ID];
+  const mapObjects = match.map.objects ?? [];
+  const visionObjects = context.visionObjects ?? mapObjects;
   const candidates = visibleEnemies
     .filter((enemy) => !isPlayerJammed(enemy, now) && distance(bot, enemy) <= gadget.throwRange)
     .map((enemy) => ({ x: enemy.x, y: enemy.y }));
   let best = null;
   for (const target of candidates) {
+    const origin = getGadgetThrowOrigin(bot, target, mapObjects);
+    const trajectory = origin && calculateGadgetTrajectory(origin, target, mapObjects, {
+      maximumRange: gadget.throwRange,
+      collisionRadius: gadget.throwCollisionRadius,
+      maximumBounces: gadget.maxBounces,
+    });
+    if (!trajectory || isTrajectoryCoveredByTrophy(
+      trajectory, context.knownEnemyTrophies ?? [], visionObjects,
+    )) continue;
     const nearbyEnemies = visibleEnemies.filter((enemy) =>
-      distance(target, enemy) <= JAMMER_GRENADE_RADIUS).length;
-    const nearbyGadgets = (match.gadgetEffects ?? []).filter((effect) =>
+      distance(trajectory.endpoint, enemy) <= JAMMER_GRENADE_RADIUS).length;
+    const nearbyGadgets = (context.gadgetEffects ?? match.gadgetEffects ?? []).filter((effect) =>
       effect.team !== bot.team && effect.expiresAt > now &&
       Number.isFinite(effect.x) && Number.isFinite(effect.y) &&
-      distance(target, effect) <= JAMMER_GRENADE_RADIUS).length;
+      distance(trajectory.endpoint, effect) <= JAMMER_GRENADE_RADIUS).length;
     const score = nearbyEnemies * 10 + nearbyGadgets;
     if (!best || score > best.score) best = { target, score };
   }
@@ -1891,7 +2977,6 @@ function chooseFlashTarget(bot, match, visibleEnemies, teammates, now, context) 
       candidates.push({ x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 });
     }
   }
-
   let best = null;
   for (const target of candidates) {
     const origin = getGadgetThrowOrigin(bot, target, mapObjects);
@@ -1900,7 +2985,9 @@ function chooseFlashTarget(bot, match, visibleEnemies, teammates, now, context) 
       collisionRadius: gadget.throwCollisionRadius,
       maximumBounces: gadget.maxBounces,
     });
-    if (!trajectory) continue;
+    if (!trajectory || isTrajectoryCoveredByTrophy(
+      trajectory, context.knownEnemyTrophies ?? [], visionObjects,
+    )) continue;
     const endpoint = trajectory.endpoint;
     const detonationSeconds = (trajectory.distance / getGadgetProjectileSpeed(gadget)) +
       (gadget.detonationDelayMs ?? 0) / 1_000;
@@ -1948,7 +3035,81 @@ function predictGadgetActorPosition(actor, seconds, map) {
   };
 }
 
-function chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now) {
+function chooseMolotovCounterTarget(bot, match, teammates, now, context, gadgetEffects) {
+  const cryo = GADGET_DEFINITIONS[CRYO_GRENADE_ID];
+  const cryoRadius = cryo.effectRadius;
+  const mapObjects = match.map.objects ?? [];
+  const visionObjects = context.visionObjects ?? mapObjects;
+  const allies = [bot, ...teammates].filter((ally) =>
+    ally.team === bot.team && ally.alive !== false && (ally.health ?? 100) > 0);
+  const activeCryos = gadgetEffects.filter((effect) => effect.type === 'cryo');
+  const activeAreaDenial = gadgetEffects.filter(isAreaDenialEffect);
+  const molotovs = gadgetEffects.filter((effect) =>
+    effect.type === 'molotov' && effect.startedAt <= now && effect.expiresAt > now &&
+    ['red', 'blue'].includes(effect.team) && effect.team !== bot.team &&
+    (!context.vision || isPointVisible(effect, context.vision, visionObjects)));
+  let best = null;
+
+  for (const molotov of molotovs) {
+    const molotovRadius = getEffectAreaRadius(molotov);
+    if (activeCryos.some((effect) => overlapsEffectArea(molotov, molotovRadius, effect))) continue;
+    const threatenedAllies = allies.filter((ally) =>
+      distance(ally, molotov) <= molotovRadius + PLAYER_RADIUS);
+    const waypoint = context.waypoint;
+    const blocksTeamRoute = waypoint && allies.some((ally) =>
+      distanceToSegment(molotov, ally, waypoint) <= molotovRadius + PLAYER_RADIUS);
+    if (threatenedAllies.length === 0 && !blocksTeamRoute) continue;
+
+    const safetyRadius = cryoRadius + PLAYER_RADIUS +
+      GADGET_TACTIC_WEIGHTS[CRYO_GRENADE_ID].teammateMargin;
+    const requiredSeparation = Math.min(
+      cryoRadius + molotovRadius - 1,
+      safetyRadius + 2,
+    );
+    const candidates = [{ x: molotov.x, y: molotov.y }];
+    for (let index = 0; index < 16; index += 1) {
+      const angle = index * TAU / 16;
+      candidates.push({
+        x: molotov.x + Math.cos(angle) * requiredSeparation,
+        y: molotov.y + Math.sin(angle) * requiredSeparation,
+      });
+    }
+
+    for (const target of candidates) {
+      if (target.x < PLAYER_RADIUS || target.y < PLAYER_RADIUS ||
+          target.x > match.map.width - PLAYER_RADIUS || target.y > match.map.height - PLAYER_RADIUS) continue;
+      const origin = getGadgetThrowOrigin(bot, target, mapObjects);
+      const trajectory = origin && calculateGadgetTrajectory(origin, target, mapObjects, {
+        maximumRange: cryo.throwRange,
+        collisionRadius: cryo.throwCollisionRadius,
+        maximumBounces: cryo.maxBounces,
+      });
+      if (!trajectory || isTrajectoryCoveredByTrophy(
+        trajectory, context.knownEnemyTrophies ?? [], visionObjects,
+      ) || distance(trajectory.endpoint, molotov) > cryoRadius + molotovRadius) continue;
+      const flightSeconds = trajectory.distance / getGadgetProjectileSpeed(cryo);
+      const predictedAllies = allies.map((ally) => predictGadgetActorPosition(ally, flightSeconds, match.map));
+      if (predictedAllies.some((ally) => distance(ally, trajectory.endpoint) < safetyRadius)) continue;
+
+      const otherAreaOverlap = activeAreaDenial.some((effect) =>
+        effect.id !== molotov.id &&
+        overlapsEffectArea(trajectory.endpoint, cryoRadius, effect));
+      if (otherAreaOverlap) continue;
+
+      const score = 8 + threatenedAllies.length * 4 + Number(Boolean(blocksTeamRoute)) * 3;
+      const targetDistance = distance(bot, trajectory.endpoint);
+      if (!best || score > best.score ||
+          (score === best.score && targetDistance < best.distance)) {
+        best = { target, score, distance: targetDistance };
+      }
+    }
+  }
+  return best?.target ?? null;
+}
+
+function chooseGadgetTarget(
+  bot, match, gadget, visibleEnemies, teammates, now, gadgetEffects, context,
+) {
   if (!visibleEnemies.length) return null;
   const weights = GADGET_TACTIC_WEIGHTS[gadget.id];
   const radius = gadget.effectRadius ?? 60;
@@ -1965,8 +3126,9 @@ function chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now) 
   }
 
   const mapObjects = match.map.objects;
-  const activeEffects = (match.gadgetEffects ?? []).filter((effect) =>
+  const activeEffects = gadgetEffects.filter((effect) =>
     effect.type === gadget.effectType && effect.startedAt <= now && effect.expiresAt > now);
+  const activeAreaDenial = gadgetEffects.filter(isAreaDenialEffect);
   let best = null;
   for (const target of candidates) {
     const origin = getGadgetThrowOrigin(bot, target, mapObjects);
@@ -1975,9 +3137,13 @@ function chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now) 
       collisionRadius: gadget.throwCollisionRadius,
       maximumBounces: gadget.maxBounces,
     });
-    if (!trajectory) continue;
+    if (!trajectory || isTrajectoryCoveredByTrophy(
+      trajectory, context.knownEnemyTrophies ?? [], match.map.objects ?? [],
+    )) continue;
     const endpoint = trajectory.endpoint;
     if (teammates.some((ally) => ally.id !== bot.id && distance(ally, endpoint) < safetyRadius)) continue;
+    if ((gadget.id === MOLOTOV_ID || gadget.id === CRYO_GRENADE_ID) &&
+        activeAreaDenial.some((effect) => overlapsEffectArea(endpoint, radius, effect))) continue;
 
     const affectedEnemies = visibleEnemies.filter((enemy) =>
       distance(enemy, endpoint) <= radius &&
@@ -2004,9 +3170,10 @@ function chooseGadgetTarget(bot, match, gadget, visibleEnemies, teammates, now) 
 function chooseOrbitalStrikeTarget(bot, match, visibleEnemies, teammates, now, context) {
   const gadget = GADGET_DEFINITIONS[ORBITAL_STRIKE_ID];
   const radius = gadget.effectRadius;
+  const warningSeconds = (gadget.warningDurationMs ?? 0) / 1_000;
   const candidates = visibleEnemies.map((enemy) => ({
-    x: enemy.x + (enemy.vx ?? 0),
-    y: enemy.y + (enemy.vy ?? 0),
+    x: enemy.x + (enemy.vx ?? 0) * warningSeconds,
+    y: enemy.y + (enemy.vy ?? 0) * warningSeconds,
     priority: enemy.id === match.flag?.heldBy ? 5 : 3,
   }));
   for (let first = 0; first < visibleEnemies.length; first += 1) {
@@ -2022,9 +3189,23 @@ function chooseOrbitalStrikeTarget(bot, match, visibleEnemies, teammates, now, c
       }
     }
   }
-  candidates.push(...getEnemyPositionHints(bot, match, visibleEnemies, now, context)
-    .filter((hint) => hint.source !== 'visible')
-    .map((hint) => ({ x: hint.x, y: hint.y, priority: hint.priority })));
+  for (const hint of getEnemyPositionHints(bot, match, visibleEnemies, now, context)) {
+    if (hint.source === 'sighting' && hint.ageMs <= ORBITAL_STRIKE_MAX_INTEL_AGE_MS) {
+      const speed = Math.hypot(hint.vx ?? 0, hint.vy ?? 0);
+      const leadSeconds = hint.ageMs / 1_000 + warningSeconds;
+      const uncertainty = PLAYER_RADIUS + speed * leadSeconds * 0.15;
+      if (uncertainty <= radius) {
+        candidates.push({
+          x: hint.x + (hint.vx ?? 0) * leadSeconds,
+          y: hint.y + (hint.vy ?? 0) * leadSeconds,
+          priority: hint.priority,
+        });
+      }
+    } else if (hint.source === 'audio' && hint.kind === 'gunshot' &&
+        hint.ageMs <= ORBITAL_STRIKE_MAX_INTEL_AGE_MS && hint.uncertainty <= radius) {
+      candidates.push({ x: hint.x, y: hint.y, priority: hint.priority });
+    }
+  }
 
   const activeWarnings = [
     ...(match.pendingGadgetEffects ?? [])
@@ -2043,7 +3224,10 @@ function chooseOrbitalStrikeTarget(bot, match, visibleEnemies, teammates, now, c
       continue;
     }
     const affectedEnemies = visibleEnemies.filter((enemy) => {
-      const predicted = { x: enemy.x + (enemy.vx ?? 0), y: enemy.y + (enemy.vy ?? 0) };
+      const predicted = {
+        x: enemy.x + (enemy.vx ?? 0) * warningSeconds,
+        y: enemy.y + (enemy.vy ?? 0) * warningSeconds,
+      };
       return distance(predicted, target) <= radius;
     }).length;
     const score = target.priority + affectedEnemies * 3;
@@ -2056,19 +3240,132 @@ function chooseOrbitalStrikeTarget(bot, match, visibleEnemies, teammates, now, c
 }
 
 function chooseSpyCameraTarget(bot, match, visibleEnemies, now, context) {
+  const visionObjects = context.visionObjects ?? match.map.objects ?? [];
+  if (isPointCoveredByTrophy(
+    bot, context.knownEnemyTrophies ?? [], visionObjects,
+  )) return null;
   if (bot.team === 'red') {
     const strikeProgress = getStrikeMineProgress(bot, match.map);
     if (strikeProgress === null || strikeProgress < STRIKE_SPY_CAMERA_MIN_PROGRESS) return null;
   }
-  const hint = getEnemyPositionHints(bot, match, visibleEnemies, now, context)[0];
-  if (hint) return { x: hint.x, y: hint.y };
+  const gadget = GADGET_DEFINITIONS[SPY_CAMERA_ID];
+  const map = match.map;
+  const mapObjects = map.objects ?? [];
+  const cameraEffects = (context.gadgetEffects ?? getCurrentGadgetEffects(match, now))
+    .filter((effect) => effect.type === SPY_CAMERA_ID && effect.team === bot.team &&
+      (effect.startedAt ?? 0) <= now && effect.expiresAt > now && (effect.health ?? 1) > 0 &&
+      (!Number.isFinite(effect.disabledUntil) || effect.disabledUntil <= now) &&
+      !isGadgetJammed(effect, now))
+    .map((camera) => ({
+      origin: { x: camera.x, y: camera.y },
+      angle: camera.angle ?? 0,
+      halfAngle: camera.visionHalfAngle ?? gadget.visionHalfAngle,
+      maximumRange: camera.visionRange ?? gadget.visionRange,
+      xray: true,
+    }));
+  const interests = [];
+  const candidates = [];
+  const addInterest = (point, priority, candidatePriority = priority) => {
+    if (![point?.x, point?.y].every(Number.isFinite)) return;
+    interests.push({ point, priority });
+    addCandidate(point, candidatePriority);
+  };
+  const addCandidate = (point, priority = 0) => {
+    if (candidates.length >= 48 || ![point?.x, point?.y].every(Number.isFinite) ||
+        distance(bot, point) <= 1) return;
+    const angle = Math.atan2(point.y - bot.y, point.x - bot.x);
+    if (candidates.some((candidate) =>
+      Math.abs(normalizeAngle(candidate.angle - angle)) < 0.035)) return;
+    candidates.push({ point: { x: point.x, y: point.y }, angle, priority });
+  };
+  for (const enemy of visibleEnemies) {
+    const priority = enemy.id === match.flag?.heldBy ? 16 : 10;
+    addInterest(enemy, priority, priority / 2);
+  }
+  for (const hint of getEnemyPositionHints(bot, match, visibleEnemies, now, context).slice(0, 8)) {
+    const priority = hint.priority ?? 2;
+    addInterest(hint, priority, priority);
+  }
   const waypoint = context.waypoint ?? match.flag;
-  if (waypoint && distance(bot, waypoint) > 1) return { x: waypoint.x, y: waypoint.y };
-  const angle = bot.visionAngle ?? 0;
-  return { x: bot.x + Math.cos(angle) * 100, y: bot.y + Math.sin(angle) * 100 };
+  if (waypoint) addInterest(waypoint, 2);
+
+  const blueRoom = (map.rooms ?? []).find((room) =>
+    room.id === 'blue-spawn' || (room.isSpawn && room.team === 'blue'));
+  if (bot.team === 'red' && map.spawnZones?.blue) {
+    addInterest(center(map.spawnZones.blue), 8, 4);
+  }
+  if (blueRoom) {
+    for (const corridor of map.corridors ?? []) {
+      if (corridor.a !== blueRoom.id && corridor.b !== blueRoom.id) continue;
+      const points = corridor.a === blueRoom.id
+        ? corridor.points ?? [] : [...(corridor.points ?? [])].reverse();
+      const routeLength = polylineLength(points);
+      if (routeLength <= 0) continue;
+      const sampleDistances = [80, 160, 240].filter((along) => along < routeLength);
+      if (sampleDistances.length === 0) sampleDistances.push(routeLength * 0.5);
+      for (const along of sampleDistances) {
+        const point = pointAlongPolyline(points, along);
+        addInterest(point, bot.team === 'blue' ? 9 : 7, 3);
+      }
+    }
+  }
+  for (const corridor of map.corridors ?? []) {
+    for (const point of corridor.points ?? []) {
+      if (candidates.length >= 32) break;
+      addCandidate(point, 0.5);
+    }
+    if (candidates.length >= 32) break;
+  }
+  for (let index = 0; index < 12; index += 1) {
+    const angle = (index / 12) * TAU;
+    addCandidate({
+      x: bot.x + Math.cos(angle) * gadget.visionRange * 0.8,
+      y: bot.y + Math.sin(angle) * gadget.visionRange * 0.8,
+    });
+  }
+
+  let best = null;
+  for (const candidate of candidates) {
+    if (cameraEffects.some((camera) => isPointVisible(candidate.point, camera, []))) continue;
+    const view = {
+      origin: { x: bot.x, y: bot.y },
+      angle: candidate.angle,
+      halfAngle: gadget.visionHalfAngle,
+      maximumRange: gadget.visionRange,
+      xray: true,
+    };
+    const totalSamples = 25;
+    let openSamples = 0;
+    let uniqueSamples = 0;
+    for (const radius of [65, 125, 185, 245, gadget.visionRange - 10]) {
+      for (const spread of [-0.9, -0.45, 0, 0.45, 0.9]) {
+        const angle = candidate.angle + gadget.visionHalfAngle * spread;
+        const sample = {
+          x: bot.x + Math.cos(angle) * radius,
+          y: bot.y + Math.sin(angle) * radius,
+        };
+        if (sample.x < PLAYER_RADIUS || sample.y < PLAYER_RADIUS ||
+            sample.x > map.width - PLAYER_RADIUS || sample.y > map.height - PLAYER_RADIUS ||
+            circleOverlapsMapObjects(sample, mapObjects, PLAYER_RADIUS * 0.5) ||
+            !isPointVisible(sample, view, visionObjects)) continue;
+        openSamples += 1;
+        if (!cameraEffects.some((camera) => isPointVisible(sample, camera, []))) uniqueSamples += 1;
+      }
+    }
+    if (openSamples < totalSamples * 0.55 ||
+        uniqueSamples < Math.max(5, Math.ceil(openSamples * 0.35))) continue;
+    const interestScore = interests.reduce((score, interest) =>
+      score + (isPointVisible(interest.point, view, visionObjects) ? interest.priority : 0), 0);
+    const score = uniqueSamples + interestScore * 2 + candidate.priority;
+    if (!best || score > best.score) best = { point: candidate.point, score };
+  }
+  return best?.point ?? null;
 }
 
 function chooseTrophySystemTarget(bot, match, visibleEnemies, now, context) {
+  const visionObjects = context.visionObjects ?? match.map.objects ?? [];
+  const knownEnemyTrophies = context.knownEnemyTrophies ?? [];
+  if (isPointCoveredByTrophy(bot, knownEnemyTrophies, visionObjects)) return null;
   const alreadyPlaced = (match.gadgetEffects ?? []).some((effect) =>
     effect.type === TROPHY_SYSTEM_ID && effect.ownerId === bot.id &&
     effect.team === bot.team && effect.expiresAt > now && (effect.health ?? TROPHY_SYSTEM_HEALTH) > 0);
@@ -2079,12 +3376,50 @@ function chooseTrophySystemTarget(bot, match, visibleEnemies, now, context) {
     (getStrikeMineProgress(bot, match.map) ?? 0) >= STRIKE_SPY_CAMERA_MIN_PROGRESS;
   const defendingSite = bot.team === 'blue' && ['hold-site', 'defend'].includes(context.action);
   if (!nearbyThreat && !progressedStrike && !defendingSite) return null;
-  return { x: bot.x, y: bot.y };
+  const friendlyTrophies = (context.gadgetEffects ?? getCurrentGadgetEffects(match, now))
+    .filter((effect) => effect.type === TROPHY_SYSTEM_ID && effect.team === bot.team &&
+      effect.ownerId !== bot.id && (effect.startedAt ?? 0) <= now && effect.expiresAt > now &&
+      (effect.health ?? TROPHY_SYSTEM_HEALTH) > 0 && !isGadgetJammed(effect, now));
+  const overlapsFriendlyCoverage = (point) => friendlyTrophies.some((trophy) =>
+    distance(point, trophy) <= TROPHY_SYSTEM_COMMAND_RADIUS &&
+    hasTrophyLineOfSight(trophy, point, visionObjects));
+  if (!overlapsFriendlyCoverage(bot)) return { x: bot.x, y: bot.y };
+
+  const gadget = GADGET_DEFINITIONS[TROPHY_SYSTEM_ID];
+  const mapObjects = match.map.objects ?? [];
+  let best = null;
+  for (const radius of [100, 150, gadget.throwRange * 0.95, gadget.throwRange]) {
+    for (let spoke = 0; spoke < 16; spoke += 1) {
+      const angle = spoke * TAU / 16;
+      const target = {
+        x: bot.x + Math.cos(angle) * radius,
+        y: bot.y + Math.sin(angle) * radius,
+      };
+      if (target.x < PLAYER_RADIUS || target.y < PLAYER_RADIUS ||
+          target.x > match.map.width - PLAYER_RADIUS || target.y > match.map.height - PLAYER_RADIUS ||
+          circleOverlapsMapObjects(target, mapObjects, TROPHY_SYSTEM_BODY_RADIUS)) continue;
+      const origin = getGadgetThrowOrigin(bot, target, mapObjects);
+      const trajectory = origin && calculateGadgetTrajectory(origin, target, mapObjects, {
+        maximumRange: gadget.throwRange,
+        collisionRadius: gadget.throwCollisionRadius,
+        maximumBounces: gadget.maxBounces,
+      });
+      if (!trajectory || distance(trajectory.endpoint, target) > 30 ||
+          overlapsFriendlyCoverage(trajectory.endpoint) ||
+          isTrajectoryCoveredByTrophy(trajectory, knownEnemyTrophies, visionObjects)) continue;
+      const nearestFriendly = Math.min(...friendlyTrophies.map((trophy) =>
+        distance(trajectory.endpoint, trophy)));
+      const score = nearestFriendly - distance(bot, trajectory.endpoint) * 0.1;
+      if (!best || score > best.score) best = { target, score };
+    }
+  }
+  return best?.target ?? null;
 }
 
 function chooseTrophyCommandTarget(bot, match, trophy, now, context) {
   if (isPlayerJammed(bot, now) || isGadgetJammed(trophy, now)) return null;
   const visionObjects = context.visionObjects ?? match.map.objects;
+  const projectileObjects = (match.map.objects ?? []).filter((object) => object?.blocksVision !== true);
   const candidates = [...(match.gadgetEffects ?? []), ...(match.smokes ?? [])].filter((effect) => {
     if (!GADGET_DEFINITIONS[effect?.gadgetId] || effect.team === bot.team ||
         !['red', 'blue'].includes(effect.team) || !Number.isFinite(effect.expiresAt) ||
@@ -2092,15 +3427,34 @@ function chooseTrophyCommandTarget(bot, match, trophy, now, context) {
         ![effect.x, effect.y].every(Number.isFinite) ||
         Math.hypot(effect.x - trophy.x, effect.y - trophy.y) <= 1e-6) return false;
     const targetVisionObjects = visionObjects.filter((object) => object?.id !== effect.id);
-    return isPointVisible(effect, context.vision, targetVisionObjects) &&
-      hasTrophyLineOfSight(trophy, effect, targetVisionObjects);
+    if (!isPointVisible(effect, context.vision, targetVisionObjects) ||
+        !hasTrophyLineOfSight(trophy, effect, targetVisionObjects)) return false;
+    const trajectory = calculateGadgetTrajectory(
+      { x: trophy.x, y: trophy.y },
+      effect,
+      projectileObjects,
+      {
+        maximumRange: Math.hypot(match.map.width, match.map.height),
+        collisionRadius: DEFAULT_GADGET_THROW_COLLISION_RADIUS,
+        maximumBounces: 0,
+      },
+    );
+    return trajectory && !isTrajectoryCoveredByTrophy(
+      trajectory,
+      context.knownEnemyTrophies ?? [],
+      visionObjects,
+    );
   });
   let best = null;
   for (const target of candidates) {
     const pulseOrigin = { x: target.x, y: target.y };
     const targetScore = candidates.reduce((score, effect) => {
-      if (distance(effect, target) > TROPHY_SYSTEM_COMMAND_RADIUS ||
-          !hasTrophyLineOfSight(pulseOrigin, effect, visionObjects.filter((object) => object?.id !== effect.id))) {
+      if (!isTrophyCommandEffectInRangeAndSight(
+        pulseOrigin,
+        effect,
+        visionObjects,
+        TROPHY_SYSTEM_COMMAND_RADIUS,
+      )) {
         return score;
       }
       return score + (TROPHY_COMMAND_CLEAR_WEIGHTS[effect.gadgetId] ?? 2);
@@ -2155,10 +3509,13 @@ function chooseKatanaDashTarget(bot, match, visibleEnemies) {
   return null;
 }
 
-function getTeamSightingTarget(bot, match, teamIntel, teammates, now) {
-  const livingEnemyIds = new Set(match.players
-    .filter((player) => player.team !== bot.team && player.alive && player.health > 0)
-    .map((player) => player.id));
+function getTeamSightingTarget(bot, match, teamIntel, teammates, now, worldState = null) {
+  const opposingTeam = bot.team === 'red' ? 'blue' : bot.team === 'blue' ? 'red' : null;
+  const livingEnemies = opposingTeam
+    ? worldState?.livingPlayersByTeam?.get(opposingTeam) ??
+      match.players.filter((player) => player.team === opposingTeam && player.alive && player.health > 0)
+    : match.players.filter((player) => player.team !== bot.team && player.alive && player.health > 0);
+  const livingEnemyIds = new Set(livingEnemies.map((player) => player.id));
   const botResponders = teammates.filter((ally) =>
     (ally.id === bot.id || ally.isBot === true) && (!ally.controlledById || ally.id === bot.id));
   if (!botResponders.some((ally) => ally.id === bot.id)) botResponders.push(bot);
@@ -2184,7 +3541,7 @@ function getTeamSightingTarget(bot, match, teamIntel, teammates, now) {
     };
     const distanceToTarget = distance(bot, position);
     const isUrgent = teammates.some((ally) => distance(ally, position) <= TEAMMATE_THREAT_RADIUS);
-    const responseRange = isUrgent ? TEAM_SIGHTING_RESPONSE_RANGE : TEAM_SIGHTING_INVESTIGATION_RANGE;
+    const responseRange = isUrgent ? BOT_TEAM_SIGHTING_RESPONSE_RANGE : TEAM_SIGHTING_INVESTIGATION_RANGE;
     if (distanceToTarget > responseRange) continue;
 
     botResponders.sort((left, right) =>
@@ -2192,9 +3549,49 @@ function getTeamSightingTarget(bot, match, teamIntel, teammates, now) {
     const botRank = botResponders.findIndex((ally) => ally.id === bot.id);
     if (botRank < 0 || botRank >= 2) continue;
     const score = distanceToTarget + ageMs * 0.06 - (isUrgent ? 500 : 0);
-    if (!best || score < best.score) best = { position, urgent: isUrgent, score };
+    if (!best || score < best.score) best = { position, urgent: isUrgent, score, ageMs };
   }
   return best;
+}
+
+function getEstimatedDamageThreatPosition(origin, bearing, team, teamIntel, map, now) {
+  const direction = { x: Math.cos(bearing), y: Math.sin(bearing) };
+  let best = null;
+  const consider = (candidate, tolerance, uncertainty, ageMs = 0) => {
+    if (!Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return;
+    const dx = candidate.x - origin.x;
+    const dy = candidate.y - origin.y;
+    const along = dx * direction.x + dy * direction.y;
+    const across = Math.abs(dx * direction.y - dy * direction.x);
+    if (along < -50 || along > 1_800 || across > tolerance) return;
+    const score = across + uncertainty + Math.max(0, ageMs) * 0.04 +
+      Math.abs(along - 420) * 0.02;
+    if (!best || score < best.score) best = { x: candidate.x, y: candidate.y, score };
+  };
+
+  for (const sighting of teamIntel?.sightings ?? []) {
+    if (sighting.team !== team || sighting.expiresAt <= now ||
+        !Number.isFinite(sighting.x) || !Number.isFinite(sighting.y)) continue;
+    const ageMs = Math.max(0, now - (sighting.observedAt ?? now));
+    if (ageMs > 6_000) continue;
+    const range = distance(origin, sighting);
+    consider(sighting, Math.max(100, Math.min(240, range * 0.3)), 0, ageMs);
+  }
+  for (const cue of teamIntel?.audioCues ?? []) {
+    if (cue.team !== team || cue.kind !== 'gunshot' || cue.expiresAt <= now ||
+        !Number.isFinite(cue.x) || !Number.isFinite(cue.y)) continue;
+    const ageMs = Math.max(0, 2_400 - (cue.expiresAt - now));
+    consider(cue, (cue.radius ?? 180) + 100, 120, ageMs);
+  }
+
+  const position = best ?? {
+    x: origin.x + direction.x * 420,
+    y: origin.y + direction.y * 420,
+  };
+  return {
+    x: clamp(position.x, PLAYER_RADIUS, map.width - PLAYER_RADIUS),
+    y: clamp(position.y, PLAYER_RADIUS, map.height - PLAYER_RADIUS),
+  };
 }
 
 function getEnemyPositionHints(bot, match, visibleEnemies, now, context) {
@@ -2205,29 +3602,49 @@ function getEnemyPositionHints(bot, match, visibleEnemies, now, context) {
     priority: enemy.id === match.flag?.heldBy ? 10 : 8,
     distance: distance(bot, enemy),
   }));
-  const livingEnemyIds = new Set(match.players
-    .filter((player) => player.team !== bot.team && player.alive && player.health > 0)
-    .map((player) => player.id));
+  const opposingTeam = bot.team === 'red' ? 'blue' : bot.team === 'blue' ? 'red' : null;
+  const livingEnemies = opposingTeam
+    ? context.worldState?.livingPlayersByTeam?.get(opposingTeam) ??
+      match.players.filter((player) => player.team === opposingTeam && player.alive && player.health > 0)
+    : match.players.filter((player) => player.team !== bot.team && player.alive && player.health > 0);
+  const livingEnemyIds = new Set(livingEnemies.map((player) => player.id));
   for (const sighting of context.teamIntel?.sightings ?? []) {
     if (sighting.team !== bot.team || !livingEnemyIds.has(sighting.enemyId) ||
         sighting.expiresAt <= now || !Number.isFinite(sighting.x) || !Number.isFinite(sighting.y)) continue;
+    const ageMs = Math.max(0, now - (sighting.observedAt ?? now));
     hints.push({
       x: sighting.x,
       y: sighting.y,
       source: 'sighting',
-      priority: 6 + Math.max(0, 1 - (now - (sighting.observedAt ?? now)) / 6_000),
+      priority: 6 + Math.max(0, 1 - ageMs / 6_000),
       distance: distance(bot, sighting),
+      ageMs,
+      vx: sighting.vx ?? 0,
+      vy: sighting.vy ?? 0,
     });
   }
-  for (const cue of context.teamIntel?.audioCues ?? match.botNoises ?? []) {
-    if (cue.team !== bot.team || (cue.botId && cue.botId !== bot.id) || cue.expiresAt <= now ||
+  const localAudioCues = match.botNoises ?? [];
+  const audioCues = context.teamIntel?.audioCues
+    ? [...context.teamIntel.audioCues, ...localAudioCues.filter((cue) => cue.audiencePlayerId === bot.id)]
+    : localAudioCues;
+  for (const cue of audioCues) {
+    if (cue.team !== bot.team || (cue.botId && cue.botId !== bot.id) ||
+        (cue.audiencePlayerId && cue.audiencePlayerId !== bot.id) || cue.expiresAt <= now ||
         !Number.isFinite(cue.x) || !Number.isFinite(cue.y)) continue;
+    const lifetimeMs = cue.kind === 'footstep' ? 650 : 2_400;
+    const ageMs = Number.isFinite(cue.observedAt)
+      ? Math.max(0, now - cue.observedAt)
+      : Math.max(0, lifetimeMs - (cue.expiresAt - now));
+    const cueRadius = Number.isFinite(cue.radius) ? Math.max(0, cue.radius) : 180;
     hints.push({
       x: cue.x,
       y: cue.y,
       source: cue.kind === 'footstep' ? 'footstep' : 'audio',
+      kind: cue.kind ?? 'gunshot',
       priority: cue.kind === 'footstep' ? 6 : 5,
       distance: distance(bot, cue),
+      ageMs,
+      uncertainty: cueRadius * (cue.kind === 'footstep' ? 0.5 : 0.75),
     });
   }
   for (const incident of context.teamIntel?.incidents ?? []) {
@@ -2243,12 +3660,14 @@ function getEnemyPositionHints(bot, match, visibleEnemies, now, context) {
   }
   for (const memory of Object.values(bot.botBrain?.rememberedEnemies ?? {})) {
     if (now - memory.seenAt > SEEN_MEMORY_MS) continue;
+    const ageMs = Math.max(0, now - memory.seenAt);
     hints.push({
       x: memory.x,
       y: memory.y,
       source: 'memory',
       priority: 3 + Math.max(0, 1 - (now - memory.seenAt) / SEEN_MEMORY_MS),
       distance: distance(bot, memory),
+      ageMs,
     });
   }
   return hints.sort((left, right) =>
@@ -2265,7 +3684,7 @@ function chooseProximityMineTarget(bot, match, visibleEnemies, teammates, now, c
   if (context.activeDamageCue || (context.lowHealth && context.retreating) ||
       visibleEnemies.some((enemy) => distance(bot, enemy) <= 190)) return null;
 
-  const denialFactor = getFlagTeamMineDenialFactor(bot, match, now);
+  const denialFactor = getFlagTeamMineDenialFactor(bot, match, now, context.worldState);
   const hasRecentEnemyActivity = visibleEnemies.length > 0 ||
     (context.teamIntel?.sightings ?? []).some((sighting) => sighting.expiresAt > now) ||
     (context.teamIntel?.incidents ?? []).some((incident) => incident.expiresAt > now);
@@ -2303,7 +3722,10 @@ function chooseProximityMineTarget(bot, match, visibleEnemies, teammates, now, c
       collisionRadius: gadget.throwCollisionRadius,
       maximumBounces: 0,
     });
-    if (!trajectory || trajectory.distance > gadget.throwRange) continue;
+    if (!trajectory || trajectory.distance > gadget.throwRange ||
+        isTrajectoryCoveredByTrophy(
+          trajectory, context.knownEnemyTrophies ?? [], visionObjects,
+        )) continue;
     const endpoint = trajectory.endpoint;
     if (distance(endpoint, candidate) > 38 ||
         circleOverlapsMapObjects(endpoint, mapObjects, PROXIMITY_MINE_BODY_RADIUS) ||
@@ -2450,13 +3872,14 @@ function getMinePlacementCandidates(bot, map) {
   return [...candidates.values()];
 }
 
-function getFlagTeamMineDenialFactor(bot, match, now) {
+function getFlagTeamMineDenialFactor(bot, match, now, worldState = null) {
   if (bot.team !== 'blue' || !Number.isFinite(match.gameplayStartsAt) ||
       !Number.isFinite(match.endsAt) || match.endsAt <= match.gameplayStartsAt) return 0;
   const progress = clamp((now - match.gameplayStartsAt) / (match.endsAt - match.gameplayStartsAt), 0, 1);
   const lateFactor = clamp((progress - 0.45) / 0.4, 0, 1);
-  const aliveOnTeam = (team) => (match.players ?? []).filter((player) =>
-    player.team === team && player.alive && player.health > 0).length;
+  const aliveOnTeam = (team) => worldState?.livingPlayersByTeam?.get(team)?.length ??
+    (match.players ?? []).filter((player) =>
+      player.team === team && player.alive && player.health > 0).length;
   const lowNumbersFactor = clamp((4 - Math.min(aliveOnTeam('blue'), aliveOnTeam('red'))) / 3, 0, 1);
   return lateFactor * lowNumbersFactor;
 }
@@ -2558,7 +3981,9 @@ function chooseSmokeTarget(bot, match, visibleEnemies, teammates, now, context) 
       collisionRadius: gadget.throwCollisionRadius,
       maximumBounces: gadget.maxBounces,
     });
-    if (!trajectory) continue;
+    if (!trajectory || isTrajectoryCoveredByTrophy(
+      trajectory, context.knownEnemyTrophies ?? [], visionObjects,
+    )) continue;
 
     const endpoint = trajectory.endpoint;
     if (distance(endpoint, bot) <= radius + PLAYER_RADIUS ||

@@ -36,7 +36,7 @@ describe('ComputationMetric', () => {
     assert.throws(() => getTeammateVisionInterval('UNKNOWN', 0), RangeError);
   });
 
-  it('reduces the lower-priority update budget as computation load increases', () => {
+  it('caps lower-priority work and lengthens its intervals under higher load', () => {
     assert.deepEqual([
       getAdaptiveUpdateProfile('LOW').frameOverlayIntervalMs,
       getAdaptiveUpdateProfile('MEDIUM').frameOverlayIntervalMs,
@@ -56,7 +56,7 @@ describe('ComputationMetric', () => {
       getAdaptiveUpdateProfile('LOW').maxTeammateVisionUpdatesPerFrame,
       getAdaptiveUpdateProfile('MEDIUM').maxTeammateVisionUpdatesPerFrame,
       getAdaptiveUpdateProfile('HIGH').maxTeammateVisionUpdatesPerFrame,
-    ], [5, 2, 1]);
+    ], [1, 1, 1]);
     assert.deepEqual([
       getAdaptiveUpdateProfile('LOW').controlledVisionIntervalMs,
       getAdaptiveUpdateProfile('MEDIUM').controlledVisionIntervalMs,

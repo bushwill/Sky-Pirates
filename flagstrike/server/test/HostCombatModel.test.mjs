@@ -263,12 +263,16 @@ describe('host combat model', () => {
     assert.equal(effects.find((effect) => effect.id === 'source').health, undefined);
   });
 
-  it('ignores mines until their arming deadline and allows opposing shots afterward', () => {
+  it('allows opposing shots during and after mine arming but ignores friendly shots', () => {
     const mine = { id: 'mine', type: 'mine', triggerOnEnemyProximity: true, armed: false,
       armedAt: 2_500, team: 'blue', x: 35, y: 0, hitRadius: 6 };
     const options = { start, angle: 0, range: 200, gadgetEffects: [mine], ownerId: 'p1', ownerTeam: 'red' };
-    assert.notEqual(resolveHostShotCollision({ ...options, now: 2_499 }).kind, 'gadget');
+    assert.equal(resolveHostShotCollision({ ...options, now: 2_499 }).kind, 'gadget');
     assert.equal(resolveHostShotCollision({ ...options, now: 2_500 }).kind, 'gadget');
+    assert.notEqual(resolveHostShotCollision({ ...options, now: 2_499, ownerTeam: 'blue' }).kind, 'gadget');
+    assert.notEqual(resolveHostShotCollision({
+      ...options, now: 3_000, gadgetEffects: [{ ...mine, expiresAt: 3_000 }],
+    }).kind, 'gadget');
   });
 
   it('allows enemy fire and Molotovs to destroy Vine Trap before it activates', () => {

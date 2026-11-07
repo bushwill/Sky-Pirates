@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isGadgetEffectSoundAudibleToTeam, playKatanaDashSound } from './SoundEffects.js';
+import { getWeaponSoundName, isGadgetEffectSoundAudibleToTeam, playKatanaDashSound } from './SoundEffects.js';
 
 describe('Katana dash sound', () => {
   it('synthesizes a spatialized noise-and-tone slash', () => {
@@ -60,5 +60,11 @@ describe('team-scoped gadget sounds', () => {
 
   it('keeps other gadget sound routing unchanged', () => {
     assert.equal(isGadgetEffectSoundAudibleToTeam({ type: 'smoke' }, 'blue'), true);
+  });
+});
+
+describe('weapon sounds', () => {
+  it('uses a distinct suppressed recording for the suppressed SMG', () => {
+    assert.equal(getWeaponSoundName('suppressed-smg'), 'gunshot-suppressed');
   });
 });

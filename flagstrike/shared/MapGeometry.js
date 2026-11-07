@@ -1,4 +1,4 @@
-import { forEachMapObjectInBounds } from './MapSpatialIndex.js';
+import { forEachMapObjectInBounds, someMapObjectInBounds } from './MapSpatialIndex.js';
 
 export function resolveCircleMovement(position, displacement, objects, radius) {
   const distance = Math.hypot(displacement.x, displacement.y);
@@ -33,8 +33,14 @@ export function resolveCircleMovement(position, displacement, objects, radius) {
 }
 
 export function circleOverlapsMapObjects(position, objects, radius) {
-  return objects.some((object) => object.blocksMovement !== false &&
-    getCircleCollision(position.x, position.y, object, radius, { x: 0, y: 0 }));
+  const overlaps = (object) => object.blocksMovement !== false &&
+    getCircleCollision(position.x, position.y, object, radius, { x: 0, y: 0 });
+  return someMapObjectInBounds(objects, {
+    minX: position.x - radius,
+    minY: position.y - radius,
+    maxX: position.x + radius,
+    maxY: position.y + radius,
+  }, overlaps);
 }
 
 function getCircleCollision(x, y, object, radius, step) {

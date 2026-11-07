@@ -128,7 +128,7 @@
           <div class="guide-overview-mark" aria-hidden="true">5v5</div>
           <div>
             <h3 id="guide-overview-title">A tactical shooter that's more tactical than shooter</h3>
-            <p>Up to five players fight on each side: the <strong class="guide-strike">Strike Team</strong> attacks and the <strong class="guide-flag">Flag Team</strong> defends. Each three-minute round can be won either by eliminating the opposing team, or capturing/defending the <strong class="guide-objective">flag</strong>. Teamplay, positioning, utility, and timing is more important than mechanical skill.</p>
+            <p>Five players fight on each side: the <strong class="guide-strike">Strike Team</strong> attacks and the <strong class="guide-flag">Flag Team</strong> defends. Each three-minute round can be won either by eliminating the opposing team, or capturing/defending the <strong class="guide-objective">flag</strong>. Teamplay, positioning, utility, and timing is more important than mechanical skill.</p>
           </div>
         </section>
 
@@ -150,7 +150,7 @@
           <article class="guide-card">
             <span class="guide-kicker">COMBAT</span>
             <h3>How to shoot and where to aim</h3>
-            <p>Hold <strong>left mouse</strong> to fire. Weapons differ in damage, firing cadence, and effective range; many lose damage as shots travel farther. A hit is strongest near the target’s <strong>center of mass</strong> and weaker toward the edge of their body.</p>
+            <p>Use the <strong>left mouse button</strong> to fire. Weapons differ in damage, fire rate, effective range, and more. A hit is strongest near the target’s <strong>center</strong> and weaker toward the edge of their body.</p>
             <p>Accuracy also changes during a fight: movement makes shots less precise, firing adds recoil, and accuracy recovers when you stop shooting.</p>
             <h3>Choose a weapon for the role you play</h3>
             <p>Some weapons are generally stronger than others, but each weapon is deadly in its circumstances.</p>
@@ -185,7 +185,7 @@
           <article class="guide-card guide-card--practice">
             <span class="guide-kicker">BUY PHASE · PRACTICE</span>
             <h3>Pick a weapon before the round</h3>
-            <p>During the pre-round countdown, choose any available weapon and one gadget. These are free loadout choices, not a shop.</p>
+            <p>Hosts can configure custom rooms with no buy phase, a free loadout, or a progression shop. Free loadouts let players choose any available weapon and one gadget before the round.</p>
           </article>
 
           <article class="guide-card guide-card--quick-play">
@@ -220,13 +220,21 @@
         </div>
         <div class="room-actions">
           <button id="start-match-button" class="button button-primary" type="button" hidden>Start match</button>
+          <button id="custom-team-approve-button" class="button button-secondary" type="button" hidden>Approve teams</button>
+          <button id="custom-series-end-button" class="button button-secondary" type="button" hidden>End series</button>
           <button id="quick-play-ready-button" class="button button-primary" type="button" hidden>Ready up</button>
+          <button id="custom-rules-button" class="button button-secondary" type="button" hidden>Custom rules</button>
           <div class="room-credentials-wrap">
             <button id="room-credentials-toggle" class="button button-secondary room-credentials-toggle"
               type="button" aria-controls="room-credentials" aria-expanded="false" hidden>Show room details</button>
             <div id="room-credentials" class="room-credentials" role="region" aria-label="Room name and password" hidden>
               <div class="room-credentials-row"><span>Room name</span><strong id="room-credential-name"></strong></div>
               <div class="room-credentials-row"><span>Password</span><strong id="room-credential-password"></strong></div>
+              <form id="room-details-form" class="room-details-form" hidden>
+                <label>Room name<input id="room-details-name" name="name" type="text" maxlength="32" required></label>
+                <label>Password<input id="room-details-password" name="password" type="password" maxlength="128" required></label>
+                <button class="button button-primary" type="submit">Update room details</button>
+              </form>
             </div>
           </div>
           <button id="back-button" class="button button-secondary" type="button">← Back to rooms</button>
@@ -270,8 +278,8 @@
             <div id="team-groups" class="team-groups" aria-live="polite"></div>
             <section id="map-seed-controls" class="map-seed-controls" hidden aria-labelledby="map-seed-title">
               <div class="map-seed-heading">
-                <h3 id="map-seed-title">Map seed</h3>
-                <span>Host debug</span>
+                <h3 id="map-seed-title">Map selection</h3>
+                <span>Host picks</span>
               </div>
               <form id="map-seed-form" class="map-seed-form">
                 <label class="visually-hidden" for="map-seed-input">Deterministic map seed</label>
@@ -302,14 +310,6 @@
               <button id="team-submit-button" class="button button-secondary" type="submit">Join group</button>
             </form>
             <p id="team-help" class="team-help"></p>
-            <section id="bot-settings-panel" class="bot-settings-panel" hidden aria-labelledby="bot-settings-title">
-              <div class="bot-settings-heading">
-                <h3 id="bot-settings-title">Custom match bots</h3>
-                <span>Host controls · 10 personalities</span>
-              </div>
-              <div id="bot-roster" class="bot-roster" aria-live="polite"></div>
-              <p class="bot-settings-help">Add or remove preconfigured bots here (five players per team, including bots). AI decisions run on the host.</p>
-            </section>
           </aside>
           <aside id="inventory-panel" class="inventory-panel" aria-labelledby="inventory-panel-title" hidden>
             <div class="inventory-panel-heading">
@@ -403,11 +403,121 @@
             <div class="scoreboard-heading">
               <h2 id="scoreboard-title">Scoreboard</h2>
             </div>
+            <p id="scoreboard-series-score" class="scoreboard-series-score" aria-live="polite" hidden></p>
             <div id="scoreboard-teams" class="scoreboard-teams" aria-live="polite"></div>
           </aside>
         </div>
       </div>
     </section>
+
+    <dialog id="custom-rules-dialog" class="custom-rules-dialog" aria-labelledby="custom-rules-title">
+      <form id="custom-rules-form" class="custom-rules-form">
+        <div class="custom-rules-heading">
+          <div>
+            <p class="eyebrow">HOST CONTROLS</p>
+            <h2 id="custom-rules-title">Custom match rules</h2>
+          </div>
+          <button id="custom-rules-close" class="button button-secondary" type="button" aria-label="Close rules">×</button>
+        </div>
+        <p class="series-mode-description">These rules apply only to this custom room. Playlist rules are unchanged.</p>
+        <div class="custom-rules-tabs" role="tablist" aria-label="Custom match settings">
+          <button id="custom-rules-rules-tab" class="custom-rules-tab is-active" type="button"
+            role="tab" aria-selected="true" aria-controls="custom-rules-rules-panel">Match rules</button>
+          <button id="custom-rules-bots-tab" class="custom-rules-tab" type="button"
+            role="tab" aria-selected="false" aria-controls="custom-rules-bots-panel">Bots</button>
+        </div>
+        <div id="custom-rules-rules-panel" class="custom-rules-tab-panel" role="tabpanel"
+          aria-labelledby="custom-rules-rules-tab">
+        <div class="custom-rules-sections">
+          <fieldset>
+            <legend>Match Settings</legend>
+            <label>Buy phase
+              <select name="buyPhase">
+                <option value="none">None</option>
+                <option value="loadout">Free loadout</option>
+                <option value="progression">Progression shop</option>
+              </select>
+            </label>
+            <label><input name="infiniteGadgetUse" type="checkbox">Infinite gadget use</label>
+            <p class="custom-rules-help">Unlimited gadget charges; cooldowns are removed. Trophy pulses are immediate, and destroyed Trophy Systems or Spy Cameras can be replaced.</p>
+            <label>Pre-phase seconds<input name="prePhaseSeconds" type="number" min="0" max="120" step="1" required></label>
+            <label>Game seconds<input name="gamePhaseSeconds" type="number" min="15" max="900" step="1" required></label>
+            <label>Post-phase seconds<input name="postPhaseSeconds" type="number" min="0" max="120" step="1" required></label>
+            <label>Wins to win (0 = infinite)<input name="winsToWin" type="number" min="0" max="100" step="1" required></label>
+          </fieldset>
+          <fieldset>
+            <legend>Progression Shop Settings</legend>
+            <label>Offer progression
+              <select name="shopProgression">
+                <option value="escalating">Escalating unlocks</option>
+                <option value="fixed">All items available</option>
+              </select>
+            </label>
+            <p class="custom-rules-help">Choosing an offer progression enables the progression shop. You can still select another buy phase in Match Settings.</p>
+            <label>First-match offers<input name="firstShopOffers" type="number" min="1" max="16" step="1" required></label>
+            <label>First-match picks<input name="firstShopPicks" type="number" min="0" max="16" step="1" required></label>
+            <label>Later-match offers<input name="laterShopOffers" type="number" min="1" max="16" step="1" required></label>
+            <label>Later-match picks<input name="laterShopPicks" type="number" min="0" max="16" step="1" required></label>
+            <label><input name="carryOverShopPicks" type="checkbox">Carry unused picks into later rounds</label>
+            <label>Initial unique-gadget chance %<input name="uniqueGadgetInitialChancePercent" type="number" min="0" max="100" step="1" required></label>
+            <label>Chance increase per match %<input name="uniqueGadgetChanceIncrementPercent" type="number" min="0" max="100" step="1" required></label>
+            <label>Maximum unique-gadget chance %<input name="uniqueGadgetMaxChancePercent" type="number" min="0" max="100" step="1" required></label>
+          </fieldset>
+          <fieldset>
+            <legend>Maps</legend>
+            <label>Map rotation
+              <select name="mapMode">
+                <option value="competitive">Competitive maps</option>
+                <option value="same">Same map for the series</option>
+                <option value="varied">Generate with custom criteria</option>
+                <option value="host">Host picks each match</option>
+              </select>
+            </label>
+            <div class="custom-map-criteria">
+              <label>Minimum rooms<input name="minRooms" type="number" min="1" max="13" step="1" required></label>
+              <label>Maximum rooms<input name="maxRooms" type="number" min="1" max="13" step="1" required></label>
+              <label>Minimum site doorways<input name="minDoorwaysPerSite" type="number" min="1" max="8" step="1" required></label>
+              <label>Minimum symmetry %<input name="minSymmetryPercent" type="number" min="0" max="100" step="1" required></label>
+              <label>Minimum room use %<input name="minRoomUtilizationPercent" type="number" min="0" max="100" step="1" required></label>
+              <label>Maximum site sightline<input name="maxSiteApproachSightline" type="number" min="200" max="1500" step="1" required></label>
+            </div>
+            <p class="custom-rules-help">Host-picked maps use the seed and room-count controls in the team panel.</p>
+          </fieldset>
+          <fieldset>
+            <legend>Teams</legend>
+            <label>Swap roles every N matches (0 = off)<input name="roleSwapEveryMatches" type="number" min="0" max="100" step="1" required></label>
+            <label>Shuffle teams every N matches (0 = off)<input name="teamShuffleEveryMatches" type="number" min="0" max="100" step="1" required></label>
+            <label>Team shuffle style
+              <select name="teamShuffleMode">
+                <option value="random">Random shuffle</option>
+                <option value="faro">Faro / alternating shuffle</option>
+                <option value="host">Host hand-picks and approves</option>
+              </select>
+            </label>
+            <p class="custom-rules-help">Shuffles include bots and preserve each team’s size. Host shuffles pause the next match until approved.</p>
+          </fieldset>
+        </div>
+        </div>
+        <section id="custom-rules-bots-panel" class="custom-rules-tab-panel bot-settings-panel"
+          role="tabpanel" aria-labelledby="custom-rules-bots-tab" hidden>
+          <div class="bot-settings-heading">
+            <h3 id="bot-settings-title">Custom match bots</h3>
+            <span>Host controls · 10 personalities</span>
+          </div>
+          <label class="bot-autofill-option">
+            <input id="custom-auto-fill-bots" name="autoFillBots" type="checkbox">
+            Automatically fill open slots with bots
+          </label>
+          <p class="bot-settings-help">Auto-fill keeps every open team slot occupied: real players replace bots when they join, and bots return when players leave. Disable auto-fill to keep vacancies manually.</p>
+          <div id="bot-roster" class="bot-roster" aria-live="polite"></div>
+          <p class="bot-settings-help">Add or remove preconfigured bots here (five players per team, including bots). AI decisions run on the host.</p>
+        </section>
+        <div class="custom-rules-actions">
+          <button class="button button-primary" type="submit">Save custom rules</button>
+          <button id="custom-rules-cancel" class="button button-secondary" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
 
     <footer class="site-footer"><span>Flagstrike</span><span>This game is in early development.</span></footer>
   </main>

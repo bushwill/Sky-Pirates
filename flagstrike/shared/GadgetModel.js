@@ -42,13 +42,14 @@ export const TROPHY_SYSTEM_COMMAND_EFFECT_ID = 'trophy-command-pulse';
 export const TROPHY_SYSTEM_COMMAND_COOLDOWN_MS = 30_000;
 export const TROPHY_SYSTEM_COMMAND_PROJECTILE_SPEED = 1_500;
 export const TROPHY_SYSTEM_COMMAND_VISUAL_DURATION_MS = 700;
+export const TROPHY_INTERCEPT_VISUAL_DURATION_MS = 420;
 export const VINE_TRAP_ID = 'vine-trap';
 export const VINE_TRAP_ARMING_DURATION_MS = 1_000;
 export const VINE_TRAP_LATCH_DURATION_MS = 5_000;
 export const VINE_TRAP_RECHARGE_DURATION_MS = 10_000;
 export const SONAR_ID = 'sonar';
 export const SONAR_CHARGES = 2;
-export const SONAR_CHARGE_COOLDOWN_MS = 60_000;
+export const SONAR_CHARGE_COOLDOWN_MS = 30_000;
 export const SONAR_PROJECTILE_RANGE = 800;
 export const SONAR_PROJECTILE_SPEED = 250;
 export const SONAR_PROJECTILE_RADIUS = 3;
@@ -84,7 +85,7 @@ export const JAMMER_GRENADE_DETONATION_DELAY_MS = 1_000;
 export const TROPHY_SYSTEM_COMMAND_RADIUS = JAMMER_GRENADE_RADIUS;
 export const BIO_FIELD_ID = 'bio-field';
 export const BIO_FIELD_CHARGES = 2;
-export const BIO_FIELD_COOLDOWN_MS = 60_000;
+export const BIO_FIELD_COOLDOWN_MS = 30_000;
 export const BIO_FIELD_EFFECT_DURATION_MS = 8_000;
 export const BIO_FIELD_FRIENDLY_MOVEMENT_MULTIPLIER = 1.3;
 export const BIO_FIELD_ENEMY_MOVEMENT_MULTIPLIER = 0.7;
@@ -331,6 +332,32 @@ export const GADGET_DEFINITIONS = Object.freeze({
   }),
 });
 
+export function refillGadgetCharges(player, gadgetId) {
+  const definition = GADGET_DEFINITIONS[gadgetId];
+  if (!player || !definition) return 0;
+  const charges = definition.charges ?? 1;
+  player.gadgetCounts ??= {};
+  player.gadgetCounts[gadgetId] = charges;
+  player.gadgetChargeRechargeRemainingMs ??= {};
+  player.gadgetChargeRechargeRemainingMs[gadgetId] = [];
+  if (gadgetId === ORBITAL_STRIKE_ID) player.orbitalStrikeCooldownRemainingMs = 0;
+  if (gadgetId === TROPHY_SYSTEM_ID) player.trophyCommandReadyAt = 0;
+  if (gadgetId === VINE_TRAP_ID) player.vineTrapRechargeAt = null;
+  if (player.selectedGadgetId === gadgetId) player.gadgetCount = charges;
+  return charges;
+}
+
+export function consumeGadgetCharge(player, gadgetId) {
+  if (!player || !GADGET_DEFINITIONS[gadgetId]) return 0;
+  player.gadgetCounts ??= {};
+  const remaining = Math.max(0,
+    (player.gadgetCounts[gadgetId] ?? player.gadgetCount ?? 0) - 1);
+  player.gadgetCounts[gadgetId] = remaining;
+  if (gadgetId === VINE_TRAP_ID) player.vineTrapRechargeAt = null;
+  if (player.selectedGadgetId === gadgetId) player.gadgetCount = remaining;
+  return remaining;
+}
+
 export function isPlayerJammed(player, now = Date.now()) {
   return Number.isFinite(player?.jammedUntil) && player.jammedUntil > now;
 }
@@ -514,13 +541,23 @@ export function refundKatanaCharge(player) {
   return wasSpent;
 }
 
+function isFlashInSpyCameraCone(effect, target) {
+  return target?.type === SPY_CAMERA_ID && isPointVisible(effect, {
+    origin: { x: target.x, y: target.y },
+    angle: Number.isFinite(target.angle) ? target.angle : 0,
+    halfAngle: target.visionHalfAngle ?? VISION_HALF_ANGLE,
+    maximumRange: target.visionRange ?? SPY_CAMERA_RANGE,
+  }, []);
+}
+
 export function getFlashBlindDurationMs(effect, player) {
   if (effect?.type !== 'flash' || !player ||
       ![effect.x, effect.y, effect.radius, player.x, player.y].every(Number.isFinite) ||
       effect.radius <= 0) return 0;
   const distance = Math.hypot(player.x - effect.x, player.y - effect.y);
-  if (distance > effect.radius) return 0;
   const maximum = effect.maxBlindDurationMs ?? FLASH_GRENADE_MAX_BLIND_DURATION_MS;
+  if (isFlashInSpyCameraCone(effect, player)) return maximum;
+  if (distance > effect.radius) return 0;
   const minimum = effect.minBlindDurationMs ?? FLASH_GRENADE_MIN_BLIND_DURATION_MS;
   return minimum + (maximum - minimum) * (1 - distance / effect.radius);
 }
@@ -533,6 +570,7 @@ export function isFlashAffectingTarget(effect, target, visionObjects, now = Date
   const duration = getFlashBlindDurationMs(effect, target);
   if (duration <= 0 || !Number.isFinite(effect?.startedAt) || effect.startedAt > now ||
       now >= effect.startedAt + duration || effect.expiresAt <= now) return false;
+  if (isFlashInSpyCameraCone(effect, target)) return true;
   return isPointVisible({ x: target.x, y: target.y }, {
     origin: { x: effect.x, y: effect.y },
     angle: 0,
@@ -554,6 +592,7 @@ export function applyFlashBlindness(effect, players, visionObjects, gadgetEffect
   }
   for (const gadget of gadgetEffects ?? []) {
     if (gadget?.type !== SPY_CAMERA_ID ||
+        gadget.startedAt > effect.startedAt ||
         !Number.isFinite(gadget.expiresAt) || gadget.expiresAt <= effect.startedAt ||
         (Number.isFinite(gadget.health) && gadget.health <= 0) ||
         !isFlashAffectingTarget(effect, gadget, visionObjects, effect.startedAt)) continue;

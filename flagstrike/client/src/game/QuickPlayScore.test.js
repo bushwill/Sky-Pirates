@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { accumulateQuickPlayRound, advanceQuickPlaySeriesResult, applyQuickPlayRoundResultToSquadScore, getQuickPlayScoreboardPlayers } from './QuickPlayScore.js';
+import {
+  accumulateQuickPlayRound,
+  advanceQuickPlaySeriesResult,
+  applyQuickPlayRoundResultToSquadScore,
+  getCustomSeriesScoreboardPlayers,
+  getQuickPlayScoreboardPlayers,
+} from './QuickPlayScore.js';
 
 function makeRound(startedAt, stats) {
   return {
@@ -30,6 +36,49 @@ describe('Quick Play series scoreboard', () => {
     accumulateQuickPlayRound(totals, accumulated, secondRound);
     assert.deepEqual(getQuickPlayScoreboardPlayers(secondRound, totals, accumulated)[0].stats,
       { kills: 5, assists: 1, deaths: 3 }, 'the completed current round is not double-counted');
+  });
+
+  describe('custom-series scoreboard', () => {
+    it('accumulates player stats across matches without double-counting a completed match', () => {
+      const series = {
+        rolesBySquad: { A: 'blue', B: 'red' },
+        seriesScoreboard: [{
+          id: 'player-1',
+          name: 'Player',
+          squadId: 'A',
+          team: 'red',
+          stats: { kills: 2, assists: 1, deaths: 1 },
+        }],
+        lastResult: { at: 200 },
+      };
+      const match = {
+        victory: { at: 200 },
+        players: [{
+          id: 'player-1',
+          name: 'Player',
+          squadId: 'A',
+          team: 'red',
+          stats: { kills: 3, assists: 2, deaths: 2 },
+        }],
+      };
+
+      assert.deepEqual(getCustomSeriesScoreboardPlayers(match, series)[0].stats,
+        { kills: 2, assists: 1, deaths: 1 });
+      assert.equal(getCustomSeriesScoreboardPlayers(match, series)[0].team, 'blue');
+      assert.equal(getCustomSeriesScoreboardPlayers(null, series)[0].team, 'blue');
+
+      const nextMatch = {
+        players: [{
+          id: 'player-1',
+          name: 'Player',
+          squadId: 'A',
+          team: 'blue',
+          stats: { kills: 1, assists: 0, deaths: 2 },
+        }],
+      };
+      assert.deepEqual(getCustomSeriesScoreboardPlayers(nextMatch, series)[0].stats,
+        { kills: 3, assists: 1, deaths: 3 });
+    });
   });
 
   it('reconciles new post-victory stats from later snapshots of the same match exactly once', () => {

@@ -1,4 +1,10 @@
-import { createBotBrain, decideBotAction } from '../../../shared/BotAI.js';
+import {
+  BOT_TEAM_DAMAGE_RESPONSE_RANGE,
+  BOT_TEAM_INTEL_RESPONDER_COUNT,
+  BOT_TEAM_SIGHTING_RESPONSE_RANGE,
+  createBotBrain,
+  decideBotAction,
+} from '../../../shared/BotAI.js';
 import {
   GADGET_SWITCH_DURATION_MS,
   isGadgetJammed,
@@ -8,6 +14,7 @@ import {
 } from '../../../shared/GadgetModel.js';
 import { DEFAULT_PROJECTILE_DEFINITIONS } from '../../../shared/ProjectileModel.js';
 import { getPlayerVisionOrigin, isPointVisible, VISION_HALF_ANGLE } from '../../../shared/VisionModel.js';
+import { getBotMapStrategy } from '../../../shared/BotMapStrategy.js';
 
 const BOT_COMMAND_INTERVAL_MS = 45;
 const BOT_COMBAT_THINK_INTERVAL_MS = 60;
@@ -16,6 +23,7 @@ const TEAM_VISIBILITY_INTERVAL_MS = 120;
 const REPLAN_STAGGER_MS = 120;
 const TEAM_SIGHTING_MEMORY_MS = 6_000;
 const TEAM_INCIDENT_MEMORY_MS = 8_000;
+const TEAM_PING_BOT_MEMORY_MS = 6_000;
 const TEAMMATE_THREAT_RADIUS = 420;
 const GADGET_ACTION_ACK_TIMEOUT_MS = GADGET_SWITCH_DURATION_MS + 2_000;
 const BOT_DECISION_PROFILE_SAMPLE_LIMIT = 8;
@@ -36,6 +44,21 @@ function recordSlowBotDecision(profile, botId, durationMs) {
     profile.slowestDecisions[shortestIndex] = sample;
   }
   profile.slowestDecisions.sort((left, right) => right.durationMs - left.durationMs);
+}
+
+function createBotWorldSnapshot(match) {
+  const players = match.players ?? [];
+  const playersById = new Map();
+  const livingPlayers = [];
+  const livingPlayersByTeam = new Map();
+  for (const player of players) {
+    playersById.set(player.id, player);
+    if (!(player.alive && player.health > 0)) continue;
+    livingPlayers.push(player);
+    if (!livingPlayersByTeam.has(player.team)) livingPlayersByTeam.set(player.team, []);
+    livingPlayersByTeam.get(player.team).push(player);
+  }
+  return { playersById, livingPlayers, livingPlayersByTeam };
 }
 
 export function resolveBotFireCommand(brain, decision, now) {
@@ -85,6 +108,7 @@ export class BotController {
     this.damageCues = new Map();
     this.teamSightings = new Map();
     this.teamIncidents = new Map();
+    this.teamPings = new Map();
     this.jammedPlayerTeams = new Map();
     this.previousPlayers = new Map();
     this.seenBotAudioCueIds = new Set();
@@ -110,6 +134,7 @@ export class BotController {
       this.teamStateSignature = null;
       this.replanSequence = 0;
       this.teamSightings.clear();
+      this.teamPings.clear();
       this.jammedPlayerTeams.clear();
       for (const [incidentId, incident] of this.teamIncidents) {
         if (incident.kind === 'death') this.teamIncidents.delete(incidentId);
@@ -121,6 +146,9 @@ export class BotController {
       this.visionObjectsCache = null;
     }
     this.lastAttemptAt = now;
+    const worldState = createBotWorldSnapshot(match);
+    this.updatePingResponders(now, worldState);
+    const mapStrategy = getBotMapStrategy(match.map);
     const profile = { decisionCount: 0, totalDecisionMs: 0, slowestDecisions: [] };
     for (const [victimId, cue] of this.damageCues) {
       if (cue.expiresAt <= now) this.damageCues.delete(victimId);
@@ -132,7 +160,21 @@ export class BotController {
       if (incident.expiresAt <= now) this.teamIncidents.delete(incidentId);
     }
     const visionObjects = this.getVisionObjects(match, now);
-    this.updateTeamIntel(match, now, visionObjects);
+    this.updateTeamIntel(match, now, visionObjects, worldState);
+    for (const incident of this.teamIncidents.values()) {
+      if (incident.kind !== 'damage' || incident.responseScheduled ||
+          !Number.isFinite(incident.x) || !Number.isFinite(incident.y)) continue;
+      this.prioritizeNearbyBotReplans(
+        now,
+        incident.team,
+        incident,
+        BOT_TEAM_DAMAGE_RESPONSE_RANGE,
+        BOT_TEAM_INTEL_RESPONDER_COUNT,
+        worldState,
+        incident.victimId,
+      );
+      incident.responseScheduled = true;
+    }
     for (const cue of match.botNoises ?? []) {
       if (typeof cue.id !== 'string' || !['red', 'blue'].includes(cue.team) || cue.expiresAt <= now ||
           this.seenBotAudioCueIds.has(cue.id)) continue;
@@ -145,6 +187,14 @@ export class BotController {
         }
       } else {
         this.scheduleBotReplans(now, cue.team);
+        this.prioritizeNearbyBotReplans(
+          now,
+          cue.team,
+          cue,
+          (cue.radius ?? 180) + 300,
+          BOT_TEAM_INTEL_RESPONDER_COUNT,
+          worldState,
+        );
       }
       if (!cue.audiencePlayerId && firstHearerBrain?.botTeam === cue.team) {
         firstHearerBrain.decision = null;
@@ -159,16 +209,22 @@ export class BotController {
       .filter((player) => isPlayerJammed(player, now))
       .map((player) => [player.id, player.team]));
     const teamsWithJamChanges = new Set();
+    const playersWithJamChanges = new Set();
     for (const [playerId, team] of jammedPlayerTeams) {
-      if (this.jammedPlayerTeams.get(playerId) !== team) teamsWithJamChanges.add(team);
+      if (this.jammedPlayerTeams.get(playerId) !== team) {
+        teamsWithJamChanges.add(team);
+        playersWithJamChanges.add(playerId);
+      }
     }
     for (const [playerId, team] of this.jammedPlayerTeams) {
-      if (!jammedPlayerTeams.has(playerId)) teamsWithJamChanges.add(team);
+      if (!jammedPlayerTeams.has(playerId)) {
+        teamsWithJamChanges.add(team);
+        playersWithJamChanges.add(playerId);
+      }
     }
     this.jammedPlayerTeams = jammedPlayerTeams;
     const teamStateSignature = JSON.stringify({
-      livingPlayers: match.players.filter((player) => player.alive && player.health > 0)
-        .map((player) => player.id).sort(),
+      livingPlayers: worldState.livingPlayers.map((player) => player.id).sort(),
       jammedPlayers: [...jammedPlayerTeams.keys()].sort(),
       flagHolder: match.flag?.heldBy ?? null,
       flagDropped: match.flag?.dropped === true,
@@ -179,7 +235,14 @@ export class BotController {
       this.scheduleBotReplans(now);
     }
     for (const team of teamsWithJamChanges) {
-      this.scheduleBotReplans(now, team, null, true);
+      this.scheduleBotReplans(now, team);
+    }
+    for (const playerId of playersWithJamChanges) {
+      const brain = this.brains.get(playerId);
+      if (brain) {
+        brain.decision = null;
+        brain.nextThinkAt = now;
+      }
     }
     this.teamStateSignature = teamStateSignature;
     const botProfiles = roomState.quickPlay && roomState.bots?.catalog?.length
@@ -189,7 +252,8 @@ export class BotController {
     const teamIntelByTeam = new Map();
     const teamSlots = new Map();
     for (const team of ['red', 'blue']) {
-      const teamBots = match.players.filter((player) => player.isBot && player.team === team && player.alive && player.health > 0)
+      const teamBots = (worldState.livingPlayersByTeam.get(team) ?? [])
+        .filter((player) => player.isBot)
         .sort((left, right) => left.id.localeCompare(right.id));
       teamBots.forEach((bot, index) => teamSlots.set(bot.id, { roleIndex: index, roleCount: teamBots.length }));
     }
@@ -216,7 +280,9 @@ export class BotController {
         brain.burstCadence = {};
       }
       const damageCue = this.damageCues.get(bot.id);
-      if (!isPlayerJammed(bot, now) && damageCue?.expiresAt > now && damageCue.team === bot.team) {
+      const personalDamageCue = damageCue?.audiencePlayerId === bot.id;
+      if ((!isPlayerJammed(bot, now) || personalDamageCue) &&
+          damageCue?.expiresAt > now && damageCue.team === bot.team) {
         brain.incomingDamageCue = damageCue;
       } else {
         brain.incomingDamageCue = null;
@@ -235,7 +301,7 @@ export class BotController {
       }
       if (!brain.decision || (!brain.pendingGadgetAction && now >= brain.nextThinkAt)) {
         if (!teamIntelByTeam.has(bot.team)) {
-          teamIntelByTeam.set(bot.team, this.getTeamIntel(bot.team, match, now));
+          teamIntelByTeam.set(bot.team, this.getTeamIntel(bot.team, match, now, worldState));
         }
         const botMatch = isPlayerJammed(bot, now) ? {
           ...match,
@@ -252,12 +318,26 @@ export class BotController {
         const decisionStartedAt = performance.now();
         brain.decision = decideBotAction({ ...bot, botBrain: brain }, botMatch, personality.parameters, now, {
           ...teamSlots.get(bot.id),
+          teammateTacticalPositions: (worldState.livingPlayersByTeam.get(bot.team) ?? [])
+            .filter((teammate) => teammate.id !== bot.id)
+            .map((teammate) => {
+              const teammateBrain = this.brains.get(teammate.id);
+              return {
+                id: teammate.id,
+                defensePost: teammateBrain?.defensePost,
+                defenseWatchTarget: teammateBrain?.defenseWatchTarget,
+                coverPoint: teammateBrain?.tacticalCoverCache?.point,
+              };
+            }),
           damageCue: brain.incomingDamageCue,
+          worldState,
+          mapStrategy,
           teamIntel: isPlayerJammed(bot, now)
             ? {
               sightings: [],
               incidents: [],
               audioCues: botMatch.botNoises,
+              pings: [],
             }
             : teamIntelByTeam.get(bot.team),
           visionObjects,
@@ -315,6 +395,7 @@ export class BotController {
       team: cue.team,
       bearing: cue.bearing,
       expiresAt: cue.expiresAt,
+      audiencePlayerId: cue.audiencePlayerId ?? null,
     });
     const now = Date.now();
     if (cue.audiencePlayerId) {
@@ -330,9 +411,21 @@ export class BotController {
       kind: 'damage',
       victimId: cue.victimId,
       team: cue.team,
+      bearing: cue.bearing,
+      observedAt: now,
       expiresAt: Math.min(cue.expiresAt, now + TEAM_INCIDENT_MEMORY_MS),
     });
     this.scheduleBotReplans(now, cue.team, cue.victimId);
+    const victim = this.previousPlayers.get(cue.victimId);
+    this.prioritizeNearbyBotReplans(
+      now,
+      cue.team,
+      victim,
+      BOT_TEAM_DAMAGE_RESPONSE_RANGE,
+      BOT_TEAM_INTEL_RESPONDER_COUNT,
+      null,
+      cue.victimId,
+    );
   }
 
   getVisionObjects(match, now) {
@@ -362,19 +455,99 @@ export class BotController {
     this.teamIncidents.set(`noise:${cue.id}`, {
       id: `noise:${cue.id}`,
       kind: 'audio',
+      audioKind: cue.kind ?? 'gunshot',
       team: cue.team,
       x: cue.x,
       y: cue.y,
+      radius: cue.radius,
       expiresAt: Math.min(cue.expiresAt, Date.now() + TEAM_INCIDENT_MEMORY_MS),
     });
-    this.scheduleBotReplans(Date.now(), cue.team);
+    const now = Date.now();
+    this.scheduleBotReplans(now, cue.team);
+    this.prioritizeNearbyBotReplans(
+      now,
+      cue.team,
+      cue,
+      (cue.radius ?? 180) + 300,
+      BOT_TEAM_INTEL_RESPONDER_COUNT,
+    );
   }
 
-  scheduleBotReplans(now, team = null, immediateBotId = null, immediateTeam = false) {
+  acceptPing(ping) {
+    const now = Date.now();
+    if (!ping || typeof ping.id !== 'string' || !['red', 'blue'].includes(ping.team) ||
+        !Number.isFinite(ping.x) || !Number.isFinite(ping.y) ||
+        !Number.isFinite(ping.expiresAt) || ping.expiresAt <= now) return;
+    const previous = this.teamPings.get(ping.id);
+    this.teamPings.set(ping.id, {
+      id: ping.id,
+      team: ping.team,
+      x: ping.x,
+      y: ping.y,
+      createdAt: previous?.createdAt ?? now,
+      expiresAt: Math.max(ping.expiresAt, now + TEAM_PING_BOT_MEMORY_MS),
+      responderId: previous?.responderId ?? null,
+    });
+    this.scheduleBotReplans(now, ping.team);
+  }
+
+  updatePingResponders(now, worldState) {
+    const expiredTeams = new Set();
+    for (const [id, ping] of this.teamPings) {
+      if (ping.expiresAt <= now) {
+        expiredTeams.add(ping.team);
+        this.teamPings.delete(id);
+      }
+    }
+
+    const livingBots = new Map();
+    for (const [team, players] of worldState.livingPlayersByTeam) {
+      livingBots.set(team, players.filter((player) =>
+        player.isBot && !player.controlledById && !isPlayerJammed(player, now)));
+    }
+    for (const ping of this.teamPings.values()) {
+      const responder = worldState.playersById.get(ping.responderId);
+      if (responder?.team !== ping.team || !responder.isBot || !responder.alive ||
+          responder.health <= 0 || responder.controlledById || isPlayerJammed(responder, now)) {
+        ping.responderId = null;
+      }
+    }
+
+    const assignedByTeam = new Map();
+    for (const ping of this.teamPings.values()) {
+      if (!ping.responderId) continue;
+      const assigned = assignedByTeam.get(ping.team) ?? new Set();
+      assigned.add(ping.responderId);
+      assignedByTeam.set(ping.team, assigned);
+    }
+    for (const ping of this.teamPings.values()) {
+      if (ping.responderId) continue;
+      const candidates = livingBots.get(ping.team) ?? [];
+      const assigned = assignedByTeam.get(ping.team) ?? new Set();
+      const available = candidates.filter((bot) => !assigned.has(bot.id));
+      const responder = [...(available.length ? available : candidates)]
+        .sort((left, right) =>
+          Math.hypot(left.x - ping.x, left.y - ping.y) -
+            Math.hypot(right.x - ping.x, right.y - ping.y) ||
+          left.id.localeCompare(right.id))[0];
+      if (!responder) continue;
+      ping.responderId = responder.id;
+      assigned.add(responder.id);
+      assignedByTeam.set(ping.team, assigned);
+      const brain = this.brains.get(responder.id);
+      if (brain) {
+        brain.decision = null;
+        brain.nextThinkAt = now;
+      }
+    }
+    for (const team of expiredTeams) this.scheduleBotReplans(now, team);
+  }
+
+  scheduleBotReplans(now, team = null, immediateBotId = null) {
     const sequence = ++this.replanSequence;
     for (const brain of this.brains.values()) {
       if (team && brain.botTeam !== team) continue;
-      if (immediateTeam || brain.id === immediateBotId) {
+      if (brain.id === immediateBotId) {
         brain.decision = null;
         brain.nextThinkAt = now;
         continue;
@@ -385,14 +558,35 @@ export class BotController {
     }
   }
 
-  updateTeamIntel(match, now, visionObjects = this.getVisionObjects(match, now)) {
-    const livePlayers = match.players.filter((player) => player.alive && player.health > 0);
-    const playersById = new Map(match.players.map((player) => [player.id, player]));
+  prioritizeNearbyBotReplans(now, team, target, maximumRange, responderLimit,
+    worldState = null, excludedBotId = null) {
+    if (!Number.isFinite(target?.x) || !Number.isFinite(target?.y)) return;
+    const positions = [];
+    for (const brain of this.brains.values()) {
+      if (brain.botTeam !== team || brain.id === excludedBotId) continue;
+      const player = worldState?.playersById?.get(brain.id) ?? this.previousPlayers.get(brain.id);
+      if (!player || player.team !== team || !player.alive || player.health <= 0 ||
+          player.controlledById) continue;
+      const distance = Math.hypot(player.x - target.x, player.y - target.y);
+      if (distance <= maximumRange) positions.push({ brain, distance });
+    }
+    positions.sort((left, right) =>
+      left.distance - right.distance || left.brain.id.localeCompare(right.brain.id));
+    for (const { brain } of positions.slice(0, responderLimit)) {
+      brain.decision = null;
+      brain.nextThinkAt = now;
+    }
+  }
+
+  updateTeamIntel(match, now, visionObjects = this.getVisionObjects(match, now),
+    worldState = createBotWorldSnapshot(match)) {
+    const livePlayers = worldState.livingPlayers;
+    const playersById = worldState.playersById;
     if (now - this.lastVisibilityAt >= TEAM_VISIBILITY_INTERVAL_MS) {
       this.lastVisibilityAt = now;
       const teamsWithSightings = new Map();
       for (const team of ['red', 'blue']) {
-        const sources = this.getTeamVisionSources(team, match, now);
+        const sources = this.getTeamVisionSources(team, match, now, worldState);
         for (const source of sources) {
           for (const enemy of livePlayers) {
             if (enemy.team === team || !isPointVisible(enemy, source, source.xray ? [] : visionObjects)) continue;
@@ -418,15 +612,39 @@ export class BotController {
               lastReplanAt: shouldReplan ? now : previous.lastReplanAt,
             });
             if (shouldReplan) {
-              const isUrgent = livePlayers.some((ally) => ally.team === team &&
-                Math.hypot(ally.x - enemy.x, ally.y - enemy.y) <= TEAMMATE_THREAT_RADIUS);
-              teamsWithSightings.set(team, Boolean(teamsWithSightings.get(team) || isUrgent));
+              let nearestAllyDistance = Infinity;
+              for (const ally of livePlayers) {
+                if (ally.team === team) {
+                  nearestAllyDistance = Math.min(nearestAllyDistance,
+                    Math.hypot(ally.x - enemy.x, ally.y - enemy.y));
+                }
+              }
+              const isUrgent = nearestAllyDistance <= TEAMMATE_THREAT_RADIUS;
+              const previous = teamsWithSightings.get(team);
+              if (!previous || (isUrgent &&
+                  (!previous.urgent || nearestAllyDistance < previous.allyDistance))) {
+                teamsWithSightings.set(team, {
+                  urgent: isUrgent,
+                  allyDistance: nearestAllyDistance,
+                  position: { x: enemy.x, y: enemy.y },
+                });
+              }
             }
           }
         }
       }
-      for (const [team, urgent] of teamsWithSightings) {
-        this.scheduleBotReplans(now, team, null, urgent);
+      for (const [team, response] of teamsWithSightings) {
+        this.scheduleBotReplans(now, team);
+        if (response.urgent) {
+          this.prioritizeNearbyBotReplans(
+            now,
+            team,
+            response.position,
+            BOT_TEAM_SIGHTING_RESPONSE_RANGE,
+            BOT_TEAM_INTEL_RESPONDER_COUNT,
+            worldState,
+          );
+        }
       }
     }
 
@@ -453,8 +671,10 @@ export class BotController {
     for (const player of match.players) nextPreviousPlayers.set(player.id, {
       team: player.team,
       alive: player.alive && player.health > 0,
+      health: player.health,
       x: player.x,
       y: player.y,
+      controlledById: player.controlledById ?? null,
     });
     this.previousPlayers = nextPreviousPlayers;
 
@@ -471,10 +691,13 @@ export class BotController {
     }
   }
 
-  getTeamIntel(team, match, now) {
-    const playersById = new Map(match.players.map((player) => [player.id, player]));
-    const livingEnemyIds = new Set(match.players.filter((player) => player.alive && player.health > 0 && player.team !== team)
-      .map((player) => player.id));
+  getTeamIntel(team, match, now, worldState = createBotWorldSnapshot(match)) {
+    const playersById = worldState.playersById;
+    const opposingTeam = team === 'red' ? 'blue' : team === 'blue' ? 'red' : null;
+    const livingEnemies = opposingTeam
+      ? worldState.livingPlayersByTeam.get(opposingTeam) ?? []
+      : worldState.livingPlayers.filter((player) => player.team !== team);
+    const livingEnemyIds = new Set(livingEnemies.map((player) => player.id));
     const sightings = [...this.teamSightings.values()]
       .filter((sighting) => sighting.team === team && sighting.expiresAt > now &&
         livingEnemyIds.has(sighting.enemyId) &&
@@ -486,17 +709,21 @@ export class BotController {
       cue.team === team && cue.expiresAt > now &&
       Number.isFinite(cue.x) && Number.isFinite(cue.y) &&
       !isPlayerJammed(playersById.get(cue.heardById), now));
-    const visionSources = this.getTeamVisionSources(team, match, now);
-    return { sightings, incidents, audioCues, visionSources };
+    const visionSources = this.getTeamVisionSources(team, match, now, worldState);
+    const pings = [...this.teamPings.values()]
+      .filter((ping) => ping.team === team && ping.expiresAt > now)
+      .map((ping) => ({ ...ping }));
+    return { sightings, incidents, audioCues, visionSources, pings };
   }
 
-  getTeamVisionSources(team, match, now) {
+  getTeamVisionSources(team, match, now, worldState = createBotWorldSnapshot(match)) {
     const mapObjects = match.map?.objects ?? [];
     const mapRange = Math.hypot(match.map?.width ?? 0, match.map?.height ?? 0) * 2;
     const sources = [];
-    for (const observer of match.players) {
-      if (!observer.alive || observer.health <= 0 || observer.team !== team ||
-          isPlayerJammed(observer, now) || isPlayerFlashBlinded(observer, now)) continue;
+    const observers = worldState.livingPlayersByTeam.get(team) ??
+      worldState.livingPlayers.filter((player) => player.team === team);
+    for (const observer of observers) {
+      if (isPlayerJammed(observer, now) || isPlayerFlashBlinded(observer, now)) continue;
       const weaponId = observer.selectedWeaponId ?? DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle.id;
       const weapon = BOT_WEAPONS_BY_ID.get(weaponId) ?? DEFAULT_PROJECTILE_DEFINITIONS.assaultRifle;
       sources.push({

@@ -31,8 +31,7 @@ import {
   isGadgetJammed,
   isPlayerJammed,
 } from './GadgetModel.js';
-import { hasTrophyLineOfSight } from './TrophySystemModel.js';
-import { isCircleVisible } from './VisionModel.js';
+import { createVision, isCircleVisible } from './VisionModel.js';
 
 const JAMMABLE_GADGET_TYPES = new Set([
   SPY_CAMERA_ID, TROPHY_SYSTEM_ID, 'mine', VINE_TRAP_ID, 'sonar-projectile',
@@ -211,7 +210,6 @@ export function createHostTrophyCommandProjectile({
   trophy,
   target,
   mapObjects,
-  visionObjects,
   now,
   matchEndsAt,
   mapWidth,
@@ -226,12 +224,11 @@ export function createHostTrophyCommandProjectile({
       ![trophy.x, trophy.y, target.x, target.y, now, matchEndsAt, mapWidth, mapHeight]
         .every(Number.isFinite) ||
       target.x < 0 || target.y < 0 || target.x > mapWidth || target.y > mapHeight ||
-      matchEndsAt <= now || Math.hypot(target.x - trophy.x, target.y - trophy.y) <= 1e-6 ||
-      !hasTrophyLineOfSight(trophy, target, visionObjects)) return null;
+      matchEndsAt <= now || Math.hypot(target.x - trophy.x, target.y - trophy.y) <= 1e-6) return null;
   const trajectory = calculateGadgetTrajectory(
     { x: trophy.x, y: trophy.y },
     target,
-    mapObjects,
+    mapObjects.filter((object) => object?.blocksVision !== true),
     {
       maximumRange: Math.hypot(mapWidth, mapHeight),
       collisionRadius: DEFAULT_GADGET_THROW_COLLISION_RADIUS,
@@ -275,15 +272,27 @@ export function createHostTrophyCommandProjectile({
 
 const TROPHY_CLEARABLE_GADGET_IDS = new Set(Object.keys(GADGET_DEFINITIONS));
 
-function hasTrophyLineOfSightToEffect(pulse, effect, visionObjects) {
-  const radius = Number.isFinite(effect.radius) ? Math.max(0, effect.radius) : 0;
-  const opaqueObjects = visionObjects.filter((object) =>
-    object?.gadgetId !== SMOKE_GRENADE_ID && object?.type !== 'smoke' && object?.role !== 'vision-smoke');
-  return isCircleVisible({ x: effect.x, y: effect.y }, radius, {
-    origin: { x: pulse.x, y: pulse.y },
-    angle: Math.atan2(effect.y - pulse.y, effect.x - pulse.x),
-    halfAngle: Math.PI,
-  }, opaqueObjects);
+export function isTrophyCommandEffectInRangeAndSight(
+  pulse,
+  effect,
+  visionObjects = [],
+  radius = TROPHY_SYSTEM_COMMAND_RADIUS,
+) {
+  if (![pulse?.x, pulse?.y, effect?.x, effect?.y, radius].every(Number.isFinite) || radius < 0 ||
+      (Number.isFinite(effect.radius) && effect.radius < 0)) return false;
+  const fieldRadius = Number.isFinite(effect.radius) ? effect.radius : 0;
+  const occluders = (Array.isArray(visionObjects) ? visionObjects : [])
+    .filter((object) => object?.id !== effect.id);
+  const vision = createVision(
+    { x: pulse.x, y: pulse.y },
+    0,
+    occluders,
+    Math.max(1, radius * 2),
+    Math.max(1, radius * 2),
+    Math.PI,
+    radius,
+  );
+  return isCircleVisible({ x: effect.x, y: effect.y }, fieldRadius, vision, occluders);
 }
 
 export function findTrophyCommandClearedEffects({
@@ -292,7 +301,7 @@ export function findTrophyCommandClearedEffects({
   smokes = [],
   visionObjects = [],
   now,
-  radius = TROPHY_SYSTEM_COMMAND_RADIUS,
+  radius = pulse?.radius ?? TROPHY_SYSTEM_COMMAND_RADIUS,
 }) {
   if (pulse?.type !== TROPHY_SYSTEM_COMMAND_EFFECT_ID ||
       !['red', 'blue'].includes(pulse.team) ||
@@ -304,10 +313,7 @@ export function findTrophyCommandClearedEffects({
     if (effect?.id === pulse.id || !TROPHY_CLEARABLE_GADGET_IDS.has(effect?.gadgetId) ||
         effect.team === pulse.team || !['red', 'blue'].includes(effect.team) ||
         !Number.isFinite(effect.expiresAt) || effect.expiresAt <= now ||
-        ![effect.x, effect.y].every(Number.isFinite) ||
-        Math.hypot(effect.x - pulse.x, effect.y - pulse.y) > radius ||
-        !hasTrophyLineOfSightToEffect(pulse, effect,
-          visionObjects.filter((object) => object?.id !== effect.id))) continue;
+        !isTrophyCommandEffectInRangeAndSight(pulse, effect, visionObjects, radius)) continue;
     removedIds.add(effect.id);
   }
   return {
